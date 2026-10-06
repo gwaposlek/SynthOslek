@@ -1824,9 +1824,8 @@ class MidiManager{
   }
 }
 const midiManager=new MidiManager(synth);
-void midiManager.init();
 
-/* Direct BLE-MIDI fallback for Windows Edge / compatible Chromium browsers. */
+/* Direct BLE-MIDI fallback for browsers without a usable WebMIDI input. */
 const bleMidi=new BleMidiTransport(midiManager);
 void midiManager.init().then(()=>{
   if(!midiManager.hasSmkInput())return bleMidi.autoReconnect({announce:true});
