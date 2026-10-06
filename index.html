@@ -590,7 +590,7 @@ class ModulationMatrix{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this._startPromise=null;this.voices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.ctx=null;this._startPromise=null;this.modWheel=1;this.voices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
     this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
@@ -616,7 +616,11 @@ class SynthOslek{
   }
   _impulse(d,dec){const r=this.ctx.sampleRate,l=r*d,b=this.ctx.createBuffer(2,l,r);
     for(let c=0;c<2;c++){const a=b.getChannelData(c);for(let i=0;i<l;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/l,dec);}return b;}
-  _lfoScale(){return({cutoff:1800,pitch:50,amp:.35})[this.params.lfoDest]*this.params.lfoDepth;}
+  _lfoScale(){return({cutoff:1800,pitch:50,amp:.35})[this.params.lfoDest]*this.params.lfoDepth*(this.modWheel??1);}
+  setModWheel(v){
+    this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
+    if(this.started)for(const v of this.voices.values())if(v.lm)v.lm.gain.setTargetAtTime(this._lfoScale(),this.ctx.currentTime,.02);
+  }
   _det(tc=.01){const t=this.ctx.currentTime;
     for(const v of this.voices.values()){const P=v.layer===this.activeLayer?this.params:(v.params||this.params);
       for(const x of v.oscs)x.o.detune.setTargetAtTime(P["osc"+x.w+"Detune"]+x.off*P.spread+this.bend+(this.wheel||0),t,tc);}}
@@ -1283,9 +1287,7 @@ class BleMidiTransport{
   onData(view){
     if(!view||view.byteLength<3)return;
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
-    let i=0;
-    /* BLE-MIDI packets begin with two timestamp/header bytes. */
-    i=Math.min(2,a.length);
+    let i=2;
     let status=null;
     const emit=(st,d1,d2)=>{
       if(st==null)return;
@@ -1299,47 +1301,41 @@ class BleMidiTransport{
         this.manager.synth.modMatrix.setSource("pitchBend",bend/8192);
       }
     };
-    const dataBytesNeeded=st=>{
-      if(!st)return 0;
-      const cmd=st&0xf0;
-      if(cmd===0xC0||cmd===0xD0)return 1;
-      if(cmd>=0x80&&cmd<=0xE0)return 2;
+    const need=st=>{
+      const c=st&0xf0;
+      if(c===0xC0||c===0xD0)return 1;
+      if(c>=0x80&&c<=0xE0)return 2;
       return 0;
     };
+    /* BLE-MIDI places a timestamp before each MIDI event. When running
+       status is used, the timestamp is followed directly by data bytes. */
     while(i<a.length){
       let b=a[i++];
-      /* Realtime MIDI can appear anywhere and carries no data bytes. */
-      if(b===0xF8||b===0xF9||b===0xFA||b===0xFB||b===0xFC||b===0xFD||b===0xFE||b===0xFF)continue;
-      /* A high-bit byte at a message boundary is a MIDI status; while a
-         message has data pending it can instead be a BLE timestamp. */
+      if(b>=0xF8)continue;
       if(b>=0x80){
-        const cmd=b&0xF0;
-        if(cmd>=0x80&&cmd<=0xE0){
+        /* This byte is the event timestamp. */
+        if(i>=a.length)break;
+        b=a[i++];
+        if(b>=0x80){
           status=b;this.lastStatus=status;
-        }else if(b===0xF1||b===0xF2||b===0xF3||b===0xF6){
-          status=b;this.lastStatus=status;
-        }else{
+        }else if(status==null){
           continue;
+        }else{
+          i--; /* running status: b is the first data byte */
         }
       }else if(status==null){
         continue;
-      }else{
-        /* Running-status data byte. */
-        const needed=dataBytesNeeded(status);
-        if(needed===0)continue;
-        if(needed===1){
-          emit(status,b,0);continue;
-        }
-        const d1=b;
-        if(i>=a.length)break;
-        let d2=a[i++];
-        if(d2>=0x80){
-          /* Timestamp encountered before the second data byte; do not
-             consume it as MIDI data. The packet is incomplete. */
-          i--;break;
-        }
-        emit(status,d1,d2);
       }
+      const count=need(status);
+      if(!count)continue;
+      if(i>=a.length)break;
+      let d1;
+      if(b<0x80)d1=b;else d1=a[i++];
+      if(count===1){emit(status,d1,0);continue;}
+      if(i>=a.length)break;
+      const d2=a[i++];
+      if(d2>=0x80)break;
+      emit(status,d1,d2);
     }
   }
   disconnect(){
@@ -1401,7 +1397,7 @@ class MidiManager{
   }
   cc(cc,val,ch){
     const x=Math.max(0,Math.min(1,val/127)),layer=this.controlLayer(ch);
-    if(cc===1){this.synth.setWheel(x);this.synth.modMatrix.setSource("modWheel",x);syncSynthState(false);return;}
+    if(cc===1){this.synth.modMatrix.setSource("modWheel",x);this.synth.setModWheel(x);syncSynthState(false);return;}
     if(cc===7){this.synth.updateParam("volume",x);return;}
     if(cc===10){layerState[layer].pan=x*2-1;refreshLayerGains();return;}
     if(cc===64){
