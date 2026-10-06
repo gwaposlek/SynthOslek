@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.4-state-architecture">
-<title>SynthOslek v14.4 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.5-voice-lifecycle">
+<title>SynthOslek v14.5 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -448,7 +448,7 @@ header{display:none!important}
       <tr><td>MIDI: ALL / CH</td><td>ALL = every layer plays. CH = MIDI channel 1–4 maps to layers 1–4.</td></tr>
       <tr><td>Pitch / Mod wheels</td><td>Pitch −1200¢ / +200¢ (springs to center). Mod drives LFO depth.</td></tr>
       <tr><td>Gliss / Pitch / Scroll</td><td>Gliss = slide notes. Pitch = bend + vertical param (↕). Scroll = drag up/down or toward top/bottom of keys to shift octaves (GarageBand-style).</td></tr>
-      <tr><td>Voice limit</td><td>Max 48 simultaneous voices; the quietest/oldest held voice is stolen only when full.</td></tr>
+      <tr><td>Voice limit</td><td>Max 48 physical voices; releasing tails are reclaimed first, then the lowest-velocity/oldest held voice when full.</td></tr>
     </table>
     <h3>MIDI Continuous Controllers</h3>
     <table>
@@ -475,7 +475,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.4 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.5 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -554,40 +554,51 @@ class SynthStateStore{
 
 class VoicePool{
   constructor(max=48){
-    this.max=max;
-    this.sequence=0;
-    this.slots=Array.from({length:max},(_,id)=>({id,key:null,age:0,active:false}));
+    this.max=max;this.sequence=0;
+    this.slots=Array.from({length:max},(_,id)=>({id,key:null,age:0,velocity:0,active:false,releasingUntil:0,timer:0}));
     this.active=new Map();
   }
-  acquire(key){
-    if(this.active.has(key))return {slot:this.active.get(key),duplicate:true,stolenKey:null};
-    let slot=this.slots.find(x=>!x.active),stolenKey=null;
+  _clearRelease(slot){
+    if(slot.timer){clearTimeout(slot.timer);slot.timer=0;}
+    slot.releasingUntil=0;slot.key=null;slot.velocity=0;slot.age=0;
+  }
+  acquire(key,velocity=.85){
+    if(this.active.has(key))return {slot:this.active.get(key),duplicate:true,stolenKey:null,reason:"duplicate"};
+    const now=performance.now();
+    let slot=this.slots.find(x=>!x.active&&!x.releasingUntil),stolenKey=null,reason="free";
     if(!slot){
-      const oldest=[...this.active.values()].sort((a,b)=>a.age-b.age)[0];
-      if(oldest){
-        stolenKey=oldest.key;
-        this.active.delete(stolenKey);
-        slot=oldest;
-      }
+      const tails=this.slots.filter(x=>!x.active&&x.releasingUntil>now).sort((a,b)=>(a.releasingUntil-b.releasingUntil)||(a.age-b.age));
+      if(tails.length){slot=tails[0];stolenKey=slot.key;reason="release-tail";this._clearRelease(slot);}
+    }
+    if(!slot){
+      const held=[...this.active.values()].sort((a,b)=>(a.velocity-b.velocity)||(a.age-b.age));
+      if(held.length){slot=held[0];stolenKey=slot.key;reason="held-velocity-age";this.active.delete(stolenKey);}
     }
     if(slot){
-      slot.active=true;
-      slot.key=key;
-      slot.age=++this.sequence;
-      this.active.set(key,slot);
+      slot.active=true;slot.key=key;slot.velocity=Math.max(0,Math.min(1,Number(velocity)||0));
+      slot.age=++this.sequence;this.active.set(key,slot);
     }
-    return {slot,duplicate:false,stolenKey};
+    return {slot,duplicate:false,stolenKey,reason};
   }
-  release(key){
-    const slot=this.active.get(key);
-    if(!slot)return;
-    this.active.delete(key);
-    slot.active=false;
-    slot.key=null;
-    slot.age=0;
+  release(key,tailMs=0){
+    const slot=this.active.get(key);if(!slot)return;
+    this.active.delete(key);slot.active=false;
+    const ms=Math.max(0,Number(tailMs)||0);
+    if(ms>0){
+      if(slot.timer)clearTimeout(slot.timer);
+      slot.releasingUntil=performance.now()+ms;
+      const heldKey=slot.key;
+      slot.timer=setTimeout(()=>{if(!slot.active&&slot.key===heldKey){slot.timer=0;this._clearRelease(slot);}},ms+20);
+    }else this._clearRelease(slot);
   }
-  clear(){for(const slot of this.slots){slot.active=false;slot.key=null;slot.age=0;}this.active.clear();}
-  stats(){return {max:this.max,active:this.active.size,free:this.max-this.active.size,allocations:this.sequence};}
+  clear(){
+    for(const slot of this.slots){if(slot.timer)clearTimeout(slot.timer);slot.active=false;slot.timer=0;this._clearRelease(slot);}
+    this.active.clear();
+  }
+  stats(){
+    const now=performance.now(),tails=this.slots.filter(x=>!x.active&&x.releasingUntil>now).length,active=this.active.size;
+    return {max:this.max,active,tails,occupied:active+tails,free:Math.max(0,this.max-active-tails),allocations:this.sequence};
+  }
 }
 
 class ModulationMatrix{
@@ -619,7 +630,7 @@ class ModulationMatrix{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this._startPromise=null;this.modWheel=0;this.modVibratoCents=50;this.voices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.ctx=null;this._startPromise=null;this.modWheel=0;this.modVibratoCents=50;this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
     this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
@@ -702,9 +713,10 @@ class SynthOslek{
     const ns=c.createBufferSource();ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.all.push(ns);
     this.lastFreq=freq;this.voices.set(key,v);
   }
-  _kill(v,t){
+  _kill(v,t,key=null){
     v.all.forEach(o=>{try{o.stop(t);}catch(e){}});
-    if(v.all[0])v.all[0].onended=()=>{try{this.lfo.disconnect(v.lm);}catch(e){}try{this.lfo.disconnect(v.modPitch);}catch(e){}try{v.lm.disconnect();}catch(e){}try{v.modPitch.disconnect();}catch(e){}try{v.va.disconnect();}catch(e){}try{v.fx?.disconnect();}catch(e){}try{v.fxDelay?.disconnect();}catch(e){}try{v.fxReverb?.disconnect();}catch(e){}try{v.fxChorus?.disconnect();}catch(e){}};
+    if(key)this.tailVoices.set(key,v);
+    if(v.all[0])v.all[0].onended=()=>{if(key&&this.tailVoices.get(key)===v)this.tailVoices.delete(key);try{this.lfo.disconnect(v.lm);}catch(e){}try{this.lfo.disconnect(v.modPitch);}catch(e){}try{v.lm.disconnect();}catch(e){}try{v.modPitch.disconnect();}catch(e){}try{v.va.disconnect();}catch(e){}try{v.fx?.disconnect();}catch(e){}try{v.fxDelay?.disconnect();}catch(e){}try{v.fxReverb?.disconnect();}catch(e){}try{v.fxChorus?.disconnect();}catch(e){}};
   }
   noteOff(midi,layer=null){
     const matches=[...this.voices.entries()].filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer));
@@ -712,14 +724,14 @@ class SynthOslek{
     for(const [key,v] of matches){const t=this.ctx.currentTime,P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
       try{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.exponentialRampToValueAtTime(.0001,t+rel);
         const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}
-      this._kill(v,t+Math.max(rel,fr)+.08);this.voices.delete(key);}
+      const tailMs=(Math.max(rel,fr)+.08)*1000;this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   }
   releaseSustain(){if(!this.started)return;const keys=[...this.sustained];this.sustained.clear();for(const key of keys){const v=this.voices.get(key);if(!v)continue;const midi=Number(key.split(":").pop());this._releaseVoice(key,v,midi);}}
-  _releaseVoice(key,v,midi){const t=this.ctx.currentTime,P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);try{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.exponentialRampToValueAtTime(.0001,t+rel);const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}this._kill(v,t+Math.max(rel,fr)+.08);this.voices.delete(key);}
-  _forceStop(midi){
-    const v=this.voices.get(midi);if(!v)return;const t=this.ctx.currentTime;
-    try{v.env.gain.cancelScheduledValues(t);v.env.gain.setValueAtTime(.0001,t);this._kill(v,t+.02);}catch(e){}
-    this.voices.delete(midi);
+  _releaseVoice(key,v,midi){const t=this.ctx.currentTime,P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);try{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.exponentialRampToValueAtTime(.0001,t+rel);const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}const tailMs=(Math.max(rel,fr)+.08)*1000;this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
+  _forceStop(key){
+    const v=this.voices.get(key)||this.tailVoices.get(key);if(!v)return;const t=this.ctx.currentTime;
+    try{v.env.gain.cancelScheduledValues(t);v.env.gain.setValueAtTime(.0001,t);this._kill(v,t+.02,key);}catch(e){}
+    this.voices.delete(key);this.tailVoices.delete(key);this.voicePool?.release(key,0);
   }
   panic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);}
   updateParam(k,x){
@@ -822,7 +834,7 @@ synth.noteOn=function(midi,vel=.85,layer=this.activeLayer){
   if(!this.started)return false;
   const key=layer+":"+midi;
   if(this.voicePool.active.has(key))this._forceStop(key);
-  const allocation=this.voicePool.acquire(key);
+  const allocation=this.voicePool.acquire(key,vel);
   if(allocation.stolenKey)this._forceStop(allocation.stolenKey);
   _noteOn0(midi,vel,layer);
   if(!this.voices.has(key))this.voicePool.release(key);
@@ -835,7 +847,6 @@ synth.noteOff=function(midi,layer=null){
     .filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer))
     .map(([k])=>k);
   const out=_noteOff0(midi,layer);
-  if(!this.sustain)before.forEach(k=>this.voicePool.release(k));
   return out;
 };
 
