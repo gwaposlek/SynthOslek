@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.24-dsp-backend-seam">
-<title>SynthOslek v14.24 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.25-voice-engine-boundary">
+<title>SynthOslek v14.25 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -653,6 +653,8 @@ class DSPBackend{
   async init(runtime,synth){this.runtime=runtime;this.synth=synth;return this;}
   noteOn(...args){return this.synth._nativeNoteOn(...args);}
   noteOff(...args){return this.synth._nativeNoteOff(...args);}
+  releaseSustain(...args){return this.synth._nativeReleaseSustain(...args);}
+  panic(...args){return this.synth._nativePanic(...args);}
   dispose(){}
 }
 class NativeWebAudioBackend extends DSPBackend{
@@ -840,7 +842,8 @@ class SynthOslek{
         const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}
       const tailMs=(Math.max(rel,fr)+.08)*1000;this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   }
-  releaseSustain(){if(!this.started)return;const keys=[...this.sustained];this.sustained.clear();for(const key of keys){const v=this.voices.get(key);if(!v)continue;const midi=Number(key.split(":").pop());this._releaseVoice(key,v,midi);}}
+  releaseSustain(){return this.dspBackend?.releaseSustain();}
+  _nativeReleaseSustain(){if(!this.started)return;const keys=[...this.sustained];this.sustained.clear();for(const key of keys){const v=this.voices.get(key);if(!v)continue;const midi=Number(key.split(":").pop());this._releaseVoice(key,v,midi);}}
   _releaseVoice(key,v,midi){const t=this.ctx.currentTime,P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);try{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.exponentialRampToValueAtTime(.0001,t+rel);const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}const tailMs=(Math.max(rel,fr)+.08)*1000;this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   _forceStop(key,fadeMs=5,at=null){
     const v=this.voices.get(key)||this.tailVoices.get(key);if(!v)return;
@@ -852,7 +855,8 @@ class SynthOslek{
     }catch(e){}
     this.voices.delete(key);this.tailVoices.delete(key);this.voicePool?.release(key,0);
   }
-  panic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);}
+  panic(){return this.dspBackend?.panic();}
+  _nativePanic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);}
   updateParam(k,x,at=null){
     this.params[k]=x;
     if(this.layerProfiles[this.activeLayer])this.layerProfiles[this.activeLayer][k]=x;
