@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.15-smk37-midi">
-<title>SynthOslek v14.15 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.16-smk37-ble-midi-transport">
+<title>SynthOslek v14.16 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1526,15 +1526,21 @@ class BleMidiTransport{
     this.manager.setStatus("Select your SMK-37 BLE MIDI device…");
     let d;
     try{
+      /* SMK-37 exposes a separate audio Bluetooth endpoint and a BLE-MIDI
+         endpoint. Filter on the BLE-MIDI service so the browser cannot
+         accidentally connect the audio endpoint. */
+      d=await navigator.bluetooth.requestDevice({
+        filters:[{services:[this.MIDI_SERVICE]}],
+        optionalServices:[this.MIDI_SERVICE]
+      });
+    }catch(err){
+      /* Some Chromium builds reject custom-service filters. Fall back to a
+         chooser; connectKnown() validates the BLE-MIDI service before success. */
+      if(err?.name==="NotFoundError")throw err;
       d=await navigator.bluetooth.requestDevice({
         acceptAllDevices:true,
         optionalServices:[this.MIDI_SERVICE]
       });
-    }catch(err){
-      /* Retry without optionalServices for Chromium builds that reject this custom 128-bit UUID
-         during requestDevice validation. Service discovery is attempted after GATT connection. */
-      if(err?.name!=="TypeError")throw err;
-      d=await navigator.bluetooth.requestDevice({acceptAllDevices:true});
     }
     this._bindDevice(d);
     try{localStorage.setItem(this.storageId,d.id||"");localStorage.setItem(this.storageName,d.name||"SMK-37");}catch(e){}
@@ -1557,7 +1563,7 @@ class BleMidiTransport{
     await this.characteristic.startNotifications();
     this._charHandler=e=>this.onData(e.target.value);
     this.characteristic.addEventListener("characteristicvaluechanged",this._charHandler);
-    this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37 connected"));
+    this.manager.setStatus("BLE MIDI ready: "+(d.name||"SMK-37")+" · notifications ON · waiting for MIDI");
     return true;
   }
   onDisconnect(){
@@ -1566,8 +1572,10 @@ class BleMidiTransport{
     if(!this._manualDisconnect)this._queueAutoReconnect(800);
   }
   onData(view){
-    if(!view||view.byteLength<3)return;
+    if(!view||view.byteLength<2)return;
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
+    this.rawRxCount++;
+    this.lastRawRxAt=performance.now();
     const header=a[0];
     if((header&0x80)===0)return;
 
@@ -1638,7 +1646,7 @@ class BleMidiTransport{
       }
       if(d1.length!==len)break;
       this.manager.rxCount++;this.manager.lastRxAt=performance.now();
-      this.manager.setStatus("BLE RX: "+status.toString(16).padStart(2,"0")+" "+d1.map(v=>v.toString(16).padStart(2,"0")).join(" "));
+      this.manager.setStatus("MIDI RX: "+status.toString(16).padStart(2,"0")+" "+d1.map(v=>v.toString(16).padStart(2,"0")).join(" "));
       this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
     }
     void sysexContinuation;
@@ -1868,7 +1876,7 @@ $("bleMidiBtn")?.addEventListener("click",async()=>{
     }
     if(bleMidi.device?.gatt?.connected&&bleMidi.characteristic){bleMidi.disconnect();return;}
     await bleMidi.connect();
-    btn.textContent="BT: ON";
+    btn.textContent="BT: READY";
     btn.classList.add("on");
   }catch(err){
     const msg=err?.name==="NotFoundError"
