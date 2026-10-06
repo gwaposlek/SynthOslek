@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.17-smk37-ble-midi-diagnostics">
-<title>SynthOslek v14.17 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.18-transient-control">
+<title>SynthOslek v14.18 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -670,7 +670,9 @@ class SynthOslek{
     const nb=c.createBuffer(1,c.sampleRate,c.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;this.noiseBuf=nb;
     this.bus.connect(this.analyser);this.convolver.connect(this.reverbGain);
     for(const n of[this.delayGain,this.reverbGain,this.chorusGain])n.connect(this.analyser);
-    this.analyser.connect(L);L.connect(this.masterGain);this.masterGain.connect(c.destination);
+    /* v14.18: DC blocking before the master compressor prevents subsonic/DC transients from becoming audible low-end thumps during rapid retriggering. */
+    this.dcBlock=c.createBiquadFilter();this.dcBlock.type="highpass";this.dcBlock.frequency.value=18;this.dcBlock.Q.value=.707;
+    this.analyser.connect(this.dcBlock);this.dcBlock.connect(L);L.connect(this.masterGain);this.masterGain.connect(c.destination);
     this.started=true;if(c.state==="suspended")await c.resume();
   }
   _impulse(d,dec){const r=this.ctx.sampleRate,l=r*d,b=this.ctx.createBuffer(2,l,r);
@@ -741,10 +743,11 @@ class SynthOslek{
     const key=layer+":"+midi;if(this.voices.has(key))this._forceStop(key,stealFadeMs,when);
     const c=this.ctx,rawP=this.layerProfiles[layer]||this.params,baseP={...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0},P=this._morphParams(baseP),G=v=>this._G(v),now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
     const fq=(o,f)=>{if(gl>.001&&this.lastFreq){o.frequency.setValueAtTime(this.lastFreq*(f/freq),now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
-    const env=G(.0001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale(P));
+    const env=G(.00001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale(P));
     vf.type=P.filterType;vf.Q.value=P.resonance;
-    const atk=Math.max(.005,P.attack),dec=Math.max(.01,P.decay);
-    env.gain.exponentialRampToValueAtTime(Math.max(.001,vel),now+atk);
+    /* v14.18: never allow an effectively instantaneous amp attack. A short controlled ramp avoids waveform/envelope discontinuities that can sound like a sub thump when MIDI notes are retriggered quickly. */
+    const atk=Math.max(.012,P.attack),dec=Math.max(.01,P.decay);
+    env.gain.exponentialRampToValueAtTime(Math.max(.0001,vel),now+atk);
     env.gain.exponentialRampToValueAtTime(Math.max(.001,P.sustain*vel),now+atk+dec);
     const amt=P.fEnvAmt*6000*(.4+.6*vel),fA=Math.max(.005,P.fAttack),fD=Math.max(.01,P.fDecay);
     vf.frequency.setValueAtTime(P.cutoff,now);
@@ -781,7 +784,7 @@ class SynthOslek{
     const matches=[...this.voices.entries()].filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer));
     if(this.sustain){matches.forEach(([k])=>this.sustained.add(k));return;}
     for(const [key,v] of matches){const t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime),P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
-      try{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.exponentialRampToValueAtTime(.0001,t+rel);
+      try{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.setValueAtTime(Math.max(.00001,g.value||.00001),t);g.exponentialRampToValueAtTime(.00001,t+rel);
         const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}
       const tailMs=(Math.max(rel,fr)+.08)*1000;this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   }
