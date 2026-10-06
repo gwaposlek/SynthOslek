@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.25-voice-engine-boundary">
-<title>SynthOslek v14.25 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.26-transient-safe-voice-start">
+<title>SynthOslek v14.26 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -801,7 +801,9 @@ class SynthOslek{
     /* v14.22: the oscillator/filter must enter the audible path gently. The
        previous 12 ms floor protected amplitude, but a fast filter sweep could
        still create a sharp low-frequency transient on dense MIDI playing. */
-    env.gain.exponentialRampToValueAtTime(Math.max(.0001,vel),now+atk);
+    /* v14.26: start from true silence with a short linear fade-in. */
+    env.gain.setValueAtTime(0,now);
+    env.gain.linearRampToValueAtTime(Math.max(.0001,vel),now+atk);
     env.gain.exponentialRampToValueAtTime(Math.max(.001,P.sustain*vel),now+atk+dec);
     const amt=P.fEnvAmt*6000*(.4+.6*vel),fA=Math.max(.018,P.fAttack),fD=Math.max(.01,P.fDecay);
     vf.frequency.setValueAtTime(P.cutoff,now);
@@ -825,8 +827,13 @@ class SynthOslek{
       o.connect(ng);ng.connect(v["g"+w]);if(P.lfoDest==="pitch")lm.connect(o.detune);
       o.start(now);v.oscs.push({o,w,off});v.all.push(o);
     }
-    const so=c.createOscillator();fq(so,freq/2);so.detune.setValueAtTime(this.bend+(this.wheel||0),now);so.connect(v.gs);if(P.lfoDest==="pitch")lm.connect(so.detune);so.start(now);v.oscs.push({o:so,w:0,off:0,kind:"sub"});v.all.push(so);
-    const ns=c.createBufferSource();ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.all.push(ns);
+    /* v14.26: skip zero-level sub/noise sources to reduce unnecessary low-frequency startup sources. */
+    if((Number(P.subLevel)||0)>.0005){
+      const so=c.createOscillator();fq(so,freq/2);so.detune.setValueAtTime(this.bend+(this.wheel||0),now);so.connect(v.gs);if(P.lfoDest==="pitch")lm.connect(so.detune);so.start(now);v.oscs.push({o:so,w:0,off:0,kind:"sub"});v.all.push(so);
+    }
+    if((Number(P.noiseLevel)||0)>.0005){
+      const ns=c.createBufferSource();ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.all.push(ns);
+    }
     this.lastFreq=freq;this.voices.set(key,v);
   }
   _kill(v,t,key=null){
