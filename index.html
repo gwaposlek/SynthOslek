@@ -2420,6 +2420,33 @@ syncSynthState(false);
   $("#so67Load")?.addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json";inp.onchange=async()=>{try{applyPreset(JSON.parse(await inp.files[0].text()));setStatus("Preset loaded");}catch(e){setStatus("Invalid preset");}};inp.click();});
   if(location.hash.startsWith("#so67=")){try{applyPreset(decode(location.hash.slice(6)));setStatus("Shared preset loaded");}catch(e){}}
 
+  /* ---------- note-aware split routing ---------- */
+  const _soMidiNoteOn=midiManager?.noteOn?.bind(midiManager), _soMidiNoteOff=midiManager?.noteOff?.bind(midiManager);
+  if(_soMidiNoteOn){
+    midiManager.noteOn=function(m,v,ch,timestampMs=null,leadMs=.75){
+      if(SO.split.mode!=="split"&&SO.split.mode.indexOf("layer")!==0)return _soMidiNoteOn(m,v,ch,timestampMs,leadMs);
+      const vel=Math.max(.001,Math.min(1,(v??100)/127)), low=m<SO.split.point;
+      const raw=SO.split.mode==="split"?(low?[0,1]:[2,3]):[+SO.split.mode.replace("layer","")-1];
+      const layers=raw.filter(i=>i>=0&&i<LAYER_COUNT&&layerAudible(i));
+      this.queueStatus("MIDI NOTE: "+midiToNote(m)+" · "+(low?"LOW":"HIGH")+" · "+Math.round(vel*127));
+      this.queueMidiVisual(m,true);
+      const play=()=>{const when=timestampMs==null?null:midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs);for(const layer of layers)this.synth.noteOn(m,vel,layer,when);};
+      if(this.synth.started){if(this.synth.ctx?.state==="suspended")void this.synth.ctx.resume().then(play);else play();return;}
+      void this.synth.start().then(play).catch(()=>this.setStatus("MIDI received, but audio is not running — tap Start again"));
+    };
+  }
+  if(_soMidiNoteOff){
+    midiManager.noteOff=function(m,ch,timestampMs=null,leadMs=.75){
+      if(SO.split.mode!=="split"&&SO.split.mode.indexOf("layer")!==0)return _soMidiNoteOff(m,ch,timestampMs,leadMs);
+      this.queueMidiVisual(m,false);
+      if(!this.synth.started)return;
+      const low=m<SO.split.point,raw=SO.split.mode==="split"?(low?[0,1]:[2,3]):[+SO.split.mode.replace("layer","")-1];
+      const layers=raw.filter(i=>i>=0&&i<LAYER_COUNT);
+      const when=midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs);
+      for(const layer of layers)this.synth.noteOff(m,layer,when);
+    };
+  }
+
   /* ---------- MPE channel tracking ---------- */
   $("#so67Mpe")?.addEventListener("click",()=>{SO.mpe.on=!SO.mpe.on;updateBtn("#so67Mpe",SO.mpe.on,"MPE ON","MPE OFF");setStatus(SO.mpe.on?"MPE channel mode":"MPE bypassed");});
   $("#so67MpeRange")?.addEventListener("input",e=>SO.mpe.range=+e.target.value);
