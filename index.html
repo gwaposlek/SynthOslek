@@ -416,6 +416,7 @@ header{display:none!important}
 .keyboard .key.black.target::after{
   border-radius:0 0 3px 3px!important;
 }
+.keyboard .key:active,.keyboard .key:focus,.keyboard .key:focus-visible{outline:none!important;outline-offset:0!important;appearance:none!important;-webkit-appearance:none!important}
 </style>
 </head>
 <body>
@@ -1062,9 +1063,11 @@ for(let m=KEY_START;m<=KEY_END;m++){
   k.dataset.midi=m;
   k.dataset.baseMidi=m;
   k.textContent=isBlack?"":midiToNote(m);
-  k.tabIndex=0;
+  /* Screen-key clicks should never create a browser focus rectangle. */
+  k.tabIndex=-1;
   k.setAttribute("role","button");
   k.setAttribute("aria-label",midiToNote(m));
+  k.addEventListener("mousedown",e=>e.preventDefault());
   if(isBlack){
     const boundary=wi;
     k.style.left=((boundary*whiteW)-(blackW/2))+"%";
