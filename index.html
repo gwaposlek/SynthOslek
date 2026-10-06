@@ -710,12 +710,14 @@ class SynthOslek{
     T(v.gs?.gain,P.subLevel,.008);T(v.gn?.gain,P.noiseLevel,.008);
     T(v.lm?.gain,this._lfoScale(P),.012);
     T(v.fxDelay?.gain,P.delayMix,.012);T(v.fxReverb?.gain,P.reverbMix,.012);T(v.fxChorus?.gain,P.chorusMix,.012);
-    this._det(.012,t);
   }
   setModWheel(v,at=null){
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
-    if(this.started)for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);
+    if(this.started){
+      for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);
+      this._det(.012,at);
+    }
   }
   _det(tc=.01,at=null){
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime),m=this._morphAmount();
@@ -805,6 +807,7 @@ class SynthOslek{
       lfoRate:()=>T(this.lfo.frequency,x,.02)
     };
     if(A[k])return A[k]();
+    const detuneParam=k==="osc1Detune"||k==="osc2Detune"||k==="osc1Coarse"||k==="osc2Coarse"||k==="spread";
     for(const v of this.voices.values()){
       if(v.layer!==this.activeLayer)continue;
       v.params[k]=x;
@@ -812,6 +815,7 @@ class SynthOslek{
       else if(/^osc[12]Wave$/.test(k))v.oscs.forEach(o=>{if(o.kind!=="sub"&&o.w==k[3])o.o.type=x;});
       this._applyMorphToVoice(v,t);
     }
+    if(detuneParam)this._det(.012,t);
   }
   getParams(){return{...this.params};}
 }
@@ -1488,7 +1492,7 @@ class BleMidiTransport{
   onData(view){
     if(!view||view.byteLength<3)return;
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
-    if((a[0]&0x80)===0||a[1]===undefined)return;
+    if((a[0]&0x80)===0)return;
     let i=2,tsMsb=a[0]&0x3F,lastLow=a[1]&0x7F,currentTs=((tsMsb<<7)|lastLow)&0x1FFF,status=null,first=true;
     const skipRealtime=()=>{
       while(i<a.length&&a[i]>=0xF8)i++;
@@ -1519,12 +1523,12 @@ class BleMidiTransport{
       if(!first&&!readTimestamp())break;
       if(!skipRealtime())break;
       const b=a[i++];
+      let d1=null;
       if(b>=0x80)status=b;
-      else if(status!=null){i--; /* running status: put data byte back for readData() */ }
+      else if(status!=null)d1=b;
       else break;
       const count=need(status);
       if(!count){first=false;continue;}
-      let d1=b>=0x80?readData():b;
       if(d1==null)d1=readData();
       if(d1==null)break;
       const d2=count===2?readData():0;
@@ -1626,7 +1630,6 @@ class MidiManager{
       setWheelVisual($("pitchWheel"),norm,true);
     }
   }
-  setStatus(msg){const st=$("stxt");if(st)st.textContent=msg;}
   refresh(){
     if(!this.select)return;
     const inputs=[...(this.access?.inputs?.values?.()||[])],previous=this.select.value;
