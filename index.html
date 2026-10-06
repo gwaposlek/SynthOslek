@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.16-smk37-ble-midi-transport">
-<title>SynthOslek v14.16 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.17-smk37-ble-midi-diagnostics">
+<title>SynthOslek v14.17 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1576,18 +1576,20 @@ class BleMidiTransport{
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
     this.rawRxCount++;
     this.lastRawRxAt=performance.now();
+    if(this.rawRxCount===1)this.manager.setStatus("BLE RX RAW: packet received · "+view.byteLength+" bytes");
     const header=a[0];
     if((header&0x80)===0)return;
 
     /* BLE-MIDI is normally timestamped, but some M-VAVE firmware/bridges emit
        a compact packet variant. Accept both forms so SMK-37 Elite remains usable
        across Chromium/Windows Bluetooth stacks. */
-    const looksTimestamped=a.length>=3 && (a[1]&0x80);
-    const sysexContinuation=!!(header&0x40);
-    let i=looksTimestamped?2:1;
+    /* BLE-MIDI 1.0 packets begin with a header followed by a timestamp byte.
+       Bit 6 of the header is reserved; it is not a SysEx continuation flag. */
+    const looksTimestamped=a.length>=2 && (a[1]&0x80);
+    let i=looksTimestamped?1:0;
     let tsHigh=header&0x3F;
-    let lastLow=looksTimestamped?(a[1]&0x7F):0;
-    let currentTs=looksTimestamped?((tsHigh<<7)|lastLow)&0x1FFF:0;
+    let lastLow=0;
+    let currentTs=0;
     let runningStatus=null;
     const realtime=b=>b>=0xF8;
     const emitRealtime=b=>{this.manager.dispatch(b,0,0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);};
@@ -1649,7 +1651,6 @@ class BleMidiTransport{
       this.manager.setStatus("MIDI RX: "+status.toString(16).padStart(2,"0")+" "+d1.map(v=>v.toString(16).padStart(2,"0")).join(" "));
       this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
     }
-    void sysexContinuation;
   }
   disconnect(){
     this._manualDisconnect=true;
