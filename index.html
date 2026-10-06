@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-keybed-black-orange">
+<meta name="synthoslek-build" content="2026-10-06-midi-autobind-smk37">
 <title>SynthOslek v14.0 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -1562,8 +1562,25 @@ class MidiManager{
       this.access=await navigator.requestMIDIAccess({sysex:false});
       this.refresh();
       this.access.onstatechange=()=>this.refresh();
+      /* Windows/Edge can recreate a BLE-MIDI endpoint shortly after page load.
+         Keep rebinding the remembered controller instead of requiring a refresh. */
+      clearInterval(this._watchTimer);
+      this._watchTimer=setInterval(()=>{
+        try{
+          if(document.visibilityState==="hidden")return;
+          const inputs=[...(this.access?.inputs?.values?.()||[])];
+          const wantedId=localStorage.getItem("so-midi-input-id-v14")||"";
+          const wantedName=localStorage.getItem("so-midi-input-name-v14")||"";
+          const wanted=inputs.find(i=>wantedId&&i.id===wantedId)||inputs.find(i=>wantedName&&i.name===wantedName);
+          if(wanted&&(!this.input||this.input.id!==wanted.id))this.useInput(wanted.id);
+          else if(!this.input&&inputs.length)this.refresh();
+        }catch(e){}
+      },1200);
       return true;
-    }catch(err){this.setStatus("MIDI permission unavailable");return false;}
+    }catch(err){
+      this.setStatus("MIDI permission unavailable — tap Start, then reconnect MIDI");
+      return false;
+    }
   }
   setStatus(msg){const st=$("stxt");if(st)st.textContent=msg;}
   refresh(){
@@ -1578,17 +1595,28 @@ class MidiManager{
       return;
     }
     inputs.forEach((i,n)=>{const o=document.createElement("option");o.value=i.id;o.textContent=i.name||("MIDI Input "+(n+1));this.select.appendChild(o);});
-    const wanted=inputs.find(i=>i.id===rememberedId)||inputs.find(i=>i.name===rememberedName)||inputs.find(i=>i.id===previous)||inputs[0];
+    const preferred=inputs.find(i=>/smk[-\s]?37|m[-\s]?vave/i.test(i.name||""));
+    const wanted=inputs.find(i=>i.id===rememberedId)
+      ||inputs.find(i=>i.name===rememberedName)
+      ||preferred
+      ||inputs.find(i=>i.id===previous)
+      ||inputs[0];
     this.select.value=wanted.id;
     this.select.onchange=()=>this.useInput(this.select.value);
     this.useInput(this.select.value);
   }
   useInput(id){
-    if(this.input)this.input.onmidimessage=null;
+    if(this.input){
+      try{this.input.onmidimessage=null;}catch(e){}
+    }
     this.input=this.access?.inputs?.get(id)||null;
     if(this.input){
-      try{localStorage.setItem("so-midi-input-id-v14",this.input.id||"");localStorage.setItem("so-midi-input-name-v14",this.input.name||"");}catch(e){}
-      this.input.onmidimessage=e=>this.onMessage(e);this.setStatus("MIDI: "+(this.input.name||"Input"));
+      try{
+        localStorage.setItem("so-midi-input-id-v14",this.input.id||"");
+        localStorage.setItem("so-midi-input-name-v14",this.input.name||"");
+      }catch(e){}
+      this.input.onmidimessage=e=>this.onMessage(e);
+      this.setStatus("MIDI ready: "+(this.input.name||"Input"));
     }
   }
   layersForChannel(ch){
@@ -1601,12 +1629,29 @@ class MidiManager{
   }
   noteOn(m,v,ch){
     const vel=Math.max(.001,Math.min(1,(v??100)/127));
+    const noteName=midiToNote(m);
+    const st=$("stxt");
+    if(st)st.textContent="MIDI NOTE: "+noteName+" · CH "+ch+" · "+Math.round(vel*127);
+    /* Mirror controller notes on the on-screen keybed when they are in range. */
+    const key=document.querySelector('.key[data-base-midi="'+m+'"]');
+    if(key){
+      key.classList.add("active");
+      clearTimeout(key._midiActiveTimer);
+      key._midiActiveTimer=setTimeout(()=>key.classList.remove("active"),220);
+    }
     if(this.synth.started){
-      if(this.synth.ctx?.state==="suspended")void this.synth.ctx.resume();
+      if(this.synth.ctx?.state==="suspended"){
+        void this.synth.ctx.resume().then(()=>{for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);});
+        return;
+      }
       for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);
       return;
     }
-    void this.synth.start().then(()=>{for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);}).catch(()=>{});
+    void this.synth.start().then(()=>{
+      for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);
+    }).catch(err=>{
+      this.setStatus("MIDI received, but audio is not running — tap Start again");
+    });
   }
   noteOff(m,ch){
     if(!this.synth.started)return;
@@ -1637,7 +1682,9 @@ class MidiManager{
     if(cc>=44&&cc<=47){layerState[cc-44].enabled=x>=.5;refreshLayerGains();buildLayerMixer();return;}
   }
   onMessage(e){
-    const d=e.data||[],status=d[0]||0,cmd=status&0xf0,ch=(status&0x0f)+1,a=d[1]||0,b=d[2]||0;
+    const d=e.data||[];
+    if(!d.length)return;
+    const status=d[0]||0,cmd=status&0xf0,ch=(status&0x0f)+1,a=d[1]||0,b=d[2]||0;
     if(cmd===0x90&&b>0)this.noteOn(a,b,ch);
     else if(cmd===0x80||(cmd===0x90&&b===0))this.noteOff(a,ch);
     else if(cmd===0xB0)this.cc(a,b,ch);
@@ -1655,6 +1702,16 @@ void midiManager.init();
 /* Direct BLE-MIDI fallback for Windows Edge / compatible Chromium browsers. */
 const bleMidi=new BleMidiTransport(midiManager);
 void bleMidi.autoReconnect();
+
+/* Re-run controller binding after the user's audio unlock gesture.
+   This covers the common Windows case where Bluetooth/MIDI appears after load. */
+$("welcomeStart")?.addEventListener("click",async()=>{
+  try{
+    await midiManager.init();
+    midiManager.refresh();
+    await bleMidi.autoReconnect();
+  }catch(e){}
+}, {once:true});
 $("bleMidiBtn")?.addEventListener("click",async()=>{
   const btn=$("bleMidiBtn");
   try{
