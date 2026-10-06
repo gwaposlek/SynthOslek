@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.19-surprise-volume-lock">
-<title>SynthOslek v14.19 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.20-surprise-volume-hard-lock">
+<title>SynthOslek v14.20 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1332,8 +1332,15 @@ function surprisePatch(){
   return {patch:p,extreme};
 }
 document.getElementById("rndBtn").addEventListener("click",()=>{
-  const btn=document.getElementById("rndBtn"),{patch,extreme}=surprisePatch();
+  const btn=document.getElementById("rndBtn");
+  /* v14.20: capture the actual master-volume knob value before applying any randomized patch. */
+  const lockedVolume=Number.isFinite(Number(UI.volume?.v))?Number(UI.volume.v):
+    (Number.isFinite(Number(synth.params.volume))?Number(synth.params.volume):PRESETS.init.volume);
+  const {patch,extreme}=surprisePatch();
+  patch.volume=lockedVolume;
   applyParams(patch);
+  /* Hard-lock the UI and synth master volume after patch application as a second guard. */
+  if(UI.volume){UI.volume.set(lockedVolume,true);synth.updateParam("volume",lockedVolume);}
   document.getElementById("presetSelect").value="";
   btn.classList.remove("flash-green","flash-red");
   void btn.offsetWidth;
