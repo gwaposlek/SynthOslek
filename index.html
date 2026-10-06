@@ -278,7 +278,49 @@ header{display:none!important}
 .keyboard{position:relative;isolation:isolate}
 .key:not(.black){position:relative;z-index:1}
 .key.black{pointer-events:auto}
-/* v14.0 keyboard geometry safeguard */</style>
+/* v14.0 keyboard geometry safeguard */
+/* v14.0 FINAL PIANO KEYBED — deterministic geometry */
+.keyboard{
+  position:relative!important;
+  display:block!important;
+  width:100%!important;
+  min-width:0!important;
+  height:100%!important;
+  margin:0!important;
+  padding:0!important;
+  gap:0!important;
+  overflow:hidden!important;
+  isolation:isolate;
+}
+.keyboard .key{
+  box-sizing:border-box!important;
+  position:absolute!important;
+  top:0!important;
+  margin:0!important;
+  padding-bottom:7px!important;
+  flex:none!important;
+  transform:none!important;
+}
+.keyboard .key.white{
+  z-index:1!important;
+  background:#e8e8e8!important;
+  border:1px solid #999!important;
+  border-radius:0 0 5px 5px!important;
+}
+.keyboard .key.black{
+  z-index:3!important;
+  background:#111!important;
+  border:1px solid #000!important;
+  border-radius:0 0 4px 4px!important;
+}
+.keyboard .key.active{
+  z-index:4!important;
+}
+@media (orientation:portrait) and (max-width:700px){
+  .keyboard{min-width:720px!important;width:720px!important;height:92px!important}
+}
+
+</style>
 </head>
 <body>
 <div id="compatBanner" class="compat-banner"></div>
@@ -903,21 +945,32 @@ const NOTES=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 function midiToNote(m){return NOTES[m%12]+(Math.floor(m/12)-1);}
 let activeKeys=new Map();
 const KEY_START=48,KEY_END=84;
-const WHITE_TOTAL=Array.from({length:KEY_END-KEY_START+1},(_,i)=>KEY_START+i).filter(m=>!NOTES[m%12].includes("#")).length;
-let whiteIndex=0;
+const WHITE_NOTES=new Set([0,2,4,5,7,9,11]);
+const BLACK_AFTER_WHITE=new Set([1,3,6,8,10]);
+const totalWhite=Array.from({length:KEY_END-KEY_START+1},(_,i)=>KEY_START+i)
+  .filter(m=>WHITE_NOTES.has(m%12)).length;
+const whiteW=100/totalWhite;
+const blackW=whiteW*.62;
+let wi=0;
 for(let m=KEY_START;m<=KEY_END;m++){
-  const isBlack=NOTES[m%12].includes("#");
+  const pc=m%12,isBlack=BLACK_AFTER_WHITE.has(pc);
   const k=document.createElement("div");
-  k.className="key"+(isBlack?" black":"");
+  k.className="key "+(isBlack?"black":"white");
   k.dataset.midi=m;
+  k.dataset.baseMidi=m;
   k.textContent=isBlack?"":midiToNote(m);
   k.tabIndex=0;
+  k.setAttribute("role","button");
+  k.setAttribute("aria-label",midiToNote(m));
   if(isBlack){
-    const blackWidthPct=(100/WHITE_TOTAL)*.62;
-    const boundaryPct=(whiteIndex/WHITE_TOTAL)*100;
-    k.style.left=(boundaryPct-blackWidthPct/2)+"%";
+    const boundary=wi;
+    k.style.left=((boundary*whiteW)-(blackW/2))+"%";
+    k.style.width=blackW+"%";
+    k.style.height="63%";
   }else{
-    whiteIndex++;
+    k.style.left=(wi*whiteW)+"%";
+    k.style.width=whiteW+"%";
+    wi++;
   }
   kb.appendChild(k);
 }
