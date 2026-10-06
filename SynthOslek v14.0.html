@@ -57,8 +57,8 @@ select{background:var(--knob);color:var(--text);border:1px solid var(--border);b
 .key.black{width:22px;height:72px;background:#ff7a00;color:#1b0b00;margin:0 -11px;z-index:2;border-color:#b94e00;box-shadow:inset 0 -7px 0 rgba(60,18,0,.16)}
 .key:hover{filter:brightness(1.18)}
 .key.black:hover{filter:brightness(1.08)}
-.key.active{background:#080808!important;color:#f5f7ff!important;transform:translateY(1px);box-shadow:inset 0 0 0 2px rgba(91,140,255,.8),inset 0 -7px 0 rgba(91,140,255,.08),0 0 14px rgba(91,140,255,.45)!important}
-.key.black.active{background:#ff7a00!important;color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 -7px 0 rgba(255,210,80,.16),0 0 16px rgba(255,122,0,.7)!important}
+.key.active{color:#f5f7ff!important;transform:translateY(1px);box-shadow:inset 0 0 0 2px rgba(91,140,255,.8),inset 0 -7px 0 rgba(91,140,255,.08),0 0 14px rgba(91,140,255,.45)!important}
+.key.black.active{color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 -7px 0 rgba(255,210,80,.16),0 0 16px rgba(255,122,0,.7)!important}
 .footer{margin-top:1rem;font-size:.7rem;color:#444;text-align:center}
 @media(max-width:640px){.key{width:26px;height:90px}.key.black{width:16px;height:58px;margin:0 -8px}}
 .rot{display:none;font-size:.7rem;color:var(--muted);text-align:center;margin-bottom:.4rem}
@@ -398,8 +398,8 @@ header{display:none!important}
 /* v14.0 FINAL KEYBED PALETTE — placed last to override legacy key rules */
 .key{background:#080808!important;color:#aeb6c7!important;border-color:#2a2a2a!important}
 .key.black{background:#ff7a00!important;color:#1b0b00!important;border-color:#b94e00!important}
-.key.active{background:#080808!important;color:#f5f7ff!important;box-shadow:inset 0 0 0 2px rgba(91,140,255,.9),inset 0 -7px 0 rgba(91,140,255,.08),0 0 16px rgba(91,140,255,.55)!important}
-.key.black.active{background:#ff7a00!important;color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 -7px 0 rgba(255,210,80,.18),0 0 18px rgba(255,122,0,.8)!important}
+.key.active{color:#f5f7ff!important;box-shadow:inset 0 0 0 2px rgba(91,140,255,.9),inset 0 -7px 0 rgba(91,140,255,.08),0 0 16px rgba(91,140,255,.55)!important}
+.key.black.active{color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 -7px 0 rgba(255,210,80,.18),0 0 18px rgba(255,122,0,.8)!important}
 .key.target{background:#080808!important;color:#f5f7ff!important;box-shadow:inset 0 0 0 2px #7c5cff,inset 0 0 18px rgba(124,92,255,.22),0 0 20px rgba(124,92,255,.65)!important}
 .key.black.target{background:#ff7a00!important;color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 0 18px rgba(255,210,80,.2),0 0 22px rgba(255,122,0,.8)!important}
 
@@ -416,6 +416,10 @@ header{display:none!important}
   border-radius:0 0 3px 3px!important;
 }
 .keyboard .key:active,.keyboard .key:focus,.keyboard .key:focus-visible{outline:none!important;outline-offset:0!important;appearance:none!important;-webkit-appearance:none!important}
+
+/* FINAL: screen keys keep black/orange fills in every state */
+.keyboard .key,.keyboard .key:active,.keyboard .key:focus,.keyboard .key:focus-visible,.keyboard .key.target{background-color:#080808!important;outline:none!important}
+.keyboard .key.black,.keyboard .key.black:active,.keyboard .key.black:focus,.keyboard .key.black:focus-visible,.keyboard .key.black.target{background-color:#ff7a00!important;outline:none!important}
 </style>
 </head>
 <body>
@@ -1068,7 +1072,14 @@ for(let m=KEY_START;m<=KEY_END;m++){
   k.tabIndex=-1;
   k.setAttribute("role","button");
   k.setAttribute("aria-label",midiToNote(m));
-  k.addEventListener("mousedown",e=>e.preventDefault());
+  k.addEventListener("mousedown",e=>{e.preventDefault();k.blur();});
+  k.addEventListener("pointerdown",()=>k.blur());
+  /* Lock the intended palette on the generated element itself. */
+  k.style.setProperty("background-color",isBlack?"#ff7a00":"#080808","important");
+  k.style.setProperty("color",isBlack?"#1b0b00":"#aeb6c7","important");
+  k.style.setProperty("outline","none","important");
+  k.style.setProperty("appearance","none","important");
+  k.style.setProperty("-webkit-appearance","none","important");
   if(isBlack){
     const boundary=wi;
     k.style.left=((boundary*whiteW)-(blackW/2))+"%";
