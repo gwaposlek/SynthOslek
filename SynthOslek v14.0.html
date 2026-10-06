@@ -1289,6 +1289,7 @@ class BleMidiTransport{
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
     let i=2;
     let status=null;
+    let firstEvent=true;
     const emit=(st,d1,d2)=>{
       if(st==null)return;
       const cmd=st&0xf0,ch=(st&0x0f)+1;
@@ -1307,35 +1308,51 @@ class BleMidiTransport{
       if(c>=0x80&&c<=0xE0)return 2;
       return 0;
     };
-    /* BLE-MIDI places a timestamp before each MIDI event. When running
-       status is used, the timestamp is followed directly by data bytes. */
+    /* BLE-MIDI: packet = header + timestamp + MIDI event(s).
+       A timestamp precedes later events; the first event starts immediately
+       after the two-byte packet header. Running status is packet-local. */
     while(i<a.length){
       let b=a[i++];
       if(b>=0xF8)continue;
-      if(b>=0x80){
-        /* This byte is the event timestamp. */
+
+      let data1=null;
+      if(firstEvent){
+        if(b<0x80)continue;
+        status=b;
+        this.lastStatus=status;
+        firstEvent=false;
+      }else if(b>=0x80){
+        /* Timestamp for the next MIDI event. */
         if(i>=a.length)break;
         b=a[i++];
+        if(b>=0xF8)continue;
         if(b>=0x80){
-          status=b;this.lastStatus=status;
-        }else if(status==null){
-          continue;
+          status=b;
+          this.lastStatus=status;
         }else{
-          i--; /* running status: b is the first data byte */
+          if(status==null)continue;
+          data1=b; /* running status after timestamp */
         }
-      }else if(status==null){
-        continue;
+      }else{
+        if(status==null)continue;
+        data1=b; /* running status without a new timestamp */
       }
+
       const count=need(status);
       if(!count)continue;
+      if(data1===null){
+        if(i>=a.length)break;
+        data1=a[i++];
+        if(data1>=0x80)break;
+      }
+      if(count===1){
+        emit(status,data1,0);
+        continue;
+      }
       if(i>=a.length)break;
-      let d1;
-      if(b<0x80)d1=b;else d1=a[i++];
-      if(count===1){emit(status,d1,0);continue;}
-      if(i>=a.length)break;
-      const d2=a[i++];
-      if(d2>=0x80)break;
-      emit(status,d1,d2);
+      const data2=a[i++];
+      if(data2>=0x80)break;
+      emit(status,data1,data2);
     }
   }
   disconnect(){
