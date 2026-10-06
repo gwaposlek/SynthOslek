@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.9-auto-ble-reconnect-keyfix">
-<title>SynthOslek v14.9 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.10-audio-profile-fix">
+<title>SynthOslek v14.10 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -676,7 +676,7 @@ class SynthOslek{
   _impulse(d,dec){const r=this.ctx.sampleRate,l=r*d,b=this.ctx.createBuffer(2,l,r);
     for(let c=0;c<2;c++){const a=b.getChannelData(c);for(let i=0;i<l;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/l,dec);}return b;}
   _morphAmount(){
-    const raw=this.modMatrix?this.modMatrix.value("morph",this.modWheel):this.modWheel;
+    const raw=this.modMatrix?this.modMatrix.value("morph",0):this.modWheel;
     const x=Math.max(0,Math.min(1,Number(raw)||0));
     return x*x*(3-2*x);
   }
@@ -735,7 +735,7 @@ class SynthOslek{
   noteOn(midi,vel=.85,layer=this.activeLayer,when=null,stealFadeMs=6){
     if(!this.started)return;
     const key=layer+":"+midi;if(this.voices.has(key))this._forceStop(key,stealFadeMs,when);
-    const c=this.ctx,baseP=this.layerProfiles[layer]||this.params,P=this._morphParams(baseP),G=v=>this._G(v),now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
+    const c=this.ctx,rawP=this.layerProfiles[layer]||this.params,baseP={...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0},P=this._morphParams(baseP),G=v=>this._G(v),now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
     const fq=(o,f)=>{if(gl>.001&&this.lastFreq){o.frequency.setValueAtTime(this.lastFreq*(f/freq),now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
     const env=G(.0001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale(P));
     vf.type=P.filterType;vf.Q.value=P.resonance;
@@ -755,7 +755,7 @@ class SynthOslek{
     fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
     this.lfo.connect(lm);
     if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);
-    const v={env,vf,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,params:{...baseP},oscs:[],all:[],g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const n=Math.round(P.unison),norm=1/Math.sqrt(n);
     for(const w of[1,2])for(let i=0;i<n;i++){
@@ -821,7 +821,7 @@ class SynthOslek{
 }
 
 const PRESETS={
-init:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0},
+init:{osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0},
 bass:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.85,osc2Wave:"square",osc2Detune:-12,osc2Level:.55,filterType:"lowpass",cutoff:380,resonance:8,attack:.005,decay:.18,sustain:.55,release:.22,fEnvAmt:.55,fAttack:.005,fDecay:.15,fSustain:.2,fRelease:.2,lfoRate:.3,lfoDepth:.05,lfoDest:"cutoff",delayTime:.2,delayFb:.15,delayMix:.05,reverbMix:.08,volume:.65,glide:40},
 lead:{osc1Wave:"sawtooth",osc1Detune:5,osc1Level:.7,osc2Wave:"square",osc2Detune:-8,osc2Level:.45,filterType:"lowpass",cutoff:3200,resonance:3.5,attack:.008,decay:.15,sustain:.75,release:.18,fEnvAmt:.4,fAttack:.01,fDecay:.2,fSustain:.5,fRelease:.2,lfoRate:5,lfoDepth:.12,lfoDest:"pitch",delayTime:.28,delayFb:.3,delayMix:.22,reverbMix:.18,volume:.55,glide:0},
 pad:{osc1Wave:"sawtooth",osc1Detune:8,osc1Level:.55,osc2Wave:"triangle",osc2Detune:-10,osc2Level:.5,filterType:"lowpass",cutoff:1600,resonance:1.5,attack:.6,decay:.8,sustain:.85,release:1.4,fEnvAmt:.25,fAttack:.5,fDecay:1,fSustain:.6,fRelease:1.2,lfoRate:.25,lfoDepth:.2,lfoDest:"cutoff",delayTime:.4,delayFb:.35,delayMix:.25,reverbMix:.45,volume:.5,glide:80},
@@ -882,8 +882,8 @@ synth.start=function(){
 };
 
 const _forceStop0=synth._forceStop.bind(synth);
-synth._forceStop=function(key){
-  const out=_forceStop0(key);
+synth._forceStop=function(key,fadeMs=5,at=null){
+  const out=_forceStop0(key,fadeMs,at);
   this.voicePool.release(key);
   return out;
 };
