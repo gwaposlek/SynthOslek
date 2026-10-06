@@ -707,6 +707,9 @@ function setActiveLayer(i){
   synth.activeLayer=i;synth.params=synth.layerProfiles[i];
   Object.keys(UI).forEach(k=>{if(UI[k]?.set && synth.params[k]!==undefined)UI[k].set(synth.params[k],true)});
   document.querySelectorAll('.layer-strip').forEach((d,n)=>d.classList.toggle('selected',n===i));
+  if(synth.started&&synth.masterGain&&synth.params.volume!==undefined){
+    synth.masterGain.gain.setTargetAtTime(synth.params.volume,synth.ctx.currentTime,.015);
+  }
   syncSynthState(false);
 }
 function loadLayerPreset(i,name){const base=PRESETS[name]||PRESETS.init;synth.layerProfiles[i]={...base,unison:base.unison??1,spread:base.spread??12,subLevel:base.subLevel??0,noiseLevel:base.noiseLevel??0,chorusMix:base.chorusMix??0};layerState[i].preset=name;if(i===synth.activeLayer)setActiveLayer(i);else syncSynthState(false);}
@@ -1110,7 +1113,8 @@ class MidiManager{
   }
   noteOff(m,ch){
     if(!this.synth.started)return;
-    for(const layer of this.layersForChannel(ch))this.synth.noteOff(m,layer);
+    const layers=midiRouteMode==="ch"?(ch>=1&&ch<=LAYER_COUNT?[ch-1]:[]):layerState.map((_,i)=>i);
+    for(const layer of layers)this.synth.noteOff(m,layer);
   }
   cc(cc,val,ch){
     const x=Math.max(0,Math.min(1,val/127)),layer=this.controlLayer(ch);
