@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="synthoslek-build" content="2026-10-06-keybed-black-orange">
 <title>SynthOslek v14.0 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -512,6 +513,7 @@ header{display:none!important}
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
+const pitchBendCents=norm=>screenPitchCents(Math.max(-1,Math.min(1,Number(norm)||0)));
 
 
 /* ========================= v14.0 CORE ARCHITECTURE ========================= */
@@ -629,9 +631,9 @@ class SynthOslek{
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
     if(this.started){if(this.ctx.state==="suspended")await this.ctx.resume();return;}
-    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.');const c=this.ctx=new AC(),p=this.params,G=v=>this._G(v);
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.');const c=this.ctx=new AC({latencyHint:"interactive"}),p=this.params,G=v=>this._G(v);
     this.bus=G(1);this.masterGain=G(p.volume);
-    this.analyser=c.createAnalyser();this.analyser.fftSize=2048;this.analyser.smoothingTimeConstant=.75;
+    this.analyser=c.createAnalyser();this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;
     const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-10;L.knee.value=8;L.ratio.value=12;L.attack.value=.003;L.release.value=.2;
     this.delay=c.createDelay(1.5);this.delay.delayTime.value=p.delayTime;
     this.delayFeedback=G(p.delayFb);this.delayGain=G(p.delayMix);
@@ -1388,6 +1390,40 @@ class BleMidiTransport{
     this.lastStatus=null;
     this.MIDI_SERVICE="03b80e5a-ede8-4b33-a751-6ce34ec4c700";
     this.MIDI_CHARACTERISTIC="7772e5db-3868-4112-a1a9-f2669d106bf3";
+    this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";
+  }
+  async autoReconnect(){
+    if(!navigator.bluetooth?.getDevices)return false;
+    let savedId="",savedName="";
+    try{savedId=localStorage.getItem(this.storageId)||"";savedName=localStorage.getItem(this.storageName)||"";}catch(e){}
+    if(!savedId&&!savedName)return false;
+    try{
+      const devices=await navigator.bluetooth.getDevices();
+      const d=devices.find(x=>savedId&&x.id===savedId)||devices.find(x=>savedName&&x.name===savedName);
+      if(!d)return false;
+      await this.connectKnown(d);
+      this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37")+" reconnected");
+      const btn=$("bleMidiBtn");if(btn){btn.textContent="BT: ON";btn.classList.add("on");}
+      return true;
+    }catch(e){return false;}
+  }
+  async connectKnown(d){
+    this.device=d;
+    try{localStorage.setItem(this.storageId,d.id||"");localStorage.setItem(this.storageName,d.name||"SMK-37");}catch(e){}
+    d.addEventListener?.("gattserverdisconnected",()=>this.onDisconnect());
+    if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
+    this.server=await d.gatt.connect();
+    let service;
+    try{service=await this.server.getPrimaryService(this.MIDI_SERVICE);}
+    catch(firstErr){
+      const services=await this.server.getPrimaryServices();
+      service=services.find(s=>(s.uuid||"").toLowerCase()===this.MIDI_SERVICE.toLowerCase());
+      if(!service)throw new Error("BLE-MIDI service unavailable");
+    }
+    this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);
+    await this.characteristic.startNotifications();
+    this.characteristic.addEventListener("characteristicvaluechanged",e=>this.onData(e.target.value));
+    return true;
   }
   async connect(){
     if(!navigator.bluetooth)throw new Error("Web Bluetooth is unavailable in this browser.");
@@ -1395,6 +1431,7 @@ class BleMidiTransport{
       const available=await navigator.bluetooth.getAvailability();
       if(!available)throw new Error("Windows reports no Bluetooth adapter available to Web Bluetooth. Check Windows Bluetooth and Edge permissions.");
     }
+    if(await this.autoReconnect())return true;
     this.manager.setStatus("Select your SMK-37 BLE MIDI device…");
     let d;
     try{
@@ -1409,6 +1446,7 @@ class BleMidiTransport{
       d=await navigator.bluetooth.requestDevice({acceptAllDevices:true});
     }
     this.device=d;
+    try{localStorage.setItem(this.storageId,d.id||"");localStorage.setItem(this.storageName,d.name||"SMK-37");}catch(e){}
     d.addEventListener?.("gattserverdisconnected",()=>this.onDisconnect());
     if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
     this.server=await d.gatt.connect();
@@ -1448,9 +1486,10 @@ class BleMidiTransport{
       else if(cmd===0x80||(cmd===0x90&&d2===0))this.manager.noteOff(d1,ch);
       else if(cmd===0xB0)this.manager.cc(d1,d2,ch);
       else if(cmd===0xE0){
-        const bend=((d2<<7)|d1)-8192;
-        this.manager.synth.setBend((bend/8192)*200,.008);
-        this.manager.synth.modMatrix.setSource("pitchBend",bend/8192);
+        const bend=((d2<<7)|d1)-8192,norm=bend/8192;
+        this.manager.synth.setBend(pitchBendCents(norm),.003);
+        this.manager.synth.modMatrix.setSource("pitchBend",norm);
+        setWheelVisual($("pitchWheel"),norm,true);
       }
     };
     const need=st=>{
@@ -1530,6 +1569,8 @@ class MidiManager{
   refresh(){
     if(!this.select)return;
     const inputs=[...(this.access?.inputs?.values?.()||[])],previous=this.select.value;
+    let rememberedId="",rememberedName="";
+    try{rememberedId=localStorage.getItem("so-midi-input-id-v14")||"";rememberedName=localStorage.getItem("so-midi-input-name-v14")||"";}catch(e){}
     this.select.innerHTML="";
     if(!inputs.length){
       const o=document.createElement("option");o.value="";o.textContent="No MIDI devices";this.select.appendChild(o);
@@ -1537,14 +1578,18 @@ class MidiManager{
       return;
     }
     inputs.forEach((i,n)=>{const o=document.createElement("option");o.value=i.id;o.textContent=i.name||("MIDI Input "+(n+1));this.select.appendChild(o);});
-    this.select.value=inputs.some(i=>i.id===previous)?previous:inputs[0].id;
+    const wanted=inputs.find(i=>i.id===rememberedId)||inputs.find(i=>i.name===rememberedName)||inputs.find(i=>i.id===previous)||inputs[0];
+    this.select.value=wanted.id;
     this.select.onchange=()=>this.useInput(this.select.value);
     this.useInput(this.select.value);
   }
   useInput(id){
     if(this.input)this.input.onmidimessage=null;
     this.input=this.access?.inputs?.get(id)||null;
-    if(this.input){this.input.onmidimessage=e=>this.onMessage(e);this.setStatus("MIDI: "+(this.input.name||"Input"));}
+    if(this.input){
+      try{localStorage.setItem("so-midi-input-id-v14",this.input.id||"");localStorage.setItem("so-midi-input-name-v14",this.input.name||"");}catch(e){}
+      this.input.onmidimessage=e=>this.onMessage(e);this.setStatus("MIDI: "+(this.input.name||"Input"));
+    }
   }
   layersForChannel(ch){
     if(midiRouteMode==="ch")return ch>=1&&ch<=LAYER_COUNT?[ch-1]:[];
@@ -1556,7 +1601,12 @@ class MidiManager{
   }
   noteOn(m,v,ch){
     const vel=Math.max(.001,Math.min(1,(v??100)/127));
-    this.synth.start().then(()=>{for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);}).catch(()=>{});
+    if(this.synth.started){
+      if(this.synth.ctx?.state==="suspended")void this.synth.ctx.resume();
+      for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);
+      return;
+    }
+    void this.synth.start().then(()=>{for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);}).catch(()=>{});
   }
   noteOff(m,ch){
     if(!this.synth.started)return;
@@ -1570,7 +1620,6 @@ class MidiManager{
       this.synth.setModWheel(x);
       setModWheelVisual($("modWheel"),x);
       const st=$("stxt");if(st)st.textContent="MIDI Mod Wheel: "+Math.round(x*127);
-      syncSynthState(false);
       return;
     }
     if(cc===7){this.synth.updateParam("volume",x);return;}
@@ -1593,8 +1642,10 @@ class MidiManager{
     else if(cmd===0x80||(cmd===0x90&&b===0))this.noteOff(a,ch);
     else if(cmd===0xB0)this.cc(a,b,ch);
     else if(cmd===0xE0){
-      const bend=((b<<7)|a)-8192,cents=(bend/8192)*200;
-      this.synth.setBend(cents,.008);this.synth.modMatrix.setSource("pitchBend",bend/8192);syncSynthState(false);
+      const bend=((b<<7)|a)-8192,norm=bend/8192;
+      this.synth.setBend(pitchBendCents(norm),.003);
+      this.synth.modMatrix.setSource("pitchBend",norm);
+      setWheelVisual($("pitchWheel"),norm,true);
     }
   }
 }
@@ -1603,6 +1654,7 @@ void midiManager.init();
 
 /* Direct BLE-MIDI fallback for Windows Edge / compatible Chromium browsers. */
 const bleMidi=new BleMidiTransport(midiManager);
+void bleMidi.autoReconnect();
 $("bleMidiBtn")?.addEventListener("click",async()=>{
   const btn=$("bleMidiBtn");
   try{
