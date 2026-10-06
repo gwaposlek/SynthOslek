@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-poly48-dynamics-smk37">
-<title>SynthOslek v14.0 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.1-foundation">
+<title>SynthOslek v14.1 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -421,6 +421,19 @@ header{display:none!important}
 /* FINAL: screen keys keep black/orange fills in every state */
 .keyboard .key,.keyboard .key:active,.keyboard .key:focus,.keyboard .key:focus-visible,.keyboard .key.target{background-color:#080808!important;outline:none!important}
 .keyboard .key.black,.keyboard .key.black:active,.keyboard .key.black:focus,.keyboard .key.black:focus-visible,.keyboard .key.black.target{background-color:#ff7a00!important;outline:none!important}
+/* v14.1 scoped input/gesture cleanup */
+.synth .sd-input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:text;touch-action:manipulation}
+.synth .kb-sec{--keyboard-scroll-edge:22%}
+.synth .kb-sec.scroll-mode{overflow-x:auto;overflow-y:hidden;touch-action:pan-x}
+.synth .kb-sec.scroll-mode .keyboard{touch-action:pan-x;cursor:grab;min-width:720px}
+.synth .kb-sec.scroll-mode .keyboard:active{cursor:grabbing}
+.synth .kb-sec.scroll-mode .key{touch-action:pan-x}
+.kb-sec{flex-direction:row}.wheels{order:0}.keyboard{order:1;min-width:0}
+@media(orientation:portrait){.kb-sec{flex-direction:row}.wheels{order:0}.keyboard{order:1}}
+.key.target{position:relative}
+.key.target::after{content:"";position:absolute;inset:3px;border-radius:0 0 3px 3px;border:1px solid rgba(255,255,255,.7);pointer-events:none;opacity:.9;animation:pitchTargetRing .7s ease-in-out infinite alternate}
+.key.black.target::after{inset:2px;border-color:rgba(255,226,153,.95)}
+@keyframes pitchTargetRing{from{opacity:.35;transform:scale(.96)}to{opacity:1;transform:scale(1.02)}}
 </style>
 </head>
 <body>
@@ -480,7 +493,7 @@ header{display:none!important}
     <table>
       <tr><td>Scenes A–D</td><td>Select a slot, then <b>Save Scene</b> to store all 4 layers + mix. Click the letter again to recall.</td></tr>
       <tr><td>MIDI: ALL / CH</td><td>ALL = every layer plays. CH = MIDI channel 1–4 maps to layers 1–4.</td></tr>
-      <tr><td>Pitch / Mod wheels</td><td>Pitch ±200¢ (springs to center). Mod drives LFO depth.</td></tr>
+      <tr><td>Pitch / Mod wheels</td><td>Pitch −1200¢ / +200¢ (springs to center). Mod drives LFO depth.</td></tr>
       <tr><td>Gliss / Pitch / Scroll</td><td>Gliss = slide notes. Pitch = bend + vertical param (↕). Scroll = drag up/down or toward top/bottom of keys to shift octaves (GarageBand-style).</td></tr>
       <tr><td>Voice limit</td><td>Max 48 simultaneous voices; the quietest/oldest held voice is stolen only when full.</td></tr>
     </table>
@@ -509,7 +522,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.0 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.1 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -1102,143 +1115,55 @@ for(let m=KEY_START;m<=KEY_END;m++){
 }
 let isPointerDown=false;
 const clamp01=v=>Math.max(-1,Math.min(1,v));
-let pitchGestureStartX=0;
-const updateBendFromPointer=e=>{
-  const r=kb.getBoundingClientRect();
-  const travel=Math.max(60,r.width*.32);
-  const amt=clamp01((e.clientX-pitchGestureStartX)/travel);
-  /* Screen Pitch calibration: full negative = -12 semitones, full positive = +2 semitones. */
-  const cents=screenPitchCents(amt);
-  synth.setBend(cents,.015);
-  const pw=$("pitchWheel");
-  if(pw){
-    pw.setAttribute("aria-valuenow",amt.toFixed(3));
-    const wt=pw.querySelector(".wt");
-    if(wt)wt.style.bottom=(((amt+1)/2)*(pw.clientHeight-14))+"px";
-  }
-};
-async function ensureStartedFromGesture(){
-  try{await synth.start();return true;}
-  catch(err){
-    const t=$("errorText"),d=$("errorDetail"),screen=$("errorScreen");
-    if(t)t.textContent="Audio could not start. Tap Start again or check browser audio permissions.";
-    if(d)d.textContent=String(err?.message||err);
-    if(screen)screen.style.display="block";
-    return false;
-  }
-}
-
-/* Pitch-mode note target + spark feedback */
-function clearPitchFeedback(){
-  document.querySelectorAll(".key.target").forEach(k=>k.classList.remove("target"));
-  document.querySelectorAll(".spark").forEach(k=>k.remove());
-}
-function showPitchFeedback(target,e){
-  clearPitchFeedback();
-  if(!target)return;
-  target.classList.add("target");
-  const spark=document.createElement("div");spark.className="spark";
-  const kbRect=kb.getBoundingClientRect();
-  spark.style.left=(e.clientX-kbRect.left)+"px";
-  spark.style.top=(e.clientY-kbRect.top)+"px";
-  kb.appendChild(spark);
-}
-
-const ydestEl=$("ydest");
-const YDEST_MAP={cutoff:"cutoff",reso:"resonance",trem:"lfoDepth",vib:"lfoDepth",rev:"reverbMix",dly:"delayMix",cho:"chorusMix",off:null};
-let yGestureKey=null,yGestureStartY=0,yGestureStartT=0;
+let pitchPointerId=null,pitchGestureStartX=0,yGestureKey=null,yGestureStartY=0,yGestureStartT=0;
+const activeVisualCounts=new Map();
+function addKeyVisual(key){if(!key)return;const m=Number(key.dataset.baseMidi);activeVisualCounts.set(m,(activeVisualCounts.get(m)||0)+1);key.classList.add("active");}
+function removeKeyVisualForMidi(m){const n=(activeVisualCounts.get(m)||0)-1;if(n>0){activeVisualCounts.set(m,n);return;}activeVisualCounts.delete(m);document.querySelectorAll('.key[data-base-midi="'+m+'"]').forEach(k=>k.classList.remove("active"));}
+const updateBendFromPointer=e=>{const r=kb.getBoundingClientRect(),travel=Math.max(60,r.width*.32),amt=clamp01((e.clientX-pitchGestureStartX)/travel),cents=screenPitchCents(amt);synth.setBend(cents,.015);const pw=$("pitchWheel");if(pw){pw.setAttribute("aria-valuenow",amt.toFixed(3));const wt=pw.querySelector(".wt");if(wt)wt.style.bottom=(((amt+1)/2)*(pw.clientHeight-14))+"px";}};
+async function ensureStartedFromGesture(){try{await synth.start();return true;}catch(err){const t=$("errorText"),d=$("errorDetail"),screen=$("errorScreen");if(t)t.textContent="Audio could not start. Tap Start again or check browser audio permissions.";if(d)d.textContent=String(err?.message||err);if(screen)screen.style.display="block";return false;}}
+function clearPitchFeedback(){document.querySelectorAll(".key.target").forEach(k=>k.classList.remove("target"));document.querySelectorAll(".spark").forEach(k=>k.remove());}
+function showPitchFeedback(target,e){clearPitchFeedback();if(!target)return;target.classList.add("target");const spark=document.createElement("div");spark.className="spark";const r=kb.getBoundingClientRect();spark.style.left=(e.clientX-r.left)+"px";spark.style.top=(e.clientY-r.top)+"px";kb.appendChild(spark);}
+const ydestEl=$("ydest"),YDEST_MAP={cutoff:"cutoff",reso:"resonance",trem:"lfoDepth",vib:"lfoDepth",rev:"reverbMix",dly:"delayMix",cho:"chorusMix",off:null};
 function currentYTarget(){return YDEST_MAP[ydestEl?.value||"cutoff"]||null;}
-function beginYGesture(e){
-  yGestureKey=currentYTarget();
-  pitchGestureStartX=e.clientX;
-  yGestureStartY=e.clientY;
-  if(yGestureKey&&K[yGestureKey]&&Number.isFinite(synth.params[yGestureKey]))yGestureStartT=toT(yGestureKey,synth.params[yGestureKey]);
-  else{yGestureKey=null;yGestureStartT=0;}
-}
-function updateYDestination(e){
-  if(modeName!=="pitch"||!yGestureKey)return;
-  const r=kb.getBoundingClientRect();
-  const travel=Math.max(42,r.height*.85);
-  const delta=(yGestureStartY-e.clientY)/travel;
-  const next=fromT(yGestureKey,yGestureStartT+delta);
-  if(UI[yGestureKey]?.set)UI[yGestureKey].set(next);
-  else synth.updateParam(yGestureKey,next);
-}
+function beginYGesture(e){yGestureKey=currentYTarget();pitchGestureStartX=e.clientX;yGestureStartY=e.clientY;if(yGestureKey&&K[yGestureKey]&&Number.isFinite(synth.params[yGestureKey]))yGestureStartT=toT(yGestureKey,synth.params[yGestureKey]);else{yGestureKey=null;yGestureStartT=0;}}
+function updateYDestination(e){if(modeName!=="pitch"||pitchPointerId!==e.pointerId||!yGestureKey)return;const r=kb.getBoundingClientRect(),travel=Math.max(42,r.height*.85),delta=(yGestureStartY-e.clientY)/travel,next=fromT(yGestureKey,yGestureStartT+delta);if(UI[yGestureKey]?.set)UI[yGestureKey].set(next);else synth.updateParam(yGestureKey,next);}
 function clearYGesture(){yGestureKey=null;yGestureStartY=0;yGestureStartT=0;}
-
+const screenNoteLayers=()=>midiRouteMode==="all"?layerState.map((_,i)=>i).filter(layerAudible):[synth.activeLayer].filter(i=>layerAudible(i));
 async function handlePointer(e){
-  if(!isPointerDown && e.type!=="pointerdown")return;
-  if(e.cancelable)e.preventDefault();
-  const r=kb.getBoundingClientRect();
-
   if(modeName==="scroll"){
-    const edge=Math.max(18,r.height*.22);
-    if(e.type==="pointerdown"){
-      if(e.clientY<r.top+edge)changeOctave(oct+1);
-      else if(e.clientY>r.bottom-edge)changeOctave(oct-1);
-    }
-  }
-
-  const pointer=e.pointerId;
-
-  if(e.type==="pointerdown" && !(await ensureStartedFromGesture()))return;
-  if(e.type==="pointerdown" && modeName==="pitch")beginYGesture(e);
-
-  /* In Pitch mode the gesture remains active for the whole drag.
-     Horizontal movement = pitch bend; vertical movement = selected Y destination.
-     Process these before key hit-testing so leaving the key rectangle does not
-     cancel the parameter gesture. */
-  if(modeName==="pitch"){
-    updateBendFromPointer(e);
-    updateYDestination(e);
-  }
-
-  const target=document.elementFromPoint(e.clientX,e.clientY);
-  if(!target||!target.classList.contains("key")){
-    if(modeName==="pitch" && e.type!=="pointerdown"){
-      const active=document.querySelector(".key.active");
-      if(active)showPitchFeedback(active,e);
-    }
+    if(e.type==="pointerdown"){const r=kb.getBoundingClientRect(),edge=Math.max(18,r.height*((parseFloat(getComputedStyle(kbSec).getPropertyValue("--keyboard-scroll-edge"))||22)/100));if(e.clientY<r.top+edge){changeOctave(oct+1);return;}if(e.clientY>r.bottom-edge){changeOctave(oct-1);return;}}
     return;
   }
-
-  const baseMidi=parseInt(target.dataset.midi,10),midi=baseMidi+oct*12;
-
-  if(!activeKeys.has(pointer)||activeKeys.get(pointer)!==midi){
-    if(activeKeys.has(pointer))synth.noteOff(activeKeys.get(pointer));
-    activeKeys.set(pointer,midi);
-    synth.noteOn(midi,.85,synth.activeLayer);
+  if(e.cancelable)e.preventDefault();
+  if(!isPointerDown&&e.type!=="pointerdown")return;
+  const pointer=e.pointerId;
+  if(e.type==="pointerdown"&&!(await ensureStartedFromGesture()))return;
+  if(e.type==="pointerdown"&&modeName==="pitch"&&pitchPointerId===null){pitchPointerId=pointer;beginYGesture(e);}
+  if(modeName==="pitch"&&pitchPointerId===pointer){updateBendFromPointer(e);updateYDestination(e);}
+  const target=document.elementFromPoint(e.clientX,e.clientY);
+  if(!target?.classList.contains("key")){if(modeName==="pitch"&&pitchPointerId===pointer&&e.type!=="pointerdown"){const active=document.querySelector(".key.active");if(active)showPitchFeedback(active,e);}return;}
+  const baseMidi=parseInt(target.dataset.midi,10),midi=baseMidi+oct*12,prev=activeKeys.get(pointer);
+  if(!prev||prev.midi!==midi){
+    if(prev){for(const layer of(prev.layers||[]))synth.noteOff(prev.midi,layer);removeKeyVisualForMidi(prev.baseMidi);}
+    const layers=screenNoteLayers();activeKeys.set(pointer,{midi,baseMidi,layers});for(const layer of layers)synth.noteOn(midi,.85,layer);addKeyVisual(target);
   }
-
-  target.classList.add("active");
-
-  if(modeName==="pitch"){
-    showPitchFeedback(target,e);
-  }
+  if(modeName==="pitch")showPitchFeedback(target,e);
 }
-kb.addEventListener("pointerdown",async e=>{isPointerDown=true;try{kb.setPointerCapture(e.pointerId);}catch(err){}await handlePointer(e);});
+kb.addEventListener("pointerdown",async e=>{isPointerDown=true;if(modeName!=="scroll")try{kb.setPointerCapture(e.pointerId);}catch(err){}await handlePointer(e);});
 kb.addEventListener("pointermove",e=>{void handlePointer(e);});
 const endPointer=e=>{
-  if(e.cancelable)e.preventDefault();
-  if(activeKeys.has(e.pointerId)){synth.noteOff(activeKeys.get(e.pointerId));activeKeys.delete(e.pointerId);}
-  if(modeName==="pitch"){
-    synth.setBend(0,.08);
-    const pw=$("pitchWheel");
-    if(pw){
-      pw.setAttribute("aria-valuenow","0");
-      const wt=pw.querySelector(".wt");
-      if(wt)wt.style.bottom="calc((100% - 14px)*.5)";
-    }
-  }
-  clearYGesture();
+  if(e.cancelable&&modeName!=="scroll")e.preventDefault();
+  const state=activeKeys.get(e.pointerId);
+  if(state){for(const layer of(state.layers||[]))synth.noteOff(state.midi,layer);removeKeyVisualForMidi(state.baseMidi);activeKeys.delete(e.pointerId);}
+  if(pitchPointerId===e.pointerId){pitchPointerId=null;synth.setBend(0,.08);const pw=$("pitchWheel");if(pw){pw.setAttribute("aria-valuenow","0");const wt=pw.querySelector(".wt");if(wt)wt.style.bottom="calc((100% - 14px)*.5)";}clearYGesture();}
   if(kb.hasPointerCapture?.(e.pointerId))try{kb.releasePointerCapture(e.pointerId);}catch(err){}
   if(activeKeys.size===0)isPointerDown=false;
-  document.querySelectorAll(".key.active").forEach(el=>el.classList.remove("active"));
-  clearPitchFeedback();
+  if(modeName==="pitch"&&pitchPointerId===null)clearPitchFeedback();
 };
-kb.addEventListener("pointerup",endPointer);
-kb.addEventListener("pointercancel",endPointer);
-kb.addEventListener("lostpointercapture",()=>{if(activeKeys.size===0)isPointerDown=false;});
+kb.addEventListener("pointerup",endPointer);kb.addEventListener("pointercancel",endPointer);kb.addEventListener("lostpointercapture",e=>{if(e&&e.pointerId!=null)endPointer(e);});
+window.addEventListener("blur",()=>{for(const id of[...activeKeys.keys()])endPointer({pointerId:id,cancelable:false});synth.setBend(0,.05);});
+document.addEventListener("visibilitychange",()=>{if(document.hidden){for(const id of[...activeKeys.keys()])endPointer({pointerId:id,cancelable:false});synth.setBend(0,.05);}});
+
 
 /* v14.0 on-screen Mod Wheel + physical CC1 feedback */
 function setModWheelVisual(el,amt){
@@ -1324,10 +1249,12 @@ if(helpBtn&&helpPanel&&helpClose){
 /* ========================= v14.0 PERFORMANCE RUNTIME ========================= */
 let modeName="gliss";
 const modeEl=$("mode");
+const kbSec=document.querySelector(".kb-sec");
 modeEl?.querySelectorAll("button[data-m]").forEach(b=>b.addEventListener("click",()=>{
   modeName=b.dataset.m||"gliss";
   modeEl.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
   kb.classList.toggle("scroll-mode",modeName==="scroll");
+  kbSec?.classList.toggle("scroll-mode",modeName==="scroll");
   if(modeName!=="pitch")synth.setBend(0,.05);
 }));
 
@@ -1357,27 +1284,34 @@ resizeScope();
 
 (function upgradeScope(){
   if(!scopeCanvas||!scopeCtx)return;
-  const render=()=>{
-    resizeScope();
-    window.__synthOslekScopeRAF=requestAnimationFrame(render);
+  const waveBuffer=new Uint8Array(512),spectrumBuffer=new Uint8Array(512);
+  let raf=0,lastDraw=0;
+  const stop=()=>{if(raf){cancelAnimationFrame(raf);raf=0;}};
+  const draw=ts=>{
+    raf=0;if(document.hidden)return;
+    const interval=synth.voices.size?1000/30:1000/12;
+    if(ts-lastDraw<interval){raf=requestAnimationFrame(draw);return;}
+    lastDraw=ts;resizeScope();
     const w=scopeCanvas.width,h=scopeCanvas.height;
+    if(!w||!h){raf=requestAnimationFrame(draw);return;}
     scopeCtx.fillStyle="#000";scopeCtx.fillRect(0,0,w,h);
-    if(!synth.analyser)return;
-    const len=synth.analyser.frequencyBinCount,buffer=new Uint8Array(len);
+    if(!synth.analyser){raf=requestAnimationFrame(draw);return;}
+    const len=synth.analyser.frequencyBinCount;
     if(scopeMode==="wave"){
-      synth.analyser.getByteTimeDomainData(buffer);
+      const n=Math.max(1,Math.min(waveBuffer.length,len));synth.analyser.getByteTimeDomainData(waveBuffer);
       scopeCtx.lineWidth=Math.max(1.5,w/500);scopeCtx.strokeStyle="#5b8cff";scopeCtx.beginPath();
-      const slice=w/len;let x=0;
-      for(let i=0;i<len;i++){const y=(buffer[i]/255)*h;if(i===0)scopeCtx.moveTo(x,y);else scopeCtx.lineTo(x,y);x+=slice;}
-      scopeCtx.stroke();
+      const slice=w/n;let x=0;
+      for(let i=0;i<n;i++){const y=(waveBuffer[i]/255)*h;if(i===0)scopeCtx.moveTo(x,y);else scopeCtx.lineTo(x,y);x+=slice;}scopeCtx.stroke();
     }else{
-      synth.analyser.getByteFrequencyData(buffer);
-      const bins=Math.min(len,Math.floor(w/3)),bar=w/bins;
-      scopeCtx.fillStyle="#7c5cff";
-      for(let i=0;i<bins;i++){const v=buffer[Math.floor(i*len/bins)]/255,bh=v*h;scopeCtx.fillRect(i*bar,h-bh,Math.max(1,bar-1),bh);}
+      const n=Math.max(1,Math.min(spectrumBuffer.length,len));synth.analyser.getByteFrequencyData(spectrumBuffer);
+      const bins=Math.min(n,Math.max(1,Math.floor(w/3))),bar=w/bins;scopeCtx.fillStyle="#7c5cff";
+      for(let i=0;i<bins;i++){const v=spectrumBuffer[Math.floor(i*n/bins)]/255,bh=v*h;scopeCtx.fillRect(i*bar,h-bh,Math.max(1,bar-1),bh);}
     }
+    raf=requestAnimationFrame(draw);
   };
-  render();
+  const start=()=>{if(!document.hidden&&!raf)raf=requestAnimationFrame(draw);};
+  document.addEventListener("visibilitychange",()=>{if(document.hidden)stop();else{lastDraw=0;start();}});
+  start();
 })();
 
 
@@ -1794,17 +1728,3 @@ syncSynthState(false);
 </script>
 </body>
 </html>
-
-
-
-/* v14.0 hardware-standard wheel placement: pitch/mod wheels left of the keys */
-.kb-sec{flex-direction:row}
-.wheels{order:0}
-.keyboard{order:1;min-width:0}
-@media(orientation:portrait){.kb-sec{flex-direction:row}.wheels{order:0}.keyboard{order:1}}
-
-/* v14.0 Pitch Mode visual feedback */
-.key.target{position:relative}
-.key.target::after{content:"";position:absolute;inset:3px;border-radius:0 0 3px 3px;border:1px solid rgba(255,255,255,.7);pointer-events:none;opacity:.9;animation:pitchTargetRing .7s ease-in-out infinite alternate}
-.key.black.target::after{inset:2px;border-color:rgba(255,226,153,.95)}
-@keyframes pitchTargetRing{from{opacity:.35;transform:scale(.96)}to{opacity:1;transform:scale(1.02)}}
