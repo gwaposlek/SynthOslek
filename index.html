@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.26-transient-safe-voice-start">
-<title>SynthOslek v14.26 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.27-voice-transient-hardening">
+<title>SynthOslek v14.27 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -480,7 +480,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.12 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.27 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -691,7 +691,7 @@ class AudioRuntime{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreqByLayer=Array.from({length:4},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
     this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
@@ -791,9 +791,9 @@ class SynthOslek{
   }
   _nativeNoteOn(midi,vel=.85,layer=this.activeLayer,when=null,stealFadeMs=6){
     if(!this.started)return;
-    const key=layer+":"+midi;if(this.voices.has(key))this._forceStop(key,stealFadeMs,when);
+    const key=layer+":"+midi;const hadHeldVoice=[...this.voices.values()].some(v=>v.layer===layer);if(this.voices.has(key))this._forceStop(key,stealFadeMs,when);
     const c=this.ctx,rawP=this.layerProfiles[layer]||this.params,baseP={...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0},P=this._morphParams(baseP),G=v=>this._G(v),now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
-    const fq=(o,f)=>{if(gl>.001&&this.lastFreq){o.frequency.setValueAtTime(this.lastFreq*(f/freq),now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
+    const prevFreq=Number(this.lastFreqByLayer[layer])||0;const fq=(o,f)=>{if(gl>.001&&hadHeldVoice&&prevFreq>0&&Math.abs(prevFreq-f)>0.001){o.frequency.setValueAtTime(prevFreq,now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
     const env=G(.00001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale(P));
     vf.type=P.filterType;vf.Q.value=P.resonance;
     /* v14.18: never allow an effectively instantaneous amp attack. A short controlled ramp avoids waveform/envelope discontinuities that can sound like a sub thump when MIDI notes are retriggered quickly. */
@@ -834,7 +834,7 @@ class SynthOslek{
     if((Number(P.noiseLevel)||0)>.0005){
       const ns=c.createBufferSource();ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.all.push(ns);
     }
-    this.lastFreq=freq;this.voices.set(key,v);
+    this.lastFreqByLayer[layer]=freq;this.voices.set(key,v);
   }
   _kill(v,t,key=null){
     v.all.forEach(o=>{try{o.stop(t);}catch(e){}});
@@ -863,7 +863,7 @@ class SynthOslek{
     this.voices.delete(key);this.tailVoices.delete(key);this.voicePool?.release(key,0);
   }
   panic(){return this.dspBackend?.panic();}
-  _nativePanic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);}
+  _nativePanic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
   updateParam(k,x,at=null){
     this.params[k]=x;
     if(this.layerProfiles[this.activeLayer])this.layerProfiles[this.activeLayer][k]=x;
@@ -1817,6 +1817,14 @@ class MidiManager{
   }
   dispatch(status,a,b,timestampMs=null,leadMs=.75,source="unknown"){
     const cmd=status&0xF0,ch=(status&0x0F)+1;
+    /* v14.27: deduplicate note events at the common dispatch boundary so the
+       WebMIDI and direct BLE transports cannot both retrigger the same voice. */
+    if((cmd===0x80||(cmd===0x90&&b>0)||(cmd===0x90&&b===0))&&source!=="unknown"){
+      const type=cmd===0x80||(cmd===0x90&&b===0)?"off":"on",key=type+":"+a+":"+ch,now=performance.now(),prev=this._recentTransportEvents.get(key);
+      if(prev&&prev.source!==source&&now-prev.at<12){this._recentTransportEvents.set(key,{source,at:now});return;}
+      this._recentTransportEvents.set(key,{source,at:now});
+      if(this._recentTransportEvents.size>128)for(const [k,v] of this._recentTransportEvents)if(now-v.at>1000)this._recentTransportEvents.delete(k);
+    }
     if(cmd===0x90&&b>0)this.noteOn(a,b,ch,timestampMs,leadMs);
     else if(cmd===0x80||(cmd===0x90&&b===0))this.noteOff(a,ch,timestampMs,leadMs);
     else if(cmd===0xB0)this.cc(a,b,ch,timestampMs,leadMs);
@@ -1930,15 +1938,6 @@ class MidiManager{
     this.rxCount++;this.lastRxAt=performance.now();
     const status=Number(d[0])||0,a=Number(d[1])||0,b=Number(d[2])||0;
     const cmd=status&0xF0,ch=(status&0x0F)+1;
-    if((cmd===0x80||cmd===0x90)&&source!=="unknown"){
-      const key=(cmd===0x90&&b===0?0x80:cmd).toString(16)+":"+a+":"+b+":"+ch;
-      const now=performance.now(),prev=this._recentTransportEvents.get(key);
-      if(prev&&prev.source!==source&&now-prev.at<10&&midiManagerBleActive()){
-        this._recentTransportEvents.set(key,{source,at:now});
-        return;
-      }
-      this._recentTransportEvents.set(key,{source,at:now});
-    }
     if(cmd===0x90&&b>0)this.queueStatus("MIDI RX: "+midiToNote(a)+" · CH "+ch);
     else if(cmd===0x80||(cmd===0x90&&b===0))this.queueStatus("MIDI RX: OFF · "+midiToNote(a)+" · CH "+ch);
     else this.queueStatus("MIDI RX: "+Array.from(d).map(v=>v.toString(16).padStart(2,"0")).join(" "));
