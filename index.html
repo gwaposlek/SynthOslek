@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.30-midi-disconnect-hardening">
-<title>SynthOslek v14.30 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.31-expanded-parameter-view">
+<title>SynthOslek v14.31 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -146,8 +146,10 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
  .layer-buttons{gap:.25rem;margin-top:.25rem}.layer-buttons button{min-height:32px;font-size:.62rem;padding:.2rem .4rem;flex:1}.layer-meter{height:4px;margin:.3rem 0}
  .layer-knobs{display:grid;grid-template-columns:repeat(3,1fr);gap:.1rem;align-items:start;margin-top:.15rem}
  .layer-knob{width:100%;min-height:74px;display:flex;flex-direction:column;align-items:center;touch-action:none;user-select:none}.layer-knob svg{width:44px;height:44px}.layer-knob .lk-v{font-size:.62rem;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.05}.layer-knob .lk-n{font-size:.48rem;color:var(--muted);letter-spacing:.04em}
- .perf-bar{display:flex!important;flex-wrap:nowrap;overflow-x:auto}.tabs{position:sticky;top:0;z-index:8;padding:0 .2rem}.tab{flex:0 0 auto;padding:.55rem .8rem;min-height:42px}
- .panes{display:block;overflow:visible}.panes>.tabpane.on{display:block;min-height:0;overflow:visible}.panes>.tabpane.on .panel{padding:.65rem .5rem}.panes>.tabpane.on .knobs{justify-content:center;gap:.7rem .35rem}
+ .perf-bar{display:flex!important;flex-wrap:nowrap;overflow-x:auto}.tabs{display:none}
+ .panes{display:block;overflow:visible}.panes>.tabpane{display:block!important;min-height:0;overflow:visible;border-top:1px solid var(--border)}.panes>.tabpane:first-child{border-top:0}.panes>.tabpane .panel{padding:.65rem .5rem}.panes>.tabpane .knobs{justify-content:center;gap:.7rem .35rem}
+ .panes>.tabpane:nth-child(2)::before,.panes>.tabpane:nth-child(3)::before,.panes>.tabpane:nth-child(4)::before,.panes>.tabpane:nth-child(5)::before{display:block;padding:.45rem .55rem .15rem;font-size:.68rem;font-weight:700;letter-spacing:.08em;color:var(--accent);text-transform:uppercase}
+ .panes>.tabpane:nth-child(2)::before{content:"OSCILLATORS"}.panes>.tabpane:nth-child(3)::before{content:"FILTER"}.panes>.tabpane:nth-child(4)::before{content:"ENVELOPE + LFO"}.panes>.tabpane:nth-child(5)::before{content:"FX"}
  .knob{width:68px;min-height:74px}.knob svg{width:48px;height:48px}.sel{min-width:120px}.sel select{min-height:40px}.footer{display:none}
 }
 @media (orientation:portrait) and (min-width:600px){.lm-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
@@ -480,7 +482,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.30 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.31 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -1116,17 +1118,24 @@ function makeSelect(k){
 }
 const TABMAP={"Oscillator 1":"Osc","Oscillator 2":"Osc","Voice":"Osc","Filter":"Filter","LFO":"Filter","Amp Envelope":"Env","Filter Envelope":"Env","Effects":"FX"};
 const PANES={};
-["Layers","Osc","Filter","Env","FX","Sound"].forEach((n,i)=>{
-  const b=document.createElement("button"),p=document.createElement("div");
-  b.className="tab"+(i?"":" on");b.textContent=n;p.className="tabpane"+(i?"":" on");
-  b.onclick=()=>{document.querySelectorAll(".tab,.tabpane").forEach(e=>e.classList.remove("on"));b.classList.add("on");p.classList.add("on");};
-  document.getElementById("tabs").appendChild(b);document.getElementById("panels").appendChild(p);PANES[n]=p;
+["Layers","Osc","Filter","Env","FX"].forEach(n=>{
+  const p=document.createElement("div");
+  p.className="tabpane on";
+  document.getElementById("panels").appendChild(p);
+  PANES[n]=p;
 });
-PANES.Layers.appendChild(document.getElementById("layerMixer"));PANES.Sound.appendChild(document.querySelector(".sound-designer"));
+/* v14.31: keep the four synth parameter groups permanently visible below
+   Layers. The old tab switching remains out of the active UI so Surprise Me
+   can be inspected immediately without extra taps. */
+PANES.Layers.appendChild(document.getElementById("layerMixer"));
+const soundDesigner=document.querySelector(".sound-designer");
+if(soundDesigner)soundDesigner.setAttribute("hidden","");
+const soundPrompt=document.getElementById("soundPrompt"),soundGenerate=document.getElementById("soundGenerate");
+if(soundPrompt)soundPrompt.setAttribute("hidden","");
+if(soundGenerate)soundGenerate.setAttribute("hidden","");
 (function(){const tb=document.querySelector(".top-bar"),h=document.querySelector("header h1");
   if(h){const b=document.createElement("div");b.className="brand";b.appendChild(h.cloneNode(true));tb.insertBefore(b,tb.firstChild);}
-  const bar=document.createElement("div");bar.className="sd-bar";bar.id="sdBar";tb.after(bar);
-  const i=document.getElementById("soundPrompt"),g=document.getElementById("soundGenerate");if(i)bar.appendChild(i);if(g)bar.appendChild(g);const emptyMain=document.querySelector(".sound-designer .sd-main");if(emptyMain&&!emptyMain.children.length)emptyMain.remove();})();
+})();
 (function build(){
   const root=document.getElementById("panels");
   for(const[title,keys]of PANELS){
