@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.29-voice-midi-lifecycle">
-<title>SynthOslek v14.29 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.30-midi-disconnect-hardening">
+<title>SynthOslek v14.30 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -480,7 +480,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.29 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.30 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -1860,6 +1860,8 @@ class MidiManager{
     this.select.innerHTML="";
     if(!inputs.length){
       const o=document.createElement("option");o.value="";o.textContent="No MIDI devices";this.select.appendChild(o);
+      /* v14.30: a WebMIDI port can disappear without a final Note Off. */
+      if(this.input){try{this.synth.panic();this.clearMidiVisuals();}catch(e){}}
       this.input=null;return;
     }
     inputs.forEach((i,n)=>{const o=document.createElement("option");o.value=i.id;o.textContent=i.name||("MIDI Input "+(n+1));this.select.appendChild(o);});
@@ -1942,6 +1944,7 @@ class MidiManager{
     }
     if(cc===123){
       this.synth.allNotesOff();
+      this.clearMidiVisuals();
       return;
     }
     if(cc===121){
@@ -1950,6 +1953,7 @@ class MidiManager{
       this.synth.setBend(0,.003,when);
       this.synth.modMatrix.setSource("pitchBend",0);this.synth.modMatrix.setSource("modWheel",0);this.synth.setModWheel(0,when);
       const led=$("sustainLed");if(led){led.classList.remove("on");led.textContent="SUSTAIN OFF";}
+      this.clearMidiVisuals();
       syncSynthState(false);return;
     }
     if(cc===1){
