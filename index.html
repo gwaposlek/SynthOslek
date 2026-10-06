@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.1-foundation">
-<title>SynthOslek v14.1 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.2-control-runtime">
+<title>SynthOslek v14.2 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -474,7 +474,7 @@ header{display:none!important}
       <button class="sd-btn" id="soundGenerate" type="button">✨ MAKE SOUND</button>
     </div>
     <div class="sd-result" id="soundResult" aria-live="polite">Text Sound Designer · describe the sound you want</div>
-    <div class="sd-architecture" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"><label style="font-size:.78rem;opacity:.75">ENGINE</label><select id="soundEngine" style="min-height:40px"><option value="auto">Auto — choose by sound</option><option value="additive">Additive</option><option value="subtractive">Subtractive</option><option value="physical">Physical-ish</option></select><span id="soundConfidence" style="font-size:.75rem;opacity:.7"></span></div>
+    <div class="sd-architecture" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"><label style="font-size:.78rem;opacity:.75">ENGINE</label><select id="soundEngine" aria-label="Sound architecture guidance" style="min-height:40px"><option value="auto">Auto — choose by sound</option><option value="additive">Additive</option><option value="subtractive">Subtractive</option><option value="physical">Physical-ish</option></select><span id="soundConfidence" style="font-size:.75rem;opacity:.7"></span></div>
     <div class="sd-examples">
       <button class="sd-chip" type="button" data-sound="warm gospel organ">Warm Gospel Organ</button>
       <button class="sd-chip" type="button" data-sound="bright 80s synth brass">80s Synth Brass</button>
@@ -522,7 +522,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.1 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.2 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -536,7 +536,7 @@ class SynthStateStore{
     this._listeners=new Set();
     this._past=[];
     this._future=[];
-    this.version="14.0";
+    this.version="14.2";
   }
   _clone(v){
     try{return JSON.parse(JSON.stringify(v));}
@@ -791,7 +791,7 @@ let midiRouteMode="all";
 
 /* v14 State + Voice Pool + Modulation foundation */
 const synthState=new SynthStateStore({
-  version:"14.0",
+  version:"14.2",
   activeLayer:0,
   layers:layerState.map(x=>({...x})),
   profiles:layerProfiles.map(x=>({...x})),
@@ -805,7 +805,7 @@ synth.modMatrix=new ModulationMatrix();
 function syncSynthState(history=false){
   const previous=synthState.getSnapshot();
   synthState.replace({
-    version:"14.0",
+    version:"14.2",
     activeLayer:synth.activeLayer,
     layers:layerState.map(x=>({...x})),
     profiles:synth.layerProfiles.map(x=>({...x})),
@@ -864,15 +864,15 @@ synth.panic=function(){
   return out;
 };
 
+let stateSyncTimer=0;
+const queueSynthStateSync=()=>{
+  if(stateSyncTimer)return;
+  stateSyncTimer=setTimeout(()=>{stateSyncTimer=0;syncSynthState(false);},120);
+};
 const _updateParam0=synth.updateParam.bind(synth);
 synth.updateParam=function(k,x){
   const out=_updateParam0(k,x);
-  if(this.state){
-    const snap=this.state.getSnapshot();
-    snap.activeLayer=this.activeLayer;
-    if(snap.profiles&&snap.profiles[this.activeLayer])snap.profiles[this.activeLayer][k]=x;
-    this.state.replace(snap,{history:false,emit:true});
-  }
+  queueSynthStateSync();
   return out;
 };
 
@@ -986,7 +986,7 @@ PANES.Layers.appendChild(document.getElementById("layerMixer"));PANES.Sound.appe
 (function(){const tb=document.querySelector(".top-bar"),h=document.querySelector("header h1");
   if(h){const b=document.createElement("div");b.className="brand";b.appendChild(h.cloneNode(true));tb.insertBefore(b,tb.firstChild);}
   const bar=document.createElement("div");bar.className="sd-bar";bar.id="sdBar";tb.after(bar);
-  const i=document.getElementById("soundPrompt"),g=document.getElementById("soundGenerate");if(i)bar.appendChild(i);if(g)bar.appendChild(g);})();
+  const i=document.getElementById("soundPrompt"),g=document.getElementById("soundGenerate");if(i)bar.appendChild(i);if(g)bar.appendChild(g);const emptyMain=document.querySelector(".sound-designer .sd-main");if(emptyMain&&!emptyMain.children.length)emptyMain.remove();})();
 (function build(){
   const root=document.getElementById("panels");
   for(const[title,keys]of PANELS){
@@ -1184,22 +1184,6 @@ function setModWheelVisual(el,amt){
   if(wt)wt.style.bottom=(amt*(Math.max(14,el.clientHeight)-14))+"px";
   el.setAttribute("aria-valuenow",amt.toFixed(3));
 }
-(function bindModWheelScreen(){
-  const el=$("modWheel");if(!el)return;
-  let down=false;
-  const update=e=>{
-    const r=el.getBoundingClientRect();
-    const amt=Math.max(0,Math.min(1,(r.bottom-e.clientY)/Math.max(1,r.height)));
-    synth.modMatrix.setSource("modWheel",amt);
-    synth.setModWheel(amt);
-    setModWheelVisual(el,amt);
-  };
-  el.addEventListener("pointerdown",e=>{e.preventDefault();down=true;el.classList.add("drag");try{el.setPointerCapture(e.pointerId)}catch(err){}update(e);});
-  el.addEventListener("pointermove",e=>{if(down)update(e);});
-  const end=e=>{if(!down)return;down=false;el.classList.remove("drag");try{if(el.hasPointerCapture?.(e.pointerId))el.releasePointerCapture(e.pointerId)}catch(err){}setModWheelVisual(el,0);};
-  el.addEventListener("pointerup",end);el.addEventListener("pointercancel",end);
-})();
-
 function setWheelVisual(el,amt,pitch){const wt=el?.querySelector(".wt");if(wt){const span=Math.max(14,el.clientHeight)-14;wt.style.bottom=((pitch?(amt+1)/2:amt)*span)+"px";}el?.setAttribute("aria-valuenow",String(Number(amt).toFixed(3)));}
 function bindWheel(el,type){if(!el)return;let down=false;const move=e=>{const r=el.getBoundingClientRect();const amt=type==="pitch"?Math.max(-1,Math.min(1,(r.bottom-e.clientY)/Math.max(1,r.height/2)-1)):Math.max(0,Math.min(1,(r.bottom-e.clientY)/Math.max(1,r.height)));if(type==="pitch")synth.setBend(screenPitchCents(amt),.012);else{synth.modMatrix.setSource("modWheel",amt);synth.setModWheel(amt);}setWheelVisual(el,amt,type==="pitch");};el.addEventListener("pointerdown",e=>{e.preventDefault();down=true;try{el.setPointerCapture(e.pointerId);}catch(err){}move(e);});el.addEventListener("pointermove",e=>{if(down)move(e);});const up=e=>{if(!down)return;down=false;if(type==="pitch"){synth.setBend(0,.08);setWheelVisual(el,0,true);}else setWheelVisual(el,0,false);};el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);}
 bindWheel($("pitchWheel"),"pitch");bindWheel($("modWheel"),"mod");
@@ -1207,22 +1191,7 @@ bindWheel($("pitchWheel"),"pitch");bindWheel($("modWheel"),"mod");
 
 /* Scope Renderer */
 const scopeCanvas=document.getElementById("scope"),scopeCtx=scopeCanvas.getContext("2d");
-function drawScope(){
-  requestAnimationFrame(drawScope);
-  const w=scopeCanvas.width,h=scopeCanvas.height;
-  scopeCtx.fillStyle="#000";scopeCtx.fillRect(0,0,w,h);
-  if(!synth.analyser)return;
-  const buffer=new Uint8Array(synth.analyser.frequencyBinCount);
-  synth.analyser.getByteTimeDomainData(buffer);
-  scopeCtx.lineWidth=2;scopeCtx.strokeStyle="#5b8cff";scopeCtx.beginPath();
-  const sliceWidth=w/buffer.length;let x=0;
-  for(let i=0;i<buffer.length;i++){
-    const v=buffer[i]/128.0,y=v*h/2;
-    if(i===0)scopeCtx.moveTo(x,y);else scopeCtx.lineTo(x,y);
-    x+=sliceWidth;
-  }
-  scopeCtx.lineTo(w,h/2);scopeCtx.stroke();
-}
+
 /* v14 renderer owns the animation loop */
 
 /* Welcome Screen */
