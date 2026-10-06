@@ -624,7 +624,7 @@ class ModulationMatrix{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this._startPromise=null;this.modWheel=1;this.voices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.ctx=null;this._startPromise=null;this.modWheel=0;this.modVibratoCents=50;this.voices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
     this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
@@ -650,10 +650,15 @@ class SynthOslek{
   }
   _impulse(d,dec){const r=this.ctx.sampleRate,l=r*d,b=this.ctx.createBuffer(2,l,r);
     for(let c=0;c<2;c++){const a=b.getChannelData(c);for(let i=0;i<l;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/l,dec);}return b;}
-  _lfoScale(){return({cutoff:1800,pitch:50,amp:.35})[this.params.lfoDest]*this.params.lfoDepth*(this.modWheel??1);}
+  _lfoScale(){return({cutoff:1800,pitch:50,amp:.35})[this.params.lfoDest]*this.params.lfoDepth;}
   setModWheel(v){
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
-    if(this.started)for(const v of this.voices.values())if(v.lm)v.lm.gain.setTargetAtTime(this._lfoScale(),this.ctx.currentTime,.02);
+    if(this.started){
+      for(const v of this.voices.values()){
+        if(v.modPitch)v.modPitch.gain.setTargetAtTime(this.modWheel*this.modVibratoCents,this.ctx.currentTime,.015);
+        if(v.lm)v.lm.gain.setTargetAtTime(this._lfoScale(),this.ctx.currentTime,.02);
+      }
+    }
   }
   _det(tc=.01){const t=this.ctx.currentTime;
     for(const v of this.voices.values()){const P=v.layer===this.activeLayer?this.params:(v.params||this.params);
@@ -670,7 +675,7 @@ class SynthOslek{
     const key=layer+":"+midi;if(this.voices.has(key))this._forceStop(key);
     const c=this.ctx,P=this.layerProfiles[layer]||this.params,G=v=>this._G(v),now=c.currentTime,freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
     const fq=(o,f)=>{if(gl>.001&&this.lastFreq){o.frequency.setValueAtTime(this.lastFreq*(f/freq),now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
-    const env=G(.0001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale());
+    const env=G(.0001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale()),modPitch=G((this.modWheel||0)*this.modVibratoCents);
     vf.type=P.filterType;vf.Q.value=P.resonance;
     const atk=Math.max(.005,P.attack),dec=Math.max(.01,P.decay);
     env.gain.exponentialRampToValueAtTime(Math.max(.001,vel),now+atk);
@@ -687,13 +692,13 @@ class SynthOslek{
     lg.connect(fx);fx.connect(this.delay);fx.connect(this.convolver);
     this.lfo.connect(lm);
     if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);
-    const v={env,vf,va,lm,layer,layerGain:lg,pan,fx,params:{...P},oscs:[],all:[],g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,va,lm,modPitch,layer,layerGain:lg,pan,fx,params:{...P},oscs:[],all:[],g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const n=Math.round(P.unison),norm=1/Math.sqrt(n);
     for(const w of[1,2])for(let i=0;i<n;i++){
       const o=c.createOscillator(),off=n>1?i/(n-1)*2-1:0,ng=G(norm);
       o.type=P["osc"+w+"Wave"];fq(o,freq);o.detune.setValueAtTime(P["osc"+w+"Detune"]+off*P.spread+this.bend+(this.wheel||0),now);
-      o.connect(ng);ng.connect(v["g"+w]);if(P.lfoDest==="pitch")lm.connect(o.detune);
+      o.connect(ng);ng.connect(v["g"+w]);if(P.lfoDest==="pitch")lm.connect(o.detune);else modPitch.connect(o.detune);
       o.start(now);v.oscs.push({o,w,off});v.all.push(o);
     }
     const so=c.createOscillator();fq(so,freq/2);so.connect(v.gs);so.start(now);v.all.push(so);
@@ -702,7 +707,7 @@ class SynthOslek{
   }
   _kill(v,t){
     v.all.forEach(o=>o.stop(t));
-    v.all[0].onended=()=>{try{this.lfo.disconnect(v.lm);}catch(e){}v.lm.disconnect();v.va.disconnect();};
+    v.all[0].onended=()=>{try{this.lfo.disconnect(v.lm);}catch(e){}try{this.lfo.disconnect(v.modPitch);}catch(e){}v.lm.disconnect();v.modPitch.disconnect();v.va.disconnect();};
   }
   noteOff(midi,layer=null){
     const matches=[...this.voices.entries()].filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer));
@@ -1232,6 +1237,31 @@ const endPointer=e=>{
 kb.addEventListener("pointerup",endPointer);
 kb.addEventListener("pointercancel",endPointer);
 kb.addEventListener("lostpointercapture",()=>{if(activeKeys.size===0)isPointerDown=false;});
+
+/* v14.0 on-screen Mod Wheel + physical CC1 feedback */
+function setModWheelVisual(el,amt){
+  if(!el)return;
+  amt=Math.max(0,Math.min(1,Number(amt)||0));
+  const wt=el.querySelector(".wt");
+  if(wt)wt.style.bottom=(amt*(Math.max(14,el.clientHeight)-14))+"px";
+  el.setAttribute("aria-valuenow",amt.toFixed(3));
+}
+(function bindModWheelScreen(){
+  const el=$("modWheel");if(!el)return;
+  let down=false;
+  const update=e=>{
+    const r=el.getBoundingClientRect();
+    const amt=Math.max(0,Math.min(1,(r.bottom-e.clientY)/Math.max(1,r.height)));
+    synth.modMatrix.setSource("modWheel",amt);
+    synth.setModWheel(amt);
+    setModWheelVisual(el,amt);
+  };
+  el.addEventListener("pointerdown",e=>{e.preventDefault();down=true;el.classList.add("drag");try{el.setPointerCapture(e.pointerId)}catch(err){}update(e);});
+  el.addEventListener("pointermove",e=>{if(down)update(e);});
+  const end=e=>{if(!down)return;down=false;el.classList.remove("drag");try{if(el.hasPointerCapture?.(e.pointerId))el.releasePointerCapture(e.pointerId)}catch(err){}setModWheelVisual(el,0);};
+  el.addEventListener("pointerup",end);el.addEventListener("pointercancel",end);
+})();
+
 function setWheelVisual(el,amt,pitch){const wt=el?.querySelector(".wt");if(wt){const span=Math.max(14,el.clientHeight)-14;wt.style.bottom=((pitch?(amt+1)/2:amt)*span)+"px";}el?.setAttribute("aria-valuenow",String(Number(amt).toFixed(3)));}
 function bindWheel(el,type){if(!el)return;let down=false;const move=e=>{const r=el.getBoundingClientRect();const amt=type==="pitch"?Math.max(-1,Math.min(1,(r.bottom-e.clientY)/Math.max(1,r.height/2)-1)):Math.max(0,Math.min(1,(r.bottom-e.clientY)/Math.max(1,r.height)));if(type==="pitch")synth.setBend(screenPitchCents(amt),.012);else{synth.modMatrix.setSource("modWheel",amt);synth.setModWheel(amt);}setWheelVisual(el,amt,type==="pitch");};el.addEventListener("pointerdown",e=>{e.preventDefault();down=true;try{el.setPointerCapture(e.pointerId);}catch(err){}move(e);});el.addEventListener("pointermove",e=>{if(down)move(e);});const up=e=>{if(!down)return;down=false;if(type==="pitch"){synth.setBend(0,.08);setWheelVisual(el,0,true);}else setWheelVisual(el,0,false);};el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);}
 bindWheel($("pitchWheel"),"pitch");bindWheel($("modWheel"),"mod");
@@ -1535,7 +1565,14 @@ class MidiManager{
   }
   cc(cc,val,ch){
     const x=Math.max(0,Math.min(1,val/127)),layer=this.controlLayer(ch);
-    if(cc===1){this.synth.modMatrix.setSource("modWheel",x);this.synth.setModWheel(x);syncSynthState(false);return;}
+    if(cc===1){
+      this.synth.modMatrix.setSource("modWheel",x);
+      this.synth.setModWheel(x);
+      setModWheelVisual($("modWheel"),x);
+      const st=$("stxt");if(st)st.textContent="MIDI Mod Wheel: "+Math.round(x*127);
+      syncSynthState(false);
+      return;
+    }
     if(cc===7){this.synth.updateParam("volume",x);return;}
     if(cc===10){layerState[layer].pan=x*2-1;refreshLayerGains();return;}
     if(cc===64){
