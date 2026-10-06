@@ -1253,6 +1253,10 @@ class BleMidiTransport{
   }
   async connect(){
     if(!navigator.bluetooth)throw new Error("Web Bluetooth is unavailable in this browser.");
+    if(navigator.bluetooth.getAvailability){
+      const available=await navigator.bluetooth.getAvailability();
+      if(!available)throw new Error("Windows reports no Bluetooth adapter available to Web Bluetooth. Check Windows Bluetooth and Edge permissions.");
+    }
     this.manager.setStatus("Select your SMK-37 BLE MIDI device…");
     const d=await navigator.bluetooth.requestDevice({
       acceptAllDevices:true,
@@ -1260,9 +1264,13 @@ class BleMidiTransport{
     });
     this.device=d;
     d.addEventListener?.("gattserverdisconnected",()=>this.onDisconnect());
+    if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
     this.server=await d.gatt.connect();
-    const service=await this.server.getPrimaryService(this.MIDI_SERVICE);
-    this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);
+    let service;
+    try{service=await this.server.getPrimaryService(this.MIDI_SERVICE);}
+    catch(err){throw new Error("SMK-37 was found, but Edge could not access its standard BLE-MIDI service. On Windows, try M-VAVE's BLE MIDI Connector.");}
+    try{this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);}
+    catch(err){throw new Error("BLE-MIDI service found, but its MIDI data characteristic was unavailable.");}
     await this.characteristic.startNotifications();
     this.characteristic.addEventListener("characteristicvaluechanged",e=>this.onData(e.target.value));
     this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37 connected"));
@@ -1276,41 +1284,61 @@ class BleMidiTransport{
     if(!view||view.byteLength<3)return;
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
     let i=0;
-    /* BLE-MIDI header timestamp + first timestamp byte. */
-    if((a[i]&0x80)!==0)i++;
-    if(i<a.length&&(a[i]&0x80)!==0)i++;
-    while(i<a.length){
-      /* Every MIDI message is preceded by a BLE-MIDI timestamp byte. */
-      if((a[i]&0x80)!==0)i++;
-      if(i>=a.length)break;
-      let status=a[i++];
-      if(status<0x80){
-        if(this.lastStatus==null)break;
-        i--;status=this.lastStatus;
-      }else{
-        this.lastStatus=status;
+    /* BLE-MIDI packets begin with two timestamp/header bytes. */
+    i=Math.min(2,a.length);
+    let status=null;
+    const emit=(st,d1,d2)=>{
+      if(st==null)return;
+      const cmd=st&0xf0,ch=(st&0x0f)+1;
+      if(cmd===0x90&&d2>0)this.manager.noteOn(d1,d2,ch);
+      else if(cmd===0x80||(cmd===0x90&&d2===0))this.manager.noteOff(d1,ch);
+      else if(cmd===0xB0)this.manager.cc(d1,d2,ch);
+      else if(cmd===0xE0){
+        const bend=((d2<<7)|d1)-8192;
+        this.manager.synth.setBend((bend/8192)*200,.008);
+        this.manager.synth.modMatrix.setSource("pitchBend",bend/8192);
       }
-      const cmd=status&0xf0;
-      const ch=(status&0x0f)+1;
-      if(cmd===0x80||cmd===0x90||cmd===0xB0||cmd===0xE0){
-        const d1=a[i++]||0;
-        const d2=a[i++]||0;
-        if(cmd===0x90&&d2>0)this.manager.noteOn(d1,d2,ch);
-        else if(cmd===0x80||(cmd===0x90&&d2===0))this.manager.noteOff(d1,ch);
-        else if(cmd===0xB0)this.manager.cc(d1,d2,ch);
-        else if(cmd===0xE0){
-          const bend=((d2<<7)|d1)-8192;
-          this.manager.synth.setBend((bend/8192)*200,.008);
-          this.manager.synth.modMatrix.setSource("pitchBend",bend/8192);
+    };
+    const dataBytesNeeded=st=>{
+      if(!st)return 0;
+      const cmd=st&0xf0;
+      if(cmd===0xC0||cmd===0xD0)return 1;
+      if(cmd>=0x80&&cmd<=0xE0)return 2;
+      return 0;
+    };
+    while(i<a.length){
+      let b=a[i++];
+      /* Realtime MIDI can appear anywhere and carries no data bytes. */
+      if(b===0xF8||b===0xF9||b===0xFA||b===0xFB||b===0xFC||b===0xFD||b===0xFE||b===0xFF)continue;
+      /* A high-bit byte at a message boundary is a MIDI status; while a
+         message has data pending it can instead be a BLE timestamp. */
+      if(b>=0x80){
+        const cmd=b&0xF0;
+        if(cmd>=0x80&&cmd<=0xE0){
+          status=b;this.lastStatus=status;
+        }else if(b===0xF1||b===0xF2||b===0xF3||b===0xF6){
+          status=b;this.lastStatus=status;
+        }else{
+          continue;
         }
-      }else if(cmd===0xC0||cmd===0xD0){
-        i+=1;
-      }else if(status===0xF8||status===0xFA||status===0xFC||status===0xFB){
-        /* realtime messages have no data bytes */
-      }else if(status===0xF1||status===0xF3){
-        i+=1;
-      }else if(status===0xF2){
-        i+=2;
+      }else if(status==null){
+        continue;
+      }else{
+        /* Running-status data byte. */
+        const needed=dataBytesNeeded(status);
+        if(needed===0)continue;
+        if(needed===1){
+          emit(status,b,0);continue;
+        }
+        const d1=b;
+        if(i>=a.length)break;
+        let d2=a[i++];
+        if(d2>=0x80){
+          /* Timestamp encountered before the second data byte; do not
+             consume it as MIDI data. The packet is incomplete. */
+          i--;break;
+        }
+        emit(status,d1,d2);
       }
     }
   }
