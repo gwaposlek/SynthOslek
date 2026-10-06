@@ -1053,9 +1053,15 @@ for(let m=KEY_START;m<=KEY_END;m++){
 let isPointerDown=false;
 const clamp01=v=>Math.max(-1,Math.min(1,v));
 const updateBendFromPointer=e=>{
-  const r=kb.getBoundingClientRect(),center=r.top+r.height/2;
-  const amt=clamp01((center-e.clientY)/Math.max(1,r.height/2));
+  const r=kb.getBoundingClientRect(),center=r.left+r.width/2;
+  const amt=clamp01((e.clientX-center)/Math.max(1,r.width/2));
   synth.setBend(amt*200,.015);
+  const pw=$("pitchWheel");
+  if(pw){
+    pw.setAttribute("aria-valuenow",amt.toFixed(3));
+    const wt=pw.querySelector(".wt");
+    if(wt)wt.style.bottom=(((amt+1)/2)*(pw.clientHeight-14))+"px";
+  }
 };
 async function ensureStartedFromGesture(){
   try{await synth.start();return true;}
@@ -1143,7 +1149,16 @@ kb.addEventListener("pointermove",e=>{void handlePointer(e);});
 const endPointer=e=>{
   if(e.cancelable)e.preventDefault();
   if(activeKeys.has(e.pointerId)){synth.noteOff(activeKeys.get(e.pointerId));activeKeys.delete(e.pointerId);}
-  if(modeName==="pitch")synth.setBend(0,.08);
+  if(modeName==="pitch"){
+    synth.setBend(0,.08);
+    const pw=$("pitchWheel");
+    if(pw){
+      pw.setAttribute("aria-valuenow","0");
+      const wt=pw.querySelector(".wt");
+      if(wt)wt.style.bottom="calc((100% - 14px)*.5)";
+    }
+  }
+  clearYGesture();
   if(kb.hasPointerCapture?.(e.pointerId))try{kb.releasePointerCapture(e.pointerId);}catch(err){}
   if(activeKeys.size===0)isPointerDown=false;
   document.querySelectorAll(".key.active").forEach(el=>el.classList.remove("active"));
