@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.31-expanded-parameter-view">
-<title>SynthOslek v14.31 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.32-compact-all-controls">
+<title>SynthOslek v14.32 — Compact Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -394,6 +394,80 @@ header{display:none!important}
 @keyframes surpriseGreen{0%,100%{box-shadow:0 0 0 1px rgba(74,222,128,.22),0 0 10px rgba(74,222,128,.32)}40%{box-shadow:0 0 0 2px rgba(74,222,128,.75),0 0 28px rgba(74,222,128,.78)}}
 @keyframes surpriseRed{0%,100%{box-shadow:0 0 0 1px rgba(255,77,109,.22),0 0 10px rgba(255,77,109,.34)}40%{box-shadow:0 0 0 2px rgba(255,77,109,.78),0 0 30px rgba(255,77,109,.82)}}
 @media(prefers-reduced-motion:reduce){.btn.surprise.flash-green,.btn.surprise.flash-red{animation:none}}
+
+/* v14.31 compact desktop all-controls view */
+/* Windows Edge / desktop landscape: use the whole viewport instead of a
+   tall vertical stack. Layers stay full-width; the four parameter groups sit
+   beside each other so every synth control is visible at once. */
+@media (orientation:landscape) and (min-width:1001px){
+  body{padding:.2rem;overflow:hidden}
+  .synth{height:calc(100dvh - .4rem)!important;max-width:none!important;border-radius:10px}
+  .top-bar{padding:.18rem .45rem!important;gap:.4rem;min-height:34px!important}
+  .top-bar .btn{min-height:28px!important;padding:.22rem .6rem!important;font-size:.68rem}
+  .top-bar select{min-height:28px!important;padding:.18rem .3rem!important;font-size:.68rem}
+  .top-bar .row{gap:.3rem}
+  #volKnob .knob svg{width:32px!important;height:32px!important}
+  .scope{padding:.12rem .4rem!important}
+  .scope canvas{height:34px!important;margin:0!important}
+  .scope .ovl{gap:.25rem}
+  .scope .ovl .btn{min-height:26px!important;padding:.18rem .5rem!important;font-size:.64rem}
+  .scope .ovl select{min-height:26px!important;font-size:.62rem}
+  .scope .octv{font-size:.65rem}
+  .kb-sec{height:64px!important;min-height:64px!important;padding:.15rem .4rem!important;gap:.3rem!important}
+  .synth .keyboard{height:58px!important;min-height:58px!important;max-height:58px!important}
+  .synth .keyboard .key{height:58px!important;padding-bottom:4px;font-size:.48rem}
+  .synth .keyboard .key.black{height:37px!important}
+  .synth .wheel{height:58px!important;min-height:58px!important;width:25px!important}
+  .synth .wheel .wt{height:11px}
+  .synth .wheel b{font-size:.36rem}
+  .perf-bar{padding:.1rem .4rem!important;min-height:25px!important;gap:.3rem!important}
+  .perf-bar button,.help-btn{min-height:23px!important;padding:.1rem .42rem!important;font-size:.5rem!important}
+  .sustain-led{font-size:.48rem;padding:.1rem .3rem}
+  .layer-mixer{padding:.2rem .4rem!important}
+  .lm-title{font-size:.5rem;margin-bottom:.12rem}
+  .lm-grid{gap:.22rem!important}
+  .layer-strip{padding:.1rem!important}
+  .layer-name{font-size:.5rem!important}
+  .layer-preset{min-height:20px!important;font-size:.48rem!important;padding:.08rem!important}
+  .layer-head{font-size:.46rem!important}
+  .layer-strip input[type=range]{height:13px!important}
+  .layer-buttons{gap:1px!important}
+  .layer-buttons button{min-height:17px!important;font-size:.43rem!important;padding:.05rem .18rem!important}
+  .layer-meter{height:2px!important;margin:1px 0!important}
+  .layer-knobs{margin-top:0!important;gap:0!important}
+  .layer-knob svg{width:29px!important;height:29px!important}
+  .layer-knob .lk-v{font-size:.46rem!important;line-height:1!important}
+  .layer-knob .lk-n{font-size:.4rem!important;line-height:1!important}
+  /* The five old panes become one compact dashboard: Layers + four groups. */
+  .synth>.panes{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:auto minmax(0,1fr);gap:1px;background:var(--border);overflow:hidden!important;min-height:0!important}
+  .synth>.panes>.tabpane{display:block!important;min-width:0;min-height:0;overflow:hidden!important;border:0!important;background:var(--border)!important}
+  .synth>.panes>.tabpane:first-child{grid-column:1/-1;grid-row:1}
+  .synth>.panes>.tabpane:nth-child(2){grid-column:1;grid-row:2}
+  .synth>.panes>.tabpane:nth-child(3){grid-column:2;grid-row:2}
+  .synth>.panes>.tabpane:nth-child(4){grid-column:3;grid-row:2}
+  .synth>.panes>.tabpane:nth-child(5){grid-column:4;grid-row:2}
+  .synth>.panes>.tabpane:not(:first-child){display:flex!important;flex-direction:column;min-height:0}
+  .synth>.panes>.tabpane:not(:first-child)::before{display:block!important;padding:.22rem .35rem .08rem;font-size:.52rem;font-weight:800;letter-spacing:.08em;color:var(--accent);text-transform:uppercase;line-height:1}
+  .synth>.panes>.tabpane:nth-child(2)::before{content:"OSCILLATORS"}
+  .synth>.panes>.tabpane:nth-child(3)::before{content:"FILTER"}
+  .synth>.panes>.tabpane:nth-child(4)::before{content:"ENVELOPE + LFO"}
+  .synth>.panes>.tabpane:nth-child(5)::before{content:"FX"}
+  .synth>.panes>.tabpane:not(:first-child) .panels{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:1px!important;min-height:0;background:var(--border);flex:1;overflow:hidden}
+  .synth>.panes>.tabpane:not(:first-child) .panel{padding:.3rem .25rem!important;min-width:0;overflow:hidden}
+  .synth>.panes>.tabpane:not(:first-child) .panel h3{font-size:.48rem;margin-bottom:.22rem;line-height:1}
+  .synth>.panes>.tabpane:not(:first-child) .panel h3::before{width:3px;height:3px}
+  .synth>.panes>.tabpane:not(:first-child) .sel{margin-bottom:.25rem}
+  .synth>.panes>.tabpane:not(:first-child) .sel label{font-size:.45rem;margin-bottom:.1rem}
+  .synth>.panes>.tabpane:not(:first-child) .sel select{min-height:24px!important;padding:.12rem .18rem;font-size:.5rem}
+  .synth>.panes>.tabpane:not(:first-child) .knobs{gap:.12rem!important;justify-content:center!important;align-content:start}
+  .synth>.panes>.tabpane:not(:first-child) .knob{width:45px!important;min-height:48px!important;gap:0!important}
+  .synth>.panes>.tabpane:not(:first-child) .knob svg{width:31px!important;height:31px!important}
+  .synth>.panes>.tabpane:not(:first-child) .knob .n{font-size:.4rem!important;margin-top:0;line-height:1}
+  .synth>.panes>.tabpane:not(:first-child) .knob .v{font-size:.45rem!important;line-height:1}
+  .synth>.panes>.tabpane:nth-child(4) .panels{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .synth>.panes>.tabpane:nth-child(5) .panels{grid-template-columns:1fr}
+  .footer{display:none}
+}
 </style>
 </head>
 <body>
@@ -482,7 +556,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.31 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.32 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
