@@ -906,6 +906,13 @@ Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});Object.assign(PRESE
 Object.assign(PRESETS.bass,{subLevel:.5});Object.assign(PRESETS.keys,{chorusMix:.35});
 const LAYER_COUNT=4;
 const synth=new SynthOslek();
+/* v14.29: mobile/background transitions can prevent a matching Note Off from
+   reaching the page. Treat hidden as a transport boundary, but never
+   auto-start audio when the page becomes visible again. */
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){try{synth.panic();}catch(e){}}
+  else if(synth.started)void synth.audioRuntime.resume();
+},{passive:true});
 const initialProfiles=Array.from({length:LAYER_COUNT},()=>({...PRESETS.init}));
 const initialLayers=Array.from({length:LAYER_COUNT},(_,i)=>({vol:i===0?.8:.65,mute:false,solo:false,enabled:i===0,pan:0,fx:.2,preset:"init"}));
 
