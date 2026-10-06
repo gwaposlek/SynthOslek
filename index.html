@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.8-midi-morph-optimization">
-<title>SynthOslek v14.8 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.9-auto-ble-reconnect">
+<title>SynthOslek v14.9 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1404,28 +1404,66 @@ class BleMidiTransport{
     this.lastStatus=null;
     this.MIDI_SERVICE="03b80e5a-ede8-4b33-a751-6ce34ec4c700";
     this.MIDI_CHARACTERISTIC="7772e5db-3868-4112-a1a9-f2669d106bf3";
-    this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";this._deviceDisconnectHandler=null;this._charHandler=null;this.clock=new BleMidiClock();this.bleLeadMs=3;
+    this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";this._deviceDisconnectHandler=null;this._charHandler=null;this.clock=new BleMidiClock();this.bleLeadMs=3;this._autoReconnectInFlight=null;this._autoReconnectTimer=0;this._manualDisconnect=false;this._autoReconnectSeq=0;
   }
   _cleanupCharacteristic(){if(this.characteristic&&this._charHandler){try{this.characteristic.removeEventListener("characteristicvaluechanged",this._charHandler);}catch(e){}}this._charHandler=null;this.characteristic=null;}
   _bindDevice(d){if(this.device===d&&this._deviceDisconnectHandler)return;if(this.device&&this._deviceDisconnectHandler)try{this.device.removeEventListener("gattserverdisconnected",this._deviceDisconnectHandler);}catch(e){}this.device=d;this._deviceDisconnectHandler=()=>this.onDisconnect();d.addEventListener?.("gattserverdisconnected",this._deviceDisconnectHandler);}
-  async autoReconnect(){
-    if(!navigator.bluetooth?.getDevices)return false;
+  _savedDeviceInfo(){
     let savedId="",savedName="";
     try{savedId=localStorage.getItem(this.storageId)||"";savedName=localStorage.getItem(this.storageName)||"";}catch(e){}
+    return {savedId,savedName};
+  }
+  _setBtButton(on){
+    const btn=$("bleMidiBtn");
+    if(btn){btn.textContent=on?"BT: ON":"BT MIDI";btn.classList.toggle("on",!!on);}
+  }
+  _queueAutoReconnect(delay=1200){
+    if(this._autoReconnectTimer)return;
+    this._autoReconnectTimer=setTimeout(()=>{
+      this._autoReconnectTimer=0;
+      void this.autoReconnect({announce:false});
+    },Math.max(0,delay));
+  }
+  async autoReconnect({announce=true}={}){
+    if(!navigator.bluetooth?.getDevices)return false;
+    if(this._manualDisconnect)return false;
+    const {savedId,savedName}=this._savedDeviceInfo();
     if(!savedId&&!savedName)return false;
-    try{
-      const devices=await navigator.bluetooth.getDevices();
-      const d=devices.find(x=>savedId&&x.id===savedId)||devices.find(x=>savedName&&x.name===savedName);
-      if(!d)return false;
-      await this.connectKnown(d);
-      this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37")+" reconnected");
-      const btn=$("bleMidiBtn");if(btn){btn.textContent="BT: ON";btn.classList.add("on");}
+    if(this.device?.gatt?.connected&&this.characteristic){
+      this._setBtButton(true);
       return true;
-    }catch(e){return false;}
+    }
+    if(this._autoReconnectInFlight)return this._autoReconnectInFlight;
+    const delays=[0,500,1500,3000,5000];
+    const seq=++this._autoReconnectSeq;
+    this._autoReconnectInFlight=(async()=>{
+      let found=false;
+      if(announce)this.manager.setStatus("BLE MIDI: locating saved SMK-37…");
+      for(const delay of delays){
+        if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
+        if(seq!==this._autoReconnectSeq||this._manualDisconnect)return false;
+        try{
+          const devices=await navigator.bluetooth.getDevices();
+          const d=devices.find(x=>savedId&&x.id===savedId)||devices.find(x=>savedName&&x.name===savedName);
+          if(!d)continue;
+          found=true;
+          await this.connectKnown(d);
+          this._manualDisconnect=false;
+          this._setBtButton(true);
+          this.manager.setStatus("BLE MIDI: "+(d.name||savedName||"SMK-37")+" reconnected");
+          return true;
+        }catch(e){/* Try the next scheduled lookup; manual BT MIDI remains available. */}
+      }
+      if(announce)this.manager.setStatus(found?"SMK-37 found but reconnect failed — BT MIDI ready":"Saved SMK-37 not available — BT MIDI ready");
+      return false;
+    })();
+    try{return await this._autoReconnectInFlight;}finally{this._autoReconnectInFlight=null;}
   }
   async connectKnown(d){
+    this._manualDisconnect=false;
     this.clock.reset();
-    this.clock.reset();
+    if(this.device===d&&d.gatt?.connected&&this.characteristic)return true;
+    this._cleanupCharacteristic();
     this._bindDevice(d);
     try{localStorage.setItem(this.storageId,d.id||"");localStorage.setItem(this.storageName,d.name||"SMK-37");}catch(e){}
     if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
@@ -1487,7 +1525,10 @@ class BleMidiTransport{
     this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37 connected"));
     return true;
   }
-  onDisconnect(){this.clock.reset();this._cleanupCharacteristic();this.server=null;const btn=$("bleMidiBtn");if(btn){btn.textContent="BT MIDI";btn.classList.remove("on");}this.manager.setStatus("BLE MIDI disconnected — reconnect when ready");
+  onDisconnect(){
+    this.clock.reset();this._cleanupCharacteristic();this.server=null;this._setBtButton(false);
+    this.manager.setStatus("BLE MIDI disconnected — searching for saved SMK-37…");
+    if(!this._manualDisconnect)this._queueAutoReconnect(800);
   }
   onData(view){
     if(!view||view.byteLength<3)return;
@@ -1538,9 +1579,13 @@ class BleMidiTransport{
     }
   }
   disconnect(){
+    this._manualDisconnect=true;
+    this._autoReconnectSeq++;
+    if(this._autoReconnectTimer){clearTimeout(this._autoReconnectTimer);this._autoReconnectTimer=0;}
     this.clock.reset();
     try{this.server?.disconnect();}catch(e){}
-    this.characteristic=null;this.server=null;
+    this._cleanupCharacteristic();this.server=null;
+    this._setBtButton(false);
     this.manager.setStatus("BLE MIDI disconnected");
   }
 }
@@ -1716,7 +1761,7 @@ void midiManager.init();
 
 /* Direct BLE-MIDI fallback for Windows Edge / compatible Chromium browsers. */
 const bleMidi=new BleMidiTransport(midiManager);
-void bleMidi.autoReconnect();
+void bleMidi.autoReconnect({announce:true});
 
 /* Re-run controller binding after the user's audio unlock gesture.
    This covers the common Windows case where Bluetooth/MIDI appears after load. */
@@ -1724,7 +1769,7 @@ $("welcomeStart")?.addEventListener("click",async()=>{
   try{
     await midiManager.init();
     midiManager.refresh();
-    await bleMidi.autoReconnect();
+    await bleMidi.autoReconnect({announce:true});
   }catch(e){}
 }, {once:true});
 $("bleMidiBtn")?.addEventListener("click",async()=>{
