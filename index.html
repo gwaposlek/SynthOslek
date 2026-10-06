@@ -487,6 +487,20 @@ const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return 
 const pitchBendCents=norm=>screenPitchCents(Math.max(-1,Math.min(1,Number(norm)||0)));
 
 
+const normalizeMidiPerformanceTime=stamp=>{
+  let t=Number(stamp);
+  if(!Number.isFinite(t))return null;
+  if(t>1e11&&Number.isFinite(performance.timeOrigin))t-=performance.timeOrigin;
+  return t;
+};
+const midiPerformanceToAudioTime=(ctx,stamp,leadMs=.75)=>{
+  if(!ctx)return null;
+  const t=normalizeMidiPerformanceTime(stamp);
+  if(t==null)return null;
+  const deltaMs=t-performance.now()+leadMs;
+  return ctx.currentTime+Math.max(0,Math.min(40,deltaMs))/1000;
+};
+
 /* ========================= v14.0 CORE ARCHITECTURE ========================= */
 class SynthStateStore{
   constructor(initial={}){
@@ -739,7 +753,7 @@ class SynthOslek{
     fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
     this.lfo.connect(lm);
     if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);
-    const v={env,vf,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,params:{...P},oscs:[],all:[],g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,params:{...baseP},oscs:[],all:[],g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const n=Math.round(P.unison),norm=1/Math.sqrt(n);
     for(const w of[1,2])for(let i=0;i<n;i++){
@@ -778,29 +792,26 @@ class SynthOslek{
     this.voices.delete(key);this.tailVoices.delete(key);this.voicePool?.release(key,0);
   }
   panic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);}
-  updateParam(k,x){
+  updateParam(k,x,at=null){
     this.params[k]=x;
     if(this.layerProfiles[this.activeLayer])this.layerProfiles[this.activeLayer][k]=x;
     if(!this.started)return;
-    const t=this.ctx.currentTime,T=(a,tc)=>a.setTargetAtTime(x,t,tc);
-    const A={volume:()=>T(this.masterGain.gain,.015),delayTime:()=>T(this.delay.delayTime,.02),delayFb:()=>T(this.delayFeedback.gain,.02),lfoRate:()=>T(this.lfo.frequency,.02)};
+    const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
+    const T=(a,v,tc)=>{try{a.setTargetAtTime(v,t,tc);}catch(e){}};
+    const A={
+      volume:()=>T(this.masterGain.gain,x,.015),
+      delayTime:()=>T(this.delay.delayTime,x,.02),
+      delayFb:()=>T(this.delayFeedback.gain,x,.02),
+      lfoRate:()=>T(this.lfo.frequency,x,.02)
+    };
     if(A[k])return A[k]();
-    const levels={osc1Level:"g1",osc2Level:"g2",subLevel:"gs",noiseLevel:"gn"};
-    const detuneParam=k==="osc1Detune"||k==="osc2Detune"||k==="osc1Coarse"||k==="osc2Coarse"||k==="spread";
     for(const v of this.voices.values()){
       if(v.layer!==this.activeLayer)continue;
       v.params[k]=x;
-      if(k==="delayMix"&&v.fxDelay)T(v.fxDelay.gain,.02);
-      else if(k==="reverbMix"&&v.fxReverb)T(v.fxReverb.gain,.02);
-      else if(k==="chorusMix"&&v.fxChorus)T(v.fxChorus.gain,.02);
-      else if(k==="cutoff")T(v.vf.frequency,.02);
-      else if(k==="resonance")T(v.vf.Q,.015);
-      else if(k==="filterType")v.vf.type=x;
-      else if(/^osc[12]Wave$/.test(k))v.oscs.forEach(o=>{if(o.kind==="osc"&&o.w==k[3])o.o.type=x;});
-      else if(k==="lfoDepth"||k==="lfoDest")v.lm.gain.value=this._lfoScale(v.params);
-      else if(levels[k])T(v[levels[k]].gain,.01);
+      if(k==="filterType")v.vf.type=x;
+      else if(/^osc[12]Wave$/.test(k))v.oscs.forEach(o=>{if(o.kind!=="sub"&&o.w==k[3])o.o.type=x;});
+      this._applyMorphToVoice(v,t);
     }
-    if(detuneParam)this._det();
   }
   getParams(){return{...this.params};}
 }
@@ -921,10 +932,11 @@ synth.modMatrix.setRoute("modWheel","morph",1);
 
 function activeSolo(){return layerState.some(x=>x.enabled && x.solo)}
 function layerAudible(i){return !!layerState[i].enabled && !layerState[i].mute && (!activeSolo()||layerState[i].solo)}
-function refreshLayerGains(){
+function refreshLayerGains(at=null){
   synth.layerMix=layerState.map((x,i)=>({vol:x.vol,mute:!layerAudible(i),enabled:x.enabled,pan:x.pan,fx:x.fx}));
   if(!synth.started)return;
-  for(const v of synth.voices.values()) if(v.layerGain){const L=synth.layerMix[v.layer];v.layerGain.gain.setTargetAtTime(layerAudible(v.layer)&&L.enabled!==false?L.vol:0,synth.ctx.currentTime,.01);if(v.pan)v.pan.pan.setTargetAtTime(L.pan||0,synth.ctx.currentTime,.01);if(v.fx)v.fx.gain.setTargetAtTime(L.fx||0,synth.ctx.currentTime,.01);}
+  const t=Math.max(synth.ctx.currentTime,Number.isFinite(at)?at:synth.ctx.currentTime);
+  for(const v of synth.voices.values()) if(v.layerGain){const L=synth.layerMix[v.layer];v.layerGain.gain.setTargetAtTime(layerAudible(v.layer)&&L.enabled!==false?L.vol:0,t,.01);if(v.pan)v.pan.pan.setTargetAtTime(L.pan||0,t,.01);if(v.fx)v.fx.gain.setTargetAtTime(L.fx||0,t,.01);}
 }
 function setActiveLayer(i){
   i=Math.max(0,Math.min(LAYER_COUNT-1,Number(i)||0));
@@ -1213,7 +1225,7 @@ const endPointer=e=>{
 };
 kb.addEventListener("pointerup",endPointer);kb.addEventListener("pointercancel",endPointer);kb.addEventListener("lostpointercapture",e=>{if(e&&e.pointerId!=null)endPointer(e);});
 window.addEventListener("blur",()=>{for(const id of[...activeKeys.keys()])endPointer({pointerId:id,cancelable:false});synth.setBend(0,.05);});
-document.addEventListener("visibilitychange",()=>{if(document.hidden){for(const id of[...activeKeys.keys()])endPointer({pointerId:id,cancelable:false});synth.setBend(0,.05);}});
+document.addEventListener("visibilitychange",()=>{if(document.hidden){for(const id of[...activeKeys.keys()])endPointer({pointerId:id,cancelable:false});synth.setBend(0,.05);if(typeof midiManager!=="undefined")midiManager.clearMidiVisuals?.();}});
 
 
 /* v14.0 on-screen Mod Wheel + physical CC1 feedback */
@@ -1360,6 +1372,25 @@ resizeScope();
 })();
 
 
+class BleMidiClock{
+  constructor(){this.reset();}
+  reset(){this.lastRaw=null;this.unwrapped=0;this.offsetMs=null;}
+  toPerformanceTime(raw){
+    raw=(Number(raw)||0)&0x1FFF;
+    if(this.lastRaw===null){
+      this.unwrapped=raw;
+      this.offsetMs=performance.now()-this.unwrapped;
+    }else{
+      let diff=raw-this.lastRaw;
+      if(diff<-4096)diff+=8192;
+      else if(diff>4096)diff-=8192;
+      this.unwrapped+=diff;
+    }
+    this.lastRaw=raw;
+    return this.unwrapped+(this.offsetMs??(performance.now()-this.unwrapped));
+  }
+}
+
 class BleMidiTransport{
   constructor(manager){
     this.manager=manager;
@@ -1369,7 +1400,7 @@ class BleMidiTransport{
     this.lastStatus=null;
     this.MIDI_SERVICE="03b80e5a-ede8-4b33-a751-6ce34ec4c700";
     this.MIDI_CHARACTERISTIC="7772e5db-3868-4112-a1a9-f2669d106bf3";
-    this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";this._deviceDisconnectHandler=null;this._charHandler=null;
+    this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";this._deviceDisconnectHandler=null;this._charHandler=null;this.clock=new BleMidiClock();this.bleLeadMs=3;
   }
   _cleanupCharacteristic(){if(this.characteristic&&this._charHandler){try{this.characteristic.removeEventListener("characteristicvaluechanged",this._charHandler);}catch(e){}}this._charHandler=null;this.characteristic=null;}
   _bindDevice(d){if(this.device===d&&this._deviceDisconnectHandler)return;if(this.device&&this._deviceDisconnectHandler)try{this.device.removeEventListener("gattserverdisconnected",this._deviceDisconnectHandler);}catch(e){}this.device=d;this._deviceDisconnectHandler=()=>this.onDisconnect();d.addEventListener?.("gattserverdisconnected",this._deviceDisconnectHandler);}
@@ -1389,6 +1420,8 @@ class BleMidiTransport{
     }catch(e){return false;}
   }
   async connectKnown(d){
+    this.clock.reset();
+    this.clock.reset();
     this._bindDevice(d);
     try{localStorage.setItem(this.storageId,d.id||"");localStorage.setItem(this.storageName,d.name||"SMK-37");}catch(e){}
     if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
@@ -1450,81 +1483,58 @@ class BleMidiTransport{
     this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37 connected"));
     return true;
   }
-  onDisconnect(){this._cleanupCharacteristic();this.server=null;const btn=$("bleMidiBtn");if(btn){btn.textContent="BT MIDI";btn.classList.remove("on");}this.manager.setStatus("BLE MIDI disconnected — reconnect when ready");
+  onDisconnect(){this.clock.reset();this._cleanupCharacteristic();this.server=null;const btn=$("bleMidiBtn");if(btn){btn.textContent="BT MIDI";btn.classList.remove("on");}this.manager.setStatus("BLE MIDI disconnected — reconnect when ready");
   }
   onData(view){
     if(!view||view.byteLength<3)return;
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
-    let i=2;
-    let status=null;
-    let firstEvent=true;
-    const emit=(st,d1,d2)=>{
-      if(st==null)return;
-      const cmd=st&0xf0,ch=(st&0x0f)+1;
-      if(cmd===0x90&&d2>0)this.manager.noteOn(d1,d2,ch);
-      else if(cmd===0x80||(cmd===0x90&&d2===0))this.manager.noteOff(d1,ch);
-      else if(cmd===0xB0)this.manager.cc(d1,d2,ch);
-      else if(cmd===0xE0){
-        const bend=((d2<<7)|d1)-8192,norm=bend/8192;
-        this.manager.synth.setBend(pitchBendCents(norm),.003);
-        this.manager.synth.modMatrix.setSource("pitchBend",norm);
-        setWheelVisual($("pitchWheel"),norm,true);
-      }
+    if((a[0]&0x80)===0||a[1]===undefined)return;
+    let i=2,tsMsb=a[0]&0x3F,lastLow=a[1]&0x7F,currentTs=((tsMsb<<7)|lastLow)&0x1FFF,status=null,first=true;
+    const skipRealtime=()=>{
+      while(i<a.length&&a[i]>=0xF8)i++;
+      return i<a.length;
+    };
+    const readTimestamp=()=>{
+      if(!skipRealtime())return false;
+      const b=a[i++];
+      if(b<0x80)return false;
+      const low=b&0x7F;
+      if(low<lastLow)tsMsb=(tsMsb+1)&0x3F;
+      lastLow=low;currentTs=((tsMsb<<7)|low)&0x1FFF;
+      return true;
+    };
+    const readData=()=>{
+      if(!skipRealtime())return null;
+      const b=a[i];
+      if(b&0x80)return null;
+      i++;return b;
     };
     const need=st=>{
-      const c=st&0xf0;
+      const c=st&0xF0;
       if(c===0xC0||c===0xD0)return 1;
       if(c>=0x80&&c<=0xE0)return 2;
       return 0;
     };
-    /* BLE-MIDI: packet = header + timestamp + MIDI event(s).
-       A timestamp precedes later events; the first event starts immediately
-       after the two-byte packet header. Running status is packet-local. */
     while(i<a.length){
-      let b=a[i++];
-      if(b>=0xF8)continue;
-
-      let data1=null;
-      if(firstEvent){
-        if(b<0x80)continue;
-        status=b;
-        this.lastStatus=status;
-        firstEvent=false;
-      }else if(b>=0x80){
-        /* Timestamp for the next MIDI event. */
-        if(i>=a.length)break;
-        b=a[i++];
-        if(b>=0xF8)continue;
-        if(b>=0x80){
-          status=b;
-          this.lastStatus=status;
-        }else{
-          if(status==null)continue;
-          data1=b; /* running status after timestamp */
-        }
-      }else{
-        if(status==null)continue;
-        data1=b; /* running status without a new timestamp */
-      }
-
+      if(!first&&!readTimestamp())break;
+      if(!skipRealtime())break;
+      const b=a[i++];
+      if(b>=0x80)status=b;
+      else if(status!=null){i--; /* running status: put data byte back for readData() */ }
+      else break;
       const count=need(status);
-      if(!count)continue;
-      if(data1===null){
-        if(i>=a.length)break;
-        data1=a[i++];
-        if(data1>=0x80)break;
-      }
-      if(count===1){
-        emit(status,data1,0);
-        continue;
-      }
-      if(i>=a.length)break;
-      const data2=a[i++];
-      if(data2>=0x80)break;
-      emit(status,data1,data2);
+      if(!count){first=false;continue;}
+      let d1=b>=0x80?readData():b;
+      if(d1==null)d1=readData();
+      if(d1==null)break;
+      const d2=count===2?readData():0;
+      if(count===2&&d2==null)break;
+      this.manager.dispatch(status,d1,d2,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
+      first=false;
     }
   }
   disconnect(){
+    this.clock.reset();
     try{this.server?.disconnect();}catch(e){}
     this.characteristic=null;this.server=null;
     this.manager.setStatus("BLE MIDI disconnected");
@@ -1534,6 +1544,8 @@ class BleMidiTransport{
 class MidiManager{
   constructor(synth){
     this.synth=synth;this.access=null;this.input=null;this.select=$("midiSelect");
+    this._midiVisualActive=new Set();this._midiVisualPulse=new Map();this._midiVisualRaf=0;
+    this._pendingStatus="";this._statusRaf=0;
   }
   async init(){
     if(!navigator.requestMIDIAccess){this.setStatus("WebMIDI unavailable — touch keyboard still works");return false;}
@@ -1541,8 +1553,6 @@ class MidiManager{
       this.access=await navigator.requestMIDIAccess({sysex:false});
       this.refresh();
       this.access.onstatechange=()=>this.refresh();
-      /* Windows/Edge can recreate a BLE-MIDI endpoint shortly after page load.
-         Keep rebinding the remembered controller instead of requiring a refresh. */
       clearInterval(this._watchTimer);
       this._watchTimer=setInterval(()=>{
         try{
@@ -1562,6 +1572,61 @@ class MidiManager{
     }
   }
   setStatus(msg){const st=$("stxt");if(st)st.textContent=msg;}
+  queueStatus(msg){
+    this._pendingStatus=msg;
+    if(this._statusRaf)return;
+    this._statusRaf=requestAnimationFrame(()=>{
+      this._statusRaf=0;
+      const st=$("stxt");if(st&&this._pendingStatus)st.textContent=this._pendingStatus;
+      this._pendingStatus="";
+    });
+  }
+  _flushMidiVisuals(){
+    this._midiVisualRaf=0;
+    const now=performance.now();
+    const notes=new Set([...this._midiVisualActive,...[...this._midiVisualPulse.entries()].filter(([,until])=>until>now).map(([m])=>m)]);
+    for(const m of notes){
+      const key=document.querySelector('.key[data-base-midi="'+m+'"]');
+      if(key)key.classList.add("midi-active");
+    }
+    for(const [m,until] of this._midiVisualPulse){
+      if(until<=now&&!this._midiVisualActive.has(m)){
+        const key=document.querySelector('.key[data-base-midi="'+m+'"]');
+        if(key)key.classList.remove("midi-active");
+        this._midiVisualPulse.delete(m);
+      }
+    }
+    if(this._midiVisualActive.size||this._midiVisualPulse.size)this._midiVisualRaf=requestAnimationFrame(()=>this._flushMidiVisuals());
+  }
+  queueMidiVisual(note,on=true){
+    const m=Number(note);
+    if(!Number.isFinite(m))return;
+    if(on){this._midiVisualActive.add(m);this._midiVisualPulse.set(m,performance.now()+75);}
+    else this._midiVisualActive.delete(m);
+    if(!this._midiVisualRaf)this._midiVisualRaf=requestAnimationFrame(()=>this._flushMidiVisuals());
+  }
+  clearMidiVisuals(){
+    this._midiVisualActive.clear();this._midiVisualPulse.clear();
+    if(this._midiVisualRaf){cancelAnimationFrame(this._midiVisualRaf);this._midiVisualRaf=0;}
+    document.querySelectorAll(".key.midi-active").forEach(k=>k.classList.remove("midi-active"));
+  }
+  _eventTimestamp(e){
+    const t=Number.isFinite(Number(e?.receivedTime))?Number(e.receivedTime):Number(e?.timeStamp);
+    return Number.isFinite(t)?normalizeMidiPerformanceTime(t):null;
+  }
+  dispatch(status,a,b,timestampMs=null,leadMs=.75){
+    const cmd=status&0xF0,ch=(status&0x0F)+1;
+    if(cmd===0x90&&b>0)this.noteOn(a,b,ch,timestampMs,leadMs);
+    else if(cmd===0x80||(cmd===0x90&&b===0))this.noteOff(a,ch,timestampMs,leadMs);
+    else if(cmd===0xB0)this.cc(a,b,ch,timestampMs,leadMs);
+    else if(cmd===0xE0){
+      const bend=((b<<7)|a)-8192,norm=bend/8192,when=this.synth.started?midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs):null;
+      this.synth.setBend(pitchBendCents(norm),.003,when);
+      this.synth.modMatrix.setSource("pitchBend",norm);
+      setWheelVisual($("pitchWheel"),norm,true);
+    }
+  }
+  setStatus(msg){const st=$("stxt");if(st)st.textContent=msg;}
   refresh(){
     if(!this.select)return;
     const inputs=[...(this.access?.inputs?.values?.()||[])],previous=this.select.value;
@@ -1570,30 +1635,18 @@ class MidiManager{
     this.select.innerHTML="";
     if(!inputs.length){
       const o=document.createElement("option");o.value="";o.textContent="No MIDI devices";this.select.appendChild(o);
-      this.input=null;
-      return;
+      this.input=null;return;
     }
     inputs.forEach((i,n)=>{const o=document.createElement("option");o.value=i.id;o.textContent=i.name||("MIDI Input "+(n+1));this.select.appendChild(o);});
     const preferred=inputs.find(i=>/smk[-\s]?37|m[-\s]?vave/i.test(i.name||""));
-    const wanted=inputs.find(i=>i.id===rememberedId)
-      ||inputs.find(i=>i.name===rememberedName)
-      ||preferred
-      ||inputs.find(i=>i.id===previous)
-      ||inputs[0];
-    this.select.value=wanted.id;
-    this.select.onchange=()=>this.useInput(this.select.value);
-    this.useInput(this.select.value);
+    const wanted=inputs.find(i=>i.id===rememberedId)||inputs.find(i=>i.name===rememberedName)||preferred||inputs.find(i=>i.id===previous)||inputs[0];
+    this.select.value=wanted.id;this.select.onchange=()=>this.useInput(this.select.value);this.useInput(this.select.value);
   }
   useInput(id){
-    if(this.input){
-      try{this.input.onmidimessage=null;}catch(e){}
-    }
+    if(this.input)try{this.input.onmidimessage=null;}catch(e){}
     this.input=this.access?.inputs?.get(id)||null;
     if(this.input){
-      try{
-        localStorage.setItem("so-midi-input-id-v14",this.input.id||"");
-        localStorage.setItem("so-midi-input-name-v14",this.input.name||"");
-      }catch(e){}
+      try{localStorage.setItem("so-midi-input-id-v14",this.input.id||"");localStorage.setItem("so-midi-input-name-v14",this.input.name||"");}catch(e){}
       this.input.onmidimessage=e=>this.onMessage(e);
       this.setStatus("MIDI ready: "+(this.input.name||"Input"));
     }
@@ -1606,73 +1659,53 @@ class MidiManager{
     if(midiRouteMode==="ch"&&ch>=1&&ch<=LAYER_COUNT)return ch-1;
     return synth.activeLayer;
   }
-  noteOn(m,v,ch){
+  noteOn(m,v,ch,timestampMs=null,leadMs=.75){
     const vel=Math.max(.001,Math.min(1,(v??100)/127));
     const noteName=midiToNote(m);
-    const st=$("stxt");
-    if(st)st.textContent="MIDI NOTE: "+noteName+" · CH "+ch+" · "+Math.round(vel*127);
-    /* Mirror controller notes on the on-screen keybed when they are in range. */
-    const key=document.querySelector('.key[data-base-midi="'+m+'"]');
-    if(key){
-      key.classList.add("active");
-      clearTimeout(key._midiActiveTimer);
-      key._midiActiveTimer=setTimeout(()=>key.classList.remove("active"),220);
-    }
+    this.queueStatus("MIDI NOTE: "+noteName+" · CH "+ch+" · "+Math.round(vel*127));
+    this.queueMidiVisual(m,true);
+    const play=()=>{
+      const when=timestampMs==null?null:midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs);
+      for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer,when);
+    };
     if(this.synth.started){
-      if(this.synth.ctx?.state==="suspended"){
-        void this.synth.ctx.resume().then(()=>{for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);});
-        return;
-      }
-      for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);
+      if(this.synth.ctx?.state==="suspended")void this.synth.ctx.resume().then(play);
+      else play();
       return;
     }
-    void this.synth.start().then(()=>{
-      for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);
-    }).catch(err=>{
-      this.setStatus("MIDI received, but audio is not running — tap Start again");
-    });
+    void this.synth.start().then(play).catch(()=>{this.setStatus("MIDI received, but audio is not running — tap Start again");});
   }
-  noteOff(m,ch){
+  noteOff(m,ch,timestampMs=null,leadMs=.75){
+    this.queueMidiVisual(m,false);
     if(!this.synth.started)return;
+    const when=midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs);
     const layers=midiRouteMode==="ch"?(ch>=1&&ch<=LAYER_COUNT?[ch-1]:[]):layerState.map((_,i)=>i);
-    for(const layer of layers)this.synth.noteOff(m,layer);
+    for(const layer of layers)this.synth.noteOff(m,layer,when);
   }
-  cc(cc,val,ch){
-    const x=Math.max(0,Math.min(1,val/127)),layer=this.controlLayer(ch);
+  cc(cc,val,ch,timestampMs=null,leadMs=.75){
+    const x=Math.max(0,Math.min(1,val/127)),layer=this.controlLayer(ch),when=this.synth.started?midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs):null;
     if(cc===1){
-      this.synth.modMatrix.setSource("modWheel",x);
-      this.synth.setModWheel(x);
-      setModWheelVisual($("modWheel"),x);
-      const st=$("stxt");if(st)st.textContent="MIDI Mod Wheel: "+Math.round(x*127);
+      this.synth.modMatrix.setSource("modWheel",x);this.synth.setModWheel(x,when);setModWheelVisual($("modWheel"),x);
       return;
     }
-    if(cc===7){this.synth.updateParam("volume",x);return;}
-    if(cc===10){layerState[layer].pan=x*2-1;refreshLayerGains();return;}
+    if(cc===7){this.synth.updateParam("volume",x,when);return;}
+    if(cc===10){layerState[layer].pan=x*2-1;refreshLayerGains(when);return;}
     if(cc===64){
       const was=this.synth.sustain;this.synth.sustain=x>=.5;
-      if(was&&!this.synth.sustain)this.synth.releaseSustain();
-      const led=$("sustainLed");
-      if(led){led.classList.toggle("on",this.synth.sustain);led.textContent=this.synth.sustain?"SUSTAIN ON":"SUSTAIN OFF";}
+      if(was&&!this.synth.sustain)this.synth.releaseSustain(when);
+      const led=$("sustainLed");if(led){led.classList.toggle("on",this.synth.sustain);led.textContent=this.synth.sustain?"SUSTAIN ON":"SUSTAIN OFF";}
       syncSynthState(false);return;
     }
-    if(cc>=20&&cc<=23){layerState[cc-20].vol=x;refreshLayerGains();return;}
-    if(cc>=28&&cc<=31){layerState[cc-28].pan=x*2-1;refreshLayerGains();return;}
-    if(cc>=36&&cc<=39){layerState[cc-36].fx=x;refreshLayerGains();return;}
-    if(cc>=44&&cc<=47){layerState[cc-44].enabled=x>=.5;refreshLayerGains();buildLayerMixer();return;}
+    if(cc>=20&&cc<=23){layerState[cc-20].vol=x;refreshLayerGains(when);return;}
+    if(cc>=28&&cc<=31){layerState[cc-28].pan=x*2-1;refreshLayerGains(when);return;}
+    if(cc>=36&&cc<=39){layerState[cc-36].fx=x;refreshLayerGains(when);return;}
+    if(cc>=44&&cc<=47){layerState[cc-44].enabled=x>=.5;refreshLayerGains(when);buildLayerMixer();return;}
   }
   onMessage(e){
-    const d=e.data||[];
-    if(!d.length)return;
-    const status=d[0]||0,cmd=status&0xf0,ch=(status&0x0f)+1,a=d[1]||0,b=d[2]||0;
-    if(cmd===0x90&&b>0)this.noteOn(a,b,ch);
-    else if(cmd===0x80||(cmd===0x90&&b===0))this.noteOff(a,ch);
-    else if(cmd===0xB0)this.cc(a,b,ch);
-    else if(cmd===0xE0){
-      const bend=((b<<7)|a)-8192,norm=bend/8192;
-      this.synth.setBend(pitchBendCents(norm),.003);
-      this.synth.modMatrix.setSource("pitchBend",norm);
-      setWheelVisual($("pitchWheel"),norm,true);
-    }
+    const d=e.data||[];if(!d.length)return;
+    const status=d[0]||0,a=d[1]||0,b=d[2]||0;
+    const stamp=this._eventTimestamp(e);
+    this.dispatch(status,a,b,stamp,.75);
   }
 }
 const midiManager=new MidiManager(synth);
@@ -1759,7 +1792,7 @@ $("midiRouteBtn")?.addEventListener("click",()=>{
 });
 
 $("panicBtn")?.addEventListener("click",()=>{
-  synth.panic();activeKeys.clear();
+  synth.panic();midiManager?.clearMidiVisuals?.();activeKeys.clear();
   document.querySelectorAll(".key.active").forEach(k=>k.classList.remove("active"));
 });
 
