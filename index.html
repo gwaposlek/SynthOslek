@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.20-surprise-volume-hard-lock">
-<title>SynthOslek v14.20 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.21-midi-duplicate-guard">
+<title>SynthOslek v14.21 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1604,7 +1604,7 @@ class BleMidiTransport{
     let currentTs=0;
     let runningStatus=null;
     const realtime=b=>b>=0xF8;
-    const emitRealtime=b=>{this.manager.dispatch(b,0,0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);};
+    const emitRealtime=b=>{this.manager.dispatch(b,0,0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs,"ble");};
     const msgLen=status=>{
       const c=status&0xF0;
       if(c===0xC0||c===0xD0)return 1;
@@ -1661,7 +1661,7 @@ class BleMidiTransport{
       if(d1.length!==len)break;
       this.manager.rxCount++;this.manager.lastRxAt=performance.now();
       this.manager.setStatus("MIDI RX: "+status.toString(16).padStart(2,"0")+" "+d1.map(v=>v.toString(16).padStart(2,"0")).join(" "));
-      this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
+      this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs,"ble");
     }
   }
   disconnect(){
@@ -1681,6 +1681,9 @@ class MidiManager{
     this.synth=synth;this.access=null;this.input=null;this.select=$("midiSelect");
     this._midiVisualActive=new Set();this._midiVisualPulse=new Map();this._midiVisualRaf=0;
     this._pendingStatus="";this._statusRaf=0;this._inputHandler=null;this._useSeq=0;this.rxCount=0;this.lastRxAt=0;this.boundRxCount=0;
+    /* v14.21: when SMK-37 is exposed through both WebMIDI and direct BLE, the same
+       physical key can arrive twice. Keep a tiny cross-transport note-event guard. */
+    this._recentTransportEvents=new Map();
   }
   async init(){
     if(!navigator.requestMIDIAccess){this.setStatus("WebMIDI unavailable — touch keyboard still works");return false;}
@@ -1749,7 +1752,7 @@ class MidiManager{
     const t=Number.isFinite(Number(e?.receivedTime))?Number(e.receivedTime):Number(e?.timeStamp);
     return Number.isFinite(t)?normalizeMidiPerformanceTime(t):null;
   }
-  dispatch(status,a,b,timestampMs=null,leadMs=.75){
+  dispatch(status,a,b,timestampMs=null,leadMs=.75,source="unknown"){
     const cmd=status&0xF0,ch=(status&0x0F)+1;
     if(cmd===0x90&&b>0)this.noteOn(a,b,ch,timestampMs,leadMs);
     else if(cmd===0x80||(cmd===0x90&&b===0))this.noteOff(a,ch,timestampMs,leadMs);
@@ -1864,14 +1867,24 @@ class MidiManager{
     this.rxCount++;this.lastRxAt=performance.now();
     const status=Number(d[0])||0,a=Number(d[1])||0,b=Number(d[2])||0;
     const cmd=status&0xF0,ch=(status&0x0F)+1;
+    if((cmd===0x80||cmd===0x90)&&source!=="unknown"){
+      const key=(cmd===0x90&&b===0?0x80:cmd).toString(16)+":"+a+":"+b+":"+ch;
+      const now=performance.now(),prev=this._recentTransportEvents.get(key);
+      if(prev&&prev.source!==source&&now-prev.at<10&&midiManagerBleActive()){
+        this._recentTransportEvents.set(key,{source,at:now});
+        return;
+      }
+      this._recentTransportEvents.set(key,{source,at:now});
+    }
     if(cmd===0x90&&b>0)this.queueStatus("MIDI RX: "+midiToNote(a)+" · CH "+ch);
     else if(cmd===0x80||(cmd===0x90&&b===0))this.queueStatus("MIDI RX: OFF · "+midiToNote(a)+" · CH "+ch);
     else this.queueStatus("MIDI RX: "+Array.from(d).map(v=>v.toString(16).padStart(2,"0")).join(" "));
     const stamp=this._eventTimestamp(e);
-    this.dispatch(status,a,b,stamp,.75);
+    this.dispatch(status,a,b,stamp,.75,"webmidi");
   }
 }
 const midiManager=new MidiManager(synth);
+function midiManagerBleActive(){return !!(bleMidi?.device?.gatt?.connected&&bleMidi?.characteristic);}
 
 /* Direct BLE-MIDI fallback for browsers without a usable WebMIDI input.
    Controller discovery is deferred until Start so optional MIDI/BLE permission
