@@ -639,7 +639,7 @@ class ModulationMatrix{
 class SynthOslek{
   constructor(){
     this.ctx=null;this._startPromise=null;this.modWheel=0;this.modVibratoCents=50;this.voices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
-    this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0};
+    this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
@@ -649,43 +649,43 @@ class SynthOslek{
     this.analyser=c.createAnalyser();this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;
     const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-6;L.knee.value=10;L.ratio.value=4;L.attack.value=.005;L.release.value=.18;
     this.delay=c.createDelay(1.5);this.delay.delayTime.value=p.delayTime;
-    this.delayFeedback=G(p.delayFb);this.delayGain=G(p.delayMix);
+    this.delayFeedback=G(p.delayFb);this.delayGain=G(1);
     this.delay.connect(this.delayFeedback);this.delayFeedback.connect(this.delay);this.delay.connect(this.delayGain);
-    this.convolver=c.createConvolver();this.convolver.buffer=this._impulse(2.2,2.5);this.reverbGain=G(p.reverbMix);
+    this.convolver=c.createConvolver();this.convolver.buffer=this._impulse(2.2,2.5);this.reverbGain=G(1);
     this.lfo=c.createOscillator();this.lfo.frequency.value=p.lfoRate;this.lfo.start();
-    this.chorusGain=G(p.chorusMix);
+    this.chorusGain=G(1);this.chorusInput=G(1);
     [[.7,.0035,.018],[1.1,.004,.026]].forEach(([r,d,t])=>{const o=c.createOscillator(),m=G(d),dl=c.createDelay(.1);
-      o.frequency.value=r;dl.delayTime.value=t;o.connect(m);m.connect(dl.delayTime);o.start();this.bus.connect(dl);dl.connect(this.chorusGain);});
+      o.frequency.value=r;dl.delayTime.value=t;o.connect(m);m.connect(dl.delayTime);o.start();this.chorusInput.connect(dl);dl.connect(this.chorusGain);});
     const nb=c.createBuffer(1,c.sampleRate,c.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;this.noiseBuf=nb;
-    this.bus.connect(this.analyser);this.bus.connect(this.delay);this.bus.connect(this.convolver);this.convolver.connect(this.reverbGain);
+    this.bus.connect(this.analyser);this.convolver.connect(this.reverbGain);
     for(const n of[this.delayGain,this.reverbGain,this.chorusGain])n.connect(this.analyser);
     this.analyser.connect(L);L.connect(this.masterGain);this.masterGain.connect(c.destination);
     this.started=true;if(c.state==="suspended")await c.resume();
   }
   _impulse(d,dec){const r=this.ctx.sampleRate,l=r*d,b=this.ctx.createBuffer(2,l,r);
     for(let c=0;c<2;c++){const a=b.getChannelData(c);for(let i=0;i<l;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/l,dec);}return b;}
-  _lfoScale(){return({cutoff:1800,pitch:50,amp:.35})[this.params.lfoDest]*this.params.lfoDepth;}
+  _lfoScale(P=this.params){return({cutoff:1800,pitch:50,amp:.35})[P.lfoDest]*P.lfoDepth||0;}
   setModWheel(v){
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
-    if(this.started){
-      for(const v of this.voices.values()){
-        if(v.modPitch)v.modPitch.gain.setTargetAtTime(this.modWheel*this.modVibratoCents,this.ctx.currentTime,.015);
-        if(v.lm)v.lm.gain.setTargetAtTime(this._lfoScale(),this.ctx.currentTime,.02);
-      }
+    if(this.started)for(const voice of this.voices.values()){
+      if(voice.modPitch)voice.modPitch.gain.setTargetAtTime(this.modWheel*this.modVibratoCents,this.ctx.currentTime,.015);
+      if(voice.lm)voice.lm.gain.setTargetAtTime(this._lfoScale(voice.params),this.ctx.currentTime,.02);
     }
   }
   _det(tc=.01){const t=this.ctx.currentTime;
-    for(const v of this.voices.values()){const P=v.layer===this.activeLayer?this.params:(v.params||this.params);
-      for(const x of v.oscs)x.o.detune.setTargetAtTime(P["osc"+x.w+"Detune"]+x.off*P.spread+this.bend+(this.wheel||0),t,tc);}}
+    for(const v of this.voices.values()){
+      const P=v.params||this.params;
+      for(const x of v.oscs){
+        const base=x.kind==="sub"?0:(Number(P["osc"+x.w+"Coarse"])||0)*100+(Number(P["osc"+x.w+"Detune"])||0);
+        const spread=x.kind==="sub"?0:x.off*(Number(P.spread)||0);
+        x.o.detune.setTargetAtTime(base+spread+this.bend+(this.wheel||0),t,tc);
+      }
+    }
+  }
   setBend(c,tc){this.bend=c;if(this.started)this._det(tc);}
   setWheel(c){this.wheel=c;if(this.started)this._det(.02);}
   noteOn(midi,vel=.85,layer=this.activeLayer){
     if(!this.started)return;
-    const MAX_VOICES=48;
-    if(this.voices.size>=MAX_VOICES){
-      const oldest=this.voices.keys().next().value;
-      if(oldest!==undefined)this._forceStop(oldest);
-    }
     const key=layer+":"+midi;if(this.voices.has(key))this._forceStop(key);
     const c=this.ctx,P=this.layerProfiles[layer]||this.params,G=v=>this._G(v),now=c.currentTime,freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
     const fq=(o,f)=>{if(gl>.001&&this.lastFreq){o.frequency.setValueAtTime(this.lastFreq*(f/freq),now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
@@ -701,28 +701,29 @@ class SynthOslek{
     env.connect(vf);vf.connect(va);
     const LS=this.layerMix[layer]||{};const lg=G(LS.enabled===false||LS.mute?0:(LS.vol??.7));
     const pan=c.createStereoPanner();pan.pan.value=LS.pan??0;
-    const fx=G(LS.fx??.2);
+    const fx=G(LS.fx??.2),fxDelay=G(P.delayMix??0),fxReverb=G(P.reverbMix??0),fxChorus=G(P.chorusMix??0);
     va.connect(lg);lg.connect(pan);pan.connect(this.bus);
-    lg.connect(fx);fx.connect(this.delay);fx.connect(this.convolver);
+    lg.connect(fx);fx.connect(fxDelay);fx.connect(fxReverb);fx.connect(fxChorus);
+    fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
     this.lfo.connect(lm);
     this.lfo.connect(modPitch);
     if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);
-    const v={env,vf,va,lm,modPitch,layer,layerGain:lg,pan,fx,params:{...P},oscs:[],all:[],g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,va,lm,modPitch,layer,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,params:{...P},oscs:[],all:[],g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const n=Math.round(P.unison),norm=1/Math.sqrt(n);
     for(const w of[1,2])for(let i=0;i<n;i++){
       const o=c.createOscillator(),off=n>1?i/(n-1)*2-1:0,ng=G(norm);
-      o.type=P["osc"+w+"Wave"];fq(o,freq);o.detune.setValueAtTime(P["osc"+w+"Detune"]+off*P.spread+this.bend+(this.wheel||0),now);
+      o.type=P["osc"+w+"Wave"];fq(o,freq);o.detune.setValueAtTime((Number(P["osc"+w+"Coarse"])||0)*100+(Number(P["osc"+w+"Detune"])||0)+off*(Number(P.spread)||0)+this.bend+(this.wheel||0),now);
       o.connect(ng);ng.connect(v["g"+w]);if(P.lfoDest==="pitch")lm.connect(o.detune);else modPitch.connect(o.detune);
       o.start(now);v.oscs.push({o,w,off});v.all.push(o);
     }
-    const so=c.createOscillator();fq(so,freq/2);so.connect(v.gs);so.start(now);v.all.push(so);
+    const so=c.createOscillator();fq(so,freq/2);so.detune.setValueAtTime(this.bend+(this.wheel||0),now);so.connect(v.gs);if(P.lfoDest==="pitch")lm.connect(so.detune);else modPitch.connect(so.detune);so.start(now);v.oscs.push({o:so,w:0,off:0,kind:"sub"});v.all.push(so);
     const ns=c.createBufferSource();ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.all.push(ns);
     this.lastFreq=freq;this.voices.set(key,v);
   }
   _kill(v,t){
-    v.all.forEach(o=>o.stop(t));
-    v.all[0].onended=()=>{try{this.lfo.disconnect(v.lm);}catch(e){}try{this.lfo.disconnect(v.modPitch);}catch(e){}v.lm.disconnect();v.modPitch.disconnect();v.va.disconnect();};
+    v.all.forEach(o=>{try{o.stop(t);}catch(e){}});
+    if(v.all[0])v.all[0].onended=()=>{try{this.lfo.disconnect(v.lm);}catch(e){}try{this.lfo.disconnect(v.modPitch);}catch(e){}try{v.lm.disconnect();}catch(e){}try{v.modPitch.disconnect();}catch(e){}try{v.va.disconnect();}catch(e){}try{v.fx?.disconnect();}catch(e){}try{v.fxDelay?.disconnect();}catch(e){}try{v.fxReverb?.disconnect();}catch(e){}try{v.fxChorus?.disconnect();}catch(e){}};
   }
   noteOff(midi,layer=null){
     const matches=[...this.voices.entries()].filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer));
@@ -741,21 +742,28 @@ class SynthOslek{
   }
   panic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);}
   updateParam(k,x){
-    this.params[k]=x;if(this.layerProfiles[this.activeLayer])this.layerProfiles[this.activeLayer][k]=x;if(!this.started)return;
+    this.params[k]=x;
+    if(this.layerProfiles[this.activeLayer])this.layerProfiles[this.activeLayer][k]=x;
+    if(!this.started)return;
     const t=this.ctx.currentTime,T=(a,tc)=>a.setTargetAtTime(x,t,tc);
-    const A={volume:()=>T(this.masterGain.gain,.015),delayTime:()=>T(this.delay.delayTime,.02),delayFb:()=>T(this.delayFeedback.gain,.02),
-      delayMix:()=>T(this.delayGain.gain,.02),reverbMix:()=>T(this.reverbGain.gain,.02),chorusMix:()=>T(this.chorusGain.gain,.02),lfoRate:()=>T(this.lfo.frequency,.02)};
+    const A={volume:()=>T(this.masterGain.gain,.015),delayTime:()=>T(this.delay.delayTime,.02),delayFb:()=>T(this.delayFeedback.gain,.02),lfoRate:()=>T(this.lfo.frequency,.02)};
     if(A[k])return A[k]();
-    if(/Detune|spread/.test(k))return this._det();
-    const LV={osc1Level:"g1",osc2Level:"g2",subLevel:"gs",noiseLevel:"gn"};
+    const levels={osc1Level:"g1",osc2Level:"g2",subLevel:"gs",noiseLevel:"gn"};
+    const detuneParam=k==="osc1Detune"||k==="osc2Detune"||k==="osc1Coarse"||k==="osc2Coarse"||k==="spread";
     for(const v of this.voices.values()){
-      if(k==="cutoff")T(v.vf.frequency,.02);
+      if(v.layer!==this.activeLayer)continue;
+      v.params[k]=x;
+      if(k==="delayMix"&&v.fxDelay)T(v.fxDelay.gain,.02);
+      else if(k==="reverbMix"&&v.fxReverb)T(v.fxReverb.gain,.02);
+      else if(k==="chorusMix"&&v.fxChorus)T(v.fxChorus.gain,.02);
+      else if(k==="cutoff")T(v.vf.frequency,.02);
       else if(k==="resonance")T(v.vf.Q,.015);
       else if(k==="filterType")v.vf.type=x;
-      else if(LV[k])T(v[LV[k]].gain,.01);
-      else if(/^osc[12]Wave$/.test(k))v.oscs.forEach(o=>{if(o.w==k[3])o.o.type=x;});
-      else if(k==="lfoDepth")v.lm.gain.value=this._lfoScale();
+      else if(/^osc[12]Wave$/.test(k))v.oscs.forEach(o=>{if(o.kind==="osc"&&o.w==k[3])o.o.type=x;});
+      else if(k==="lfoDepth"||k==="lfoDest")v.lm.gain.value=this._lfoScale(v.params);
+      else if(levels[k])T(v[levels[k]].gain,.01);
     }
+    if(detuneParam)this._det();
   }
   getParams(){return{...this.params};}
 }
@@ -770,7 +778,7 @@ keys:{osc1Wave:"sine",osc1Detune:0,osc1Level:.6,osc2Wave:"triangle",osc2Detune:3
 acid:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.9,osc2Wave:"square",osc2Detune:0,osc2Level:0,filterType:"lowpass",cutoff:600,resonance:14,attack:.005,decay:.12,sustain:.3,release:.12,fEnvAmt:.85,fAttack:.005,fDecay:.18,fSustain:.1,fRelease:.15,lfoRate:.5,lfoDepth:.15,lfoDest:"cutoff",delayTime:.18,delayFb:.4,delayMix:.2,reverbMix:.05,volume:.55,glide:25}
 };
 
-Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0});
+Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0});
 Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});Object.assign(PRESETS.lead,{unison:3,spread:10,chorusMix:.15});
 Object.assign(PRESETS.bass,{subLevel:.5});Object.assign(PRESETS.keys,{chorusMix:.35});
 let oct=0;
@@ -883,12 +891,9 @@ function setActiveLayer(i){
   synth.activeLayer=i;synth.params=synth.layerProfiles[i];
   Object.keys(UI).forEach(k=>{if(UI[k]?.set && synth.params[k]!==undefined)UI[k].set(synth.params[k],true)});
   document.querySelectorAll('.layer-strip').forEach((d,n)=>d.classList.toggle('selected',n===i));
-  if(synth.started&&synth.masterGain&&synth.params.volume!==undefined){
-    synth.masterGain.gain.setTargetAtTime(synth.params.volume,synth.ctx.currentTime,.015);
-  }
   syncSynthState(false);
 }
-function loadLayerPreset(i,name){const base=PRESETS[name]||PRESETS.init;synth.layerProfiles[i]={...base,unison:base.unison??1,spread:base.spread??12,subLevel:base.subLevel??0,noiseLevel:base.noiseLevel??0,chorusMix:base.chorusMix??0};layerState[i].preset=name;if(i===synth.activeLayer)setActiveLayer(i);else syncSynthState(false);}
+function loadLayerPreset(i,name){const base=PRESETS[name]||PRESETS.init;synth.layerProfiles[i]={...base,osc1Coarse:base.osc1Coarse??0,osc2Coarse:base.osc2Coarse??0,unison:base.unison??1,spread:base.spread??12,subLevel:base.subLevel??0,noiseLevel:base.noiseLevel??0,chorusMix:base.chorusMix??0};layerState[i].preset=name;if(i===synth.activeLayer)setActiveLayer(i);else syncSynthState(false);}
 function makeLayerKnob(label,value,min,max,step,unit,onInput){
  const el=document.createElement('div');el.className='layer-knob';el.dataset.value=value;
  const fmt=v=>label==='PAN'?(Math.abs(v)<.005?'C':(v<0?'L':'R')+Math.round(Math.abs(v)*100)):Math.round(v*100)+(unit||'');
@@ -1006,7 +1011,7 @@ function drawEnvs(){document.querySelectorAll("canvas.env").forEach(cv=>{
 drawEnvs();
 document.getElementById("volKnob").appendChild(makeKnob("volume"));
 buildLayerMixer();
-function applyParams(p){for(const[k,v]of Object.entries(p))if(UI[k])UI[k].set(v);}
+function applyParams(p){for(const[k,v]of Object.entries(p))if(UI[k])UI[k].set(v);for(const k of ["osc1Coarse","osc2Coarse"])if(p[k]!==undefined){synth.params[k]=p[k];if(synth.layerProfiles[synth.activeLayer])synth.layerProfiles[synth.activeLayer][k]=p[k];}synth.started&&synth._det?.();}
 const presetSel=document.getElementById("presetSelect");
 presetSel.addEventListener("change",e=>{if(PRESETS[e.target.value])applyParams({...PRESETS.init,...PRESETS[e.target.value]});});
 const USER=(()=>{try{return JSON.parse(localStorage.getItem("so-presets")||"{}");}catch(e){return{};}})();
@@ -1023,7 +1028,8 @@ const SD={
   clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
   analyze(text){
     const q=(text||'').toLowerCase().trim(); let p={...PRESETS.init}; const hits=[];
-    const has=(...w)=>w.some(x=>q.includes(x));
+    const norm=(" "+q.replace(/[^a-z0-9]+/g," ")+" ").replace(/\s+/g," ");
+    const has=(...w)=>w.some(x=>norm.includes(" "+String(x).toLowerCase()+" "));
     const use=(name,patch)=>{p={...p,...patch};hits.push(name)};
     if(has('hammond','organ','tonewheel','church organ','church')) use('ORGAN',{osc1Wave:'sine',osc2Wave:'sine',osc1Level:.72,osc2Level:.68,osc1Detune:0,osc2Detune:1200,filterType:'lowpass',cutoff:8500,resonance:.3,attack:.003,decay:.04,sustain:.98,release:.08,fEnvAmt:.02,fAttack:.002,fDecay:.05,fSustain:1,fRelease:.08,lfoDest:'pitch',lfoRate:5.5,lfoDepth:.018,unison:1,spread:0,subLevel:.32,noiseLevel:.015,chorusMix:.32,delayMix:.04,reverbMix:.18,volume:.72});
     else if(has('piano','acoustic piano','grand piano')) use('PIANO',{osc1Wave:'triangle',osc2Wave:'sine',osc1Level:.8,osc2Level:.32,osc1Detune:0,osc2Detune:1200,filterType:'lowpass',cutoff:6200,resonance:.5,attack:.001,decay:.85,sustain:.18,release:1.15,fEnvAmt:.42,fAttack:.001,fDecay:.65,fSustain:.08,fRelease:.9,lfoDepth:0,unison:1,spread:0,subLevel:.04,noiseLevel:.012,chorusMix:.04,delayMix:.02,reverbMix:.24,volume:.72});
@@ -1043,7 +1049,12 @@ const SD={
     if(has('lofi','lo-fi','lo fi')){p.cutoff=Math.min(p.cutoff,2800);p.noiseLevel=Math.max(p.noiseLevel,.035);p.chorusMix=Math.max(p.chorusMix,.15);hits.push('LO-FI');}
     if(has('80s','eighties','retro')){p.unison=Math.max(p.unison,3);p.spread=Math.max(p.spread,16);p.chorusMix=Math.max(p.chorusMix,.34);p.delayMix=Math.max(p.delayMix,.14);hits.push('80S');}
     if(has('gospel','worship')){p.reverbMix=Math.max(p.reverbMix,.28);p.chorusMix=Math.max(p.chorusMix,.16);hits.push('GOSPEL');}
-    return {patch:p,tags:hits,engine:has('organ','piano','electric piano')?'additive':has('bell','pluck')?'physical':'subtractive',confidence:hits.length>2?'High match':hits.length?'Medium match':'Generic synth'};
+    for(const w of[1,2]){
+      const key="osc"+w+"Detune",total=Number(p[key])||0,coarse=Math.trunc(total/100);
+      p["osc"+w+"Coarse"]=(Number(p["osc"+w+"Coarse"])||0)+coarse;
+      p[key]=total-coarse*100;
+    }
+    return {patch:p,tags:hits,engine:has("organ","piano","electric piano")?"additive":has("bell","pluck")?"physical":"subtractive",confidence:hits.length>2?"High match":hits.length?"Medium match":"Generic synth"};
   }
 };
 
@@ -1059,8 +1070,8 @@ const SD={
     const {patch,tags,engine,confidence}=SD.analyze(prompt);
     applyParams(patch);
     if(eng && eng.value==='auto') eng.value=engine;
-    if(conf) conf.textContent=`• ${confidence}`;
-    if(res) res.innerHTML=`Created sound <b>"${prompt}"</b> — matched [${tags.join(', ')}]`;
+    if(conf) conf.textContent="• "+confidence;
+    if(res){res.textContent="";res.append("Created sound ");const b=document.createElement("b");b.textContent='"'+prompt+'"';res.appendChild(b);res.append(" — matched ["+tags.join(", ")+"]");}
     const brand=document.querySelector('.brand h1');
     if(brand){brand.classList.remove('pulse');void brand.offsetWidth;brand.classList.add('pulse');}
   };
@@ -1324,8 +1335,10 @@ class BleMidiTransport{
     this.lastStatus=null;
     this.MIDI_SERVICE="03b80e5a-ede8-4b33-a751-6ce34ec4c700";
     this.MIDI_CHARACTERISTIC="7772e5db-3868-4112-a1a9-f2669d106bf3";
-    this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";
+    this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";this._deviceDisconnectHandler=null;this._charHandler=null;
   }
+  _cleanupCharacteristic(){if(this.characteristic&&this._charHandler){try{this.characteristic.removeEventListener("characteristicvaluechanged",this._charHandler);}catch(e){}}this._charHandler=null;this.characteristic=null;}
+  _bindDevice(d){if(this.device===d&&this._deviceDisconnectHandler)return;if(this.device&&this._deviceDisconnectHandler)try{this.device.removeEventListener("gattserverdisconnected",this._deviceDisconnectHandler);}catch(e){}this.device=d;this._deviceDisconnectHandler=()=>this.onDisconnect();d.addEventListener?.("gattserverdisconnected",this._deviceDisconnectHandler);}
   async autoReconnect(){
     if(!navigator.bluetooth?.getDevices)return false;
     let savedId="",savedName="";
@@ -1342,9 +1355,8 @@ class BleMidiTransport{
     }catch(e){return false;}
   }
   async connectKnown(d){
-    this.device=d;
+    this._bindDevice(d);
     try{localStorage.setItem(this.storageId,d.id||"");localStorage.setItem(this.storageName,d.name||"SMK-37");}catch(e){}
-    d.addEventListener?.("gattserverdisconnected",()=>this.onDisconnect());
     if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
     this.server=await d.gatt.connect();
     let service;
@@ -1356,7 +1368,8 @@ class BleMidiTransport{
     }
     this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);
     await this.characteristic.startNotifications();
-    this.characteristic.addEventListener("characteristicvaluechanged",e=>this.onData(e.target.value));
+    this._charHandler=e=>this.onData(e.target.value);
+    this.characteristic.addEventListener("characteristicvaluechanged",this._charHandler);
     return true;
   }
   async connect(){
@@ -1379,9 +1392,8 @@ class BleMidiTransport{
       if(err?.name!=="TypeError")throw err;
       d=await navigator.bluetooth.requestDevice({acceptAllDevices:true});
     }
-    this.device=d;
+    this._bindDevice(d);
     try{localStorage.setItem(this.storageId,d.id||"");localStorage.setItem(this.storageName,d.name||"SMK-37");}catch(e){}
-    d.addEventListener?.("gattserverdisconnected",()=>this.onDisconnect());
     if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
     this.server=await d.gatt.connect();
     let service;
@@ -1399,13 +1411,12 @@ class BleMidiTransport{
     try{this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);}
     catch(err){throw new Error("BLE-MIDI service found, but its MIDI data characteristic was unavailable.");}
     await this.characteristic.startNotifications();
-    this.characteristic.addEventListener("characteristicvaluechanged",e=>this.onData(e.target.value));
+    this._charHandler=e=>this.onData(e.target.value);
+    this.characteristic.addEventListener("characteristicvaluechanged",this._charHandler);
     this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37 connected"));
     return true;
   }
-  onDisconnect(){
-    this.characteristic=null;this.server=null;
-    this.manager.setStatus("BLE MIDI disconnected — reconnect when ready");
+  onDisconnect(){this._cleanupCharacteristic();this.server=null;const btn=$("bleMidiBtn");if(btn){btn.textContent="BT MIDI";btn.classList.remove("on");}this.manager.setStatus("BLE MIDI disconnected — reconnect when ready");
   }
   onData(view){
     if(!view||view.byteLength<3)return;
@@ -1650,6 +1661,7 @@ $("bleMidiBtn")?.addEventListener("click",async()=>{
   const btn=$("bleMidiBtn");
   try{
     btn.disabled=true;
+    if(bleMidi.device?.gatt?.connected&&bleMidi.characteristic){bleMidi.disconnect();return;}
     await bleMidi.connect();
     btn.textContent="BT: ON";
     btn.classList.add("on");
