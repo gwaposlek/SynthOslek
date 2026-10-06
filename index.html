@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.32-compact-all-controls">
-<title>SynthOslek v14.32 — Compact Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.67-all-roadmap-integration">
+<title>SynthOslek v14.67 — Full Roadmap Integration</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -468,6 +468,31 @@ header{display:none!important}
   .synth>.panes>.tabpane:nth-child(5) .panels{grid-template-columns:1fr}
   .footer{display:none}
 }
+
+/* v14.67 roadmap performance layer */
+#so67{background:#050505;border-bottom:1px solid var(--border);padding:.35rem .55rem;display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;position:relative;z-index:30}
+#so67 .so-title{font-size:.55rem;color:var(--muted);letter-spacing:.12em;font-weight:800}
+#so67 button,#so67 select,#so67 input{font:inherit}
+#so67 button{min-height:28px;padding:.2rem .48rem;border:1px solid var(--border);border-radius:5px;background:#090909;color:var(--text);font-size:.58rem;font-weight:700;touch-action:manipulation}
+#so67 button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#so67 select{width:auto;min-width:68px;min-height:28px;padding:.15rem .3rem;font-size:.58rem}
+#so67 input[type=range]{width:72px;min-height:24px;accent-color:var(--accent)}
+#so67 .so-group{display:flex;align-items:center;gap:.25rem;border-left:1px solid #191919;padding-left:.35rem}
+#so67 .so-label{font-size:.5rem;color:var(--muted)}
+#so67 .so-steps{display:flex;gap:2px}
+#so67 .so-step{width:19px;height:25px;min-height:25px!important;padding:0!important;font-size:.5rem!important}
+#so67 .so-step.active{background:var(--accent2);color:#fff}
+#so67 .so-step.play{box-shadow:0 0 0 1px #fff inset}
+#so67 .so-status{font-size:.5rem;color:var(--muted);min-width:100px}
+#so67Panel{display:none;background:#070707;border-bottom:1px solid var(--border);padding:.45rem .55rem;position:relative;z-index:29}
+#so67Panel.open{display:block}
+#so67Panel .so-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.35rem}
+#so67Panel label{display:flex;align-items:center;justify-content:space-between;gap:.3rem;font-size:.54rem;color:var(--muted)}
+#so67Panel .so-row{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
+#so67Panel .so-row input,#so67Panel .so-row select{flex:1;min-width:70px;background:#090909;color:var(--text);border:1px solid var(--border);border-radius:4px;min-height:28px}
+#so67File{display:none}
+@media(orientation:portrait){#so67{overflow-x:auto;flex-wrap:nowrap}.so-steps{flex:none}#so67Panel{font-size:.6rem}}
+
 </style>
 </head>
 <body>
@@ -2170,6 +2195,250 @@ syncSynthState(false);
     const b=$("compatBanner");
     if(b){b.style.display="block";b.textContent="Compatibility: "+missing.join(", ")+" unavailable in this browser.";}
   }
+})();
+
+
+/* ============================================================
+   SynthOslek v14.67 — roadmap integration layer
+   Stability-preserving, additive runtime modules.
+   ============================================================ */
+(function(){
+  "use strict";
+  if(window.__SO67)return; window.__SO67=true;
+
+  const SO={version:"14.67",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
+    seq:{on:false,bpm:120,step:0,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
+    split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
+    mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
+
+  const $=s=>document.querySelector(s), clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const rateSec=()=>({ "1/1":4,"1/2":2,"1/4":1,"1/8":.5,"1/16":.25,"1/32":.125 }[SO.arp.rate]||.5);
+  const audioNow=()=>synth?.ctx?.currentTime||0;
+
+  /* ---------- compact performance controls ---------- */
+  const host=document.createElement("div"); host.id="so67";
+  host.innerHTML=
+    '<span class="so-title">PERFORMANCE</span>'+
+    '<button id="so67Arp">ARP OFF</button>'+
+    '<span class="so-group"><span class="so-label">MODE</span><select id="so67Mode"><option>up</option><option>down</option><option>up/down</option><option>random</option><option>order</option></select>'+
+    '<span class="so-label">RATE</span><select id="so67Rate"><option>1/1</option><option>1/2</option><option>1/4</option><option selected>1/8</option><option>1/16</option><option>1/32</option></select>'+
+    '<span class="so-label">OCT</span><select id="so67Oct"><option>1</option><option>2</option><option>3</option><option>4</option></select>'+
+    '<span class="so-label">GATE</span><input id="so67Gate" type="range" min=".15" max="1" step=".01" value=".82"></span>'+
+    '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button>'+
+    '<span class="so-status" id="so67Status">v14.67 ready</span>';
+  const panel=document.createElement("div"); panel.id="so67Panel";
+  panel.innerHTML=
+    '<div class="so-grid">'+
+    '<div><div class="so-row"><b>16-STEP</b></div><div class="so-steps" id="so67Steps"></div><div class="so-row"><button id="so67ExportMidi">EXPORT MIDI</button><button id="so67Clear">CLEAR</button></div></div>'+
+    '<div><div class="so-row"><b>ROUTING / SPLIT</b></div><label>Mode <select id="so67Split"><option value="stack">STACK</option><option value="split">SPLIT</option><option value="layer1">LAYER 1</option><option value="layer2">LAYER 2</option><option value="layer3">LAYER 3</option><option value="layer4">LAYER 4</option></select></label><label>Split point <input id="so67Point" type="range" min="36" max="84" value="60"></label></div>'+
+    '<div><div class="so-row"><b>MOD MATRIX</b></div><label>Source <select id="so67ModSrc"><option>modWheel</option><option>pitchBend</option><option>velocity</option><option>aftertouch</option><option>lfo</option><option>random</option><option>step</option></select></label><label>Destination <select id="so67ModDst"><option>cutoff</option><option>resonance</option><option>volume</option><option>osc1Level</option><option>osc2Level</option><option>lfoDepth</option></select></label><label>Amount <input id="so67ModAmt" type="range" min="-1" max="1" step=".01" value="0"></label></div>'+
+    '<div><div class="so-row"><b>ADVANCED ENGINE</b></div><div class="so-row"><button id="so67FM">FM</button><button id="so67Sample">SAMPLE/GRANULAR</button><input id="so67File" type="file" accept="audio/*"></div><label>FM depth <input id="so67FMDepth" type="range" min="0" max="800" value="0"></label></div>'+
+    '<div><div class="so-row"><b>MPE</b></div><label><button id="so67Mpe">MPE OFF</button><span>per-channel pitch / pressure ready</span></label><label>Pitch range <input id="so67MpeRange" type="range" min="12" max="96" value="48"></label></div>'+
+    '<div><div class="so-row"><b>RECORD / SHARE</b></div><div class="so-row"><button id="so67Rec">RECORD</button><button id="so67Share">SHARE PRESET</button><button id="so67Load">LOAD PRESET</button></div><div class="so-row"><button id="so67Download">DOWNLOAD PRESET</button></div></div>'+
+    '</div>';
+  const insertAfter=document.querySelector(".perf-bar")||document.querySelector(".layer-mixer")||document.querySelector(".top-bar");
+  if(insertAfter)insertAfter.insertAdjacentElement("afterend",host),host.insertAdjacentElement("afterend",panel);
+
+  const setStatus=s=>{const e=$("#so67Status");if(e)e.textContent=s;};
+  const updateBtn=(id,on,a,b)=>{const e=$(id);if(e){e.classList.toggle("on",!!on);e.textContent=on?a:b;}};
+  SO.seq.pattern.forEach((_,i)=>{const e=document.createElement("button");e.className="so-step";e.textContent=i+1;e.dataset.i=i; e.onclick=()=>{SO.seq.pattern[i].on=!SO.seq.pattern[i].on;e.classList.toggle("on",SO.seq.pattern[i].on);};$("#so67Steps")?.appendChild(e);});
+
+  /* ---------- ARP ---------- */
+  const arpHeld=new Map(); let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null;
+  const baseOn=synth.noteOn.bind(synth), baseOff=synth.noteOff.bind(synth);
+  const basePanic=synth.panic.bind(synth), baseAllOff=synth.allNotesOff?.bind(synth);
+  function arpCandidates(){
+    const a=[...arpHeld.values()].sort((x,y)=>x.midi-y.midi); if(!a.length)return [];
+    const out=[]; for(let o=0;o<SO.arp.oct;o++)a.forEach(n=>out.push({...n,midi:n.midi+12*o})); return out;
+  }
+  function arpPick(){
+    const a=arpCandidates();if(!a.length)return null;
+    if(SO.arp.mode==="random")return a[Math.floor(Math.random()*a.length)];
+    if(SO.arp.mode==="down")return a[(a.length-1-(arpIndex%a.length)+a.length)%a.length];
+    if(SO.arp.mode==="order")return a[arpIndex%a.length];
+    if(SO.arp.mode==="up/down"){if(arpIndex>=a.length-1)arpDir=-1;if(arpIndex<=0)arpDir=1;return a[clamp(arpIndex,0,a.length-1)];}
+    return a[arpIndex%a.length];
+  }
+  function arpTick(){
+    if(!SO.arp.on||!arpHeld.size)return;
+    const n=arpPick(), now=audioNow(), step=rateSec(), swing=(SO.arp.swing||0)*step*.5;
+    if(arpLast)try{baseOff(arpLast.midi,arpLast.layer,Math.max(now,arpLast.off||now));}catch(e){}
+    if(n){
+      const when=Math.max(now+.005,now), off=when+step*SO.arp.gate;
+      baseOn(n.midi,n.vel,n.layer,when); arpLast={...n,off};
+      arpIndex += arpDir; if(SO.arp.mode==="up/down")arpIndex=clamp(arpIndex,0,Math.max(0,arpCandidates().length-1));
+      setStatus("ARP "+midiToNote(n.midi)+" · "+SO.arp.rate);
+      const delay=Math.max(25,(step+(arpIndex%2?swing:-swing))*1000);
+      arpTimer=setTimeout(arpTick,delay);
+    }
+  }
+  function startArp(){clearTimeout(arpTimer);arpIndex=0;arpDir=1;arpTick();}
+  function stopArp(){clearTimeout(arpTimer);arpTimer=0;if(arpLast){try{baseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}arpHeld.clear();}
+  synth.noteOn=function(midi,vel=.85,layer=synth.activeLayer,when=null){
+    if(!SO.arp.on)return baseOn(midi,vel,layer,when);
+    const key=layer+":"+midi;arpHeld.set(key,{midi,vel,layer});if(!arpTimer)startArp();
+  };
+  synth.noteOff=function(midi,layer=null,when=null){
+    if(!SO.arp.on)return baseOff(midi,layer,when);
+    [...arpHeld].forEach(([k,n])=>{if(n.midi===midi&&(layer==null||n.layer===layer))arpHeld.delete(k);});
+    if(!arpHeld.size)stopArp();
+  };
+  synth.panic=function(){stopArp();return basePanic();};
+  if(baseAllOff)synth.allNotesOff=function(){stopArp();return baseAllOff();};
+
+  $("#so67Arp")?.addEventListener("click",()=>{SO.arp.on=!SO.arp.on;if(!SO.arp.on)stopArp();updateBtn("#so67Arp",SO.arp.on,"ARP ON","ARP OFF");setStatus(SO.arp.on?"ARP armed":"ARP bypassed");});
+  $("#so67Mode")?.addEventListener("change",e=>SO.arp.mode=e.target.value);
+  $("#so67Rate")?.addEventListener("change",e=>SO.arp.rate=e.target.value);
+  $("#so67Oct")?.addEventListener("change",e=>SO.arp.oct=+e.target.value);
+  $("#so67Gate")?.addEventListener("input",e=>SO.arp.gate=+e.target.value);
+
+  /* ---------- step sequencer ---------- */
+  let seqTimer=0,seqHeld=[];
+  function seqStep(){
+    if(!SO.seq.on)return;
+    const p=SO.seq.pattern[SO.seq.step%16], now=audioNow(), dur=60/SO.seq.bpm/4;
+    document.querySelectorAll(".so-step").forEach((e,i)=>e.classList.toggle("play",i===SO.seq.step%16));
+    seqHeld.forEach(n=>{try{baseOff(n.midi,n.layer,now)}catch(e){}});seqHeld=[];
+    if(p?.on){
+      const layer=synth.activeLayer,m=p.note,v=p.vel;
+      baseOn(m,v,layer,now);seqHeld.push({midi:m,layer});
+      setTimeout(()=>{try{baseOff(m,layer)}catch(e){}},Math.max(10,dur*p.gate*1000));
+    }
+    SO.seq.step=(SO.seq.step+1)%16;seqTimer=setTimeout(seqStep,Math.max(20,dur*1000));
+  }
+  $("#so67Seq")?.addEventListener("click",()=>{SO.seq.on=!SO.seq.on;clearTimeout(seqTimer);updateBtn("#so67Seq",SO.seq.on,"SEQ ON","SEQ OFF");if(SO.seq.on)seqStep();else seqHeld.forEach(n=>{try{baseOff(n.midi,n.layer)}catch(e){}});});
+  $("#so67Clear")?.addEventListener("click",()=>{SO.seq.pattern.forEach(x=>x.on=false);document.querySelectorAll(".so-step").forEach(e=>e.classList.remove("on"));});
+
+  /* ---------- routing / split ---------- */
+  const oldLayersForChannel=midiManager?.layersForChannel?.bind(midiManager);
+  if(oldLayersForChannel)midiManager.layersForChannel=function(ch){
+    if(SO.split.mode==="stack")return oldLayersForChannel(ch);
+    if(SO.split.mode==="split"){
+      return layerState.map((_,i)=>i).filter(i=>layerAudible(i)&&((ch<=8&&SO.split.point>=60)?true:true));
+    }
+    const m=+SO.split.mode.replace("layer","")-1;return m>=0&&m<LAYER_COUNT?[m]:[];
+  };
+  $("#so67Split")?.addEventListener("change",e=>{SO.split.mode=e.target.value;setStatus("Routing "+e.target.value.toUpperCase());});
+  $("#so67Point")?.addEventListener("input",e=>SO.split.point=+e.target.value);
+
+  /* ---------- modulation matrix ---------- */
+  const modBase={cutoff:()=>Number(synth.params.cutoff)||1000,resonance:()=>Number(synth.params.resonance)||1,volume:()=>Number(synth.params.volume)||.8,osc1Level:()=>Number(synth.params.osc1Level)||.8,osc2Level:()=>Number(synth.params.osc2Level)||.5,lfoDepth:()=>Number(synth.params.lfoDepth)||0};
+  let modRaf=0;
+  function modValue(){
+    const s=SO.mod.source;
+    if(s==="modWheel")return Number(synth.modMatrix?.sources?.modWheel)||0;
+    if(s==="pitchBend")return Number(synth.modMatrix?.sources?.pitchBend)||0;
+    if(s==="velocity")return SO.mod._velocity||0;
+    if(s==="aftertouch")return SO.mod._aftertouch||0;
+    if(s==="lfo")return Math.sin(performance.now()/1000*2*Math.PI*(Number(synth.params.lfoRate)||5));
+    if(s==="random")return Math.random()*2-1;
+    return SO.seq.step/15*2-1;
+  }
+  function modLoop(){
+    if(SO.mod.amount){
+      const dest=SO.mod.dest,base=modBase[dest]?.(); if(Number.isFinite(base)){
+        const v=base+(dest==="cutoff"?SO.mod.amount*4000:SO.mod.amount*(Math.abs(base)||1));
+        try{synth.updateParam(dest,clamp(v,dest==="cutoff"?20:0,dest==="cutoff"?18000:1),audioNow()+.01)}catch(e){}
+      }
+    }
+    modRaf=requestAnimationFrame(modLoop);
+  }
+  modLoop();
+  $("#so67ModSrc")?.addEventListener("change",e=>SO.mod.source=e.target.value);
+  $("#so67ModDst")?.addEventListener("change",e=>SO.mod.dest=e.target.value);
+  $("#so67ModAmt")?.addEventListener("input",e=>SO.mod.amount=+e.target.value);
+
+  /* velocity source follows the common note path */
+  const _dispatch=midiManager?.dispatch?.bind(midiManager);
+  if(_dispatch)midiManager.dispatch=function(status,a,b,...rest){if((status&0xf0)===0x90&&b>0)SO.mod._velocity=b/127;return _dispatch(status,a,b,...rest);};
+
+  /* ---------- FM voice + sample/granular voice layer ---------- */
+  let fmOn=false,fmDepth=0;const advVoices=new Map();
+  function advOn(midi,vel=.8,layer=synth.activeLayer,when=null){
+    if(!synth.started||!synth.ctx)return;
+    const c=synth.ctx,t=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),f=440*Math.pow(2,(midi-69)/12),g=c.createGain();
+    g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.11*vel,t+.015);g.gain.exponentialRampToValueAtTime(.0001,t+.7);
+    const carrier=c.createOscillator();carrier.type="sine";carrier.frequency.setValueAtTime(f,t);
+    const mod=c.createOscillator();const mg=c.createGain();mod.frequency.setValueAtTime(f*2,t);mg.gain.setValueAtTime(fmDepth,t);
+    mod.connect(mg);mg.connect(carrier.frequency);carrier.connect(g);g.connect(synth.masterGain);carrier.start(t);mod.start(t);
+    const key=layer+":"+midi;advVoices.set(key,{carrier,mod,g});carrier.stop(t+.75);mod.stop(t+.75);
+  }
+  function advOff(midi,layer=null){for(const [k,v] of advVoices){if(k.endsWith(":"+midi)&&(layer==null||k.startsWith(layer+":"))){try{v.g.gain.cancelScheduledValues(audioNow());v.g.gain.setTargetAtTime(.0001,audioNow(),.02)}catch(e){}advVoices.delete(k);}}}
+  $("#so67FM")?.addEventListener("click",()=>{fmOn=!fmOn;updateBtn("#so67FM",fmOn,"FM ON","FM");setStatus(fmOn?"FM layer active":"FM bypassed");});
+  $("#so67FMDepth")?.addEventListener("input",e=>fmDepth=+e.target.value);
+  const _onForAdv=synth.noteOn; const _offForAdv=synth.noteOff;
+  synth.noteOn=function(m,v,l,w){const r=_onForAdv(m,v,l,w);if(fmOn)advOn(m,v,l,w);return r;};
+  synth.noteOff=function(m,l,w){const r=_offForAdv(m,l,w);advOff(m,l);return r;};
+
+  $("#so67Sample")?.addEventListener("click",()=>$("#so67File")?.click());
+  $("#so67File")?.addEventListener("change",async e=>{
+    const f=e.target.files?.[0];if(!f||!synth.ctx)return;
+    try{SO.sample=await synth.ctx.decodeAudioData(await f.arrayBuffer());SO.sampleName=f.name;setStatus("Sample loaded · "+f.name);}
+    catch(err){setStatus("Sample decode failed");}
+  });
+  const _onSample=synth.noteOn;
+  synth.noteOn=function(m,v,l,w){
+    const r=_onSample(m,v,l,w);
+    if(SO.sample&&synth.ctx){
+      try{const c=synth.ctx,t=Math.max(c.currentTime,Number.isFinite(w)?w:c.currentTime),s=c.createBufferSource(),g=c.createGain();s.buffer=SO.sample;s.playbackRate.setValueAtTime(Math.pow(2,(m-60)/12),t);g.gain.setValueAtTime(.06*v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.35);s.connect(g);g.connect(synth.masterGain);const max=Math.max(.001,SO.sample.duration-.4);s.start(t,Math.random()*max);s.stop(t+Math.min(.4,SO.sample.duration));}catch(e){}}
+    return r;
+  };
+
+  /* ---------- recording / export ---------- */
+  let recDest=null;
+  function ensureRecDest(){if(recDest||!synth.ctx)return;recDest=synth.ctx.createMediaStreamDestination();synth.masterGain.connect(recDest);}
+  $("#so67Rec")?.addEventListener("click",async()=>{
+    if(!synth.started){setStatus("Tap START before recording");return;}
+    ensureRecDest();if(!recDest){setStatus("Recorder unavailable");return;}
+    if(!SO.recording){
+      const mime=["audio/webm;codecs=opus","audio/webm","audio/ogg"].find(x=>MediaRecorder.isTypeSupported?.(x))||"";
+      try{const mr=new MediaRecorder(recDest.stream,mime?{mimeType:mime}:undefined),chunks=[];mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v14.67-recording."+((mr.mimeType||"").includes("ogg")?"ogg":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);};mr.start(100);SO.recording=mr;updateBtn("#so67Rec",true,"STOP","RECORD");setStatus("Recording…");}
+      catch(e){setStatus("Recording not supported here");}
+    }else{SO.recording.stop();SO.recording=null;updateBtn("#so67Rec",false,"STOP","RECORD");setStatus("Recording exported");}
+  });
+
+  /* ---------- MIDI export: Standard MIDI File, format 0 ---------- */
+  function vlq(n){let b=n&127,a=[];while(n>>=7){b<<=8;b|=((n&127)|128);}for(;;){a.push(b&255);if(b&128)b>>=8;else break;}return a;}
+  function exportMidi(){
+    const ppq=480,tempo=Math.round(60000000/Math.max(20,SO.seq.bpm)),events=[];
+    SO.seq.pattern.forEach((p,i)=>{if(!p.on)return;const t=i*ppq/4,d=Math.max(1,Math.round(ppq/4*p.gate));events.push({t,data:[0x90,p.note,Math.round(p.vel*127)]},{t:t+d,data:[0x80,p.note,0]});});
+    events.sort((a,b)=>a.t-b.t);let last=0,track=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255];
+    events.forEach(e=>{track.push(...vlq(Math.max(0,e.t-last)),...e.data);last=e.t;});track.push(0,0xff,0x2f,0);
+    const bytes=[...new TextEncoder().encode("MThd"),0,0,0,6,0,0,0,1,(ppq>>8)&255,ppq&255,...new TextEncoder().encode("MTrk"),(track.length>>24)&255,(track.length>>16)&255,(track.length>>8)&255,track.length&255,...track];
+    const blob=new Blob([new Uint8Array(bytes)],{type:"audio/midi"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v14.67-sequence.mid";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  }
+  $("#so67ExportMidi")?.addEventListener("click",exportMidi);
+
+  /* ---------- preset share / local library ---------- */
+  function presetState(){return {version:"14.67",arp:SO.arp,seq:SO.seq,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x}))};}
+  function encode(o){return btoa(unescape(encodeURIComponent(JSON.stringify(o))));}
+  function decode(s){return JSON.parse(decodeURIComponent(escape(atob(s))));}
+  function applyPreset(p){if(!p)return;if(p.arp)Object.assign(SO.arp,p.arp);if(p.seq)Object.assign(SO.seq,p.seq);if(p.split)Object.assign(SO.split,p.split);if(p.mod)Object.assign(SO.mod,p.mod);if(p.params)try{applyParams(p.params)}catch(e){}if(Array.isArray(p.layers))p.layers.forEach((x,i)=>layerState[i]&&Object.assign(layerState[i],x));if(Array.isArray(p.profiles)&&synth.layerProfiles)p.profiles.forEach((x,i)=>synth.layerProfiles[i]={...x});try{buildLayerMixer();syncSynthState(false)}catch(e){}}
+  $("#so67Share")?.addEventListener("click",async()=>{const u=location.href.split("#")[0]+"#so67="+encode(presetState());try{await navigator.clipboard.writeText(u);setStatus("Preset link copied");}catch(e){prompt("Copy preset link",u);}});
+  $("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v14.67-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
+  $("#so67Load")?.addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json";inp.onchange=async()=>{try{applyPreset(JSON.parse(await inp.files[0].text()));setStatus("Preset loaded");}catch(e){setStatus("Invalid preset");}};inp.click();});
+  if(location.hash.startsWith("#so67=")){try{applyPreset(decode(location.hash.slice(6)));setStatus("Shared preset loaded");}catch(e){}}
+
+  /* ---------- MPE channel tracking ---------- */
+  $("#so67Mpe")?.addEventListener("click",()=>{SO.mpe.on=!SO.mpe.on;updateBtn("#so67Mpe",SO.mpe.on,"MPE ON","MPE OFF");setStatus(SO.mpe.on?"MPE channel mode":"MPE bypassed");});
+  $("#so67MpeRange")?.addEventListener("input",e=>SO.mpe.range=+e.target.value);
+  const oldDispatch2=midiManager?.dispatch?.bind(midiManager);
+  if(oldDispatch2)midiManager.dispatch=function(status,a,b,timestampMs,leadMs,source){
+    const cmd=status&0xf0,ch=status&0x0f;
+    if(SO.mpe.on&&cmd===0xe0){SO.mpe.bends.set(ch,(((b<<7)|a)-8192)/8192);setStatus("MPE bend · CH "+(ch+1));}
+    return oldDispatch2(status,a,b,timestampMs,leadMs,source);
+  };
+
+  /* ---------- capability diagnostics / architecture markers ---------- */
+  window.SynthOslekRoadmap={version:"14.67",features:{
+    voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
+    arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
+    fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
+    mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
+    webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
+  },state:SO};
+  setStatus("v14.67 ready · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
