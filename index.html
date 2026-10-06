@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.28-midi-safety">
-<title>SynthOslek v14.28 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.29-voice-midi-lifecycle">
+<title>SynthOslek v14.29 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -480,7 +480,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.28 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.29 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -906,6 +906,13 @@ Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});Object.assign(PRESE
 Object.assign(PRESETS.bass,{subLevel:.5});Object.assign(PRESETS.keys,{chorusMix:.35});
 const LAYER_COUNT=4;
 const synth=new SynthOslek();
+/* v14.29: mobile/background transitions can prevent a matching Note Off from
+   reaching the page. Treat hidden as a transport boundary, but never
+   auto-start audio when the page becomes visible again. */
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){try{synth.panic();}catch(e){}}
+  else if(synth.started)void synth.audioRuntime.resume();
+},{passive:true});
 const initialProfiles=Array.from({length:LAYER_COUNT},()=>({...PRESETS.init}));
 const initialLayers=Array.from({length:LAYER_COUNT},(_,i)=>({vol:i===0?.8:.65,mute:false,solo:false,enabled:i===0,pan:0,fx:.2,preset:"init"}));
 
@@ -973,7 +980,13 @@ synth.noteOn=function(midi,vel=.85,layer=this.activeLayer,when=null){
 
 const _noteOff0=synth.noteOff.bind(synth);
 synth.noteOff=function(midi,layer=null,when=null){
-  return _noteOff0(midi,layer,when);
+  const out=_noteOff0(midi,layer,when);
+  const layers=layer==null?layerState.map((_,i)=>i):[layer];
+  for(const l of layers){
+    const key=l+":"+midi;
+    if(!this.voices.has(key)&&!this.sustained.has(key))this.voicePool.release(key);
+  }
+  return out;
 };
 
 const _releaseSustain0=synth.releaseSustain.bind(synth);
@@ -996,8 +1009,8 @@ const queueSynthStateSync=()=>{
   stateSyncTimer=setTimeout(()=>{stateSyncTimer=0;syncSynthState(false);},120);
 };
 const _updateParam0=synth.updateParam.bind(synth);
-synth.updateParam=function(k,x){
-  const out=_updateParam0(k,x);
+synth.updateParam=function(k,x,at=null){
+  const out=_updateParam0(k,x,at);
   queueSynthStateSync();
   return out;
 };
@@ -1644,6 +1657,9 @@ class BleMidiTransport{
   }
   onDisconnect(){
     this.clock.reset();this._cleanupCharacteristic();this.server=null;this._setBtButton(false);
+    /* v14.29: a transport loss can strand held notes because the matching
+       Note Off may never arrive. Clear the synth before reconnecting. */
+    try{this.manager.synth.panic();this.manager.clearMidiVisuals();}catch(e){}
     this.manager.setStatus("BLE MIDI disconnected — searching for saved SMK-37…");
     if(!this._manualDisconnect)this._queueAutoReconnect(800);
   }
@@ -1855,6 +1871,9 @@ class MidiManager{
     const seq=++this._useSeq;
     const oldInput=this.input,oldHandler=this._inputHandler;
     if(oldInput&&oldHandler){
+      /* v14.29: switching MIDI inputs must terminate notes owned by the old
+         transport before its handler is detached. */
+      try{this.synth.panic();this.clearMidiVisuals();}catch(e){}
       try{oldInput.onmidimessage=null;}catch(e){}
       try{oldInput.removeEventListener("midimessage",oldHandler);}catch(e){}
     }
