@@ -359,7 +359,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.0 · Web Audio + WebMIDI · drag knobs up/down, double-click to reset</div>
+<div class="footer">SynthOslek v14.0 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 
@@ -815,7 +815,7 @@ PANES.Layers.appendChild(document.getElementById("layerMixer"));PANES.Sound.appe
     for(const k of keys){
       if(S[k])p.appendChild(makeSelect(k));
       else if(k==="MIDI"){const w=document.createElement("div");w.className="sel";w.style.width="100%";
-        w.innerHTML='<label>MIDI Input</label><select id="midiSelect"><option>No MIDI devices</option></select>';kn.appendChild(w);}
+        w.innerHTML='<label>MIDI Input</label><select id="midiSelectPanel"><option>No MIDI devices</option></select>';kn.appendChild(w);}
       else kn.appendChild(makeKnob(k));
     }
     p.appendChild(kn);PANES[TABMAP[title]].appendChild(p);
