@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.18-transient-control">
-<title>SynthOslek v14.18 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.19-surprise-volume-lock">
+<title>SynthOslek v14.19 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1312,6 +1312,8 @@ function surprisePatch(){
   const spread=unison===1?ri(0,14):ri(4,42);
   const p={
     ...PRESETS.init,
+    /* Master Volume is intentionally preserved; Surprise Me must never randomize or reset it. */
+    volume:Number.isFinite(Number(synth?.params?.volume))?Number(synth.params.volume):PRESETS.init.volume,
     osc1Wave:wave1,osc2Wave:wave2,
     osc1Coarse:pick([-12,-7,0,0,0,7,12]),osc2Coarse:pick([-12,-7,0,0,0,7,12]),
     osc1Detune:ri(-24,24),osc2Detune:ri(-24,24),
