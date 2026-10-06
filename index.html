@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.12-midi-input-open-and-ble-parser-fix">
-<title>SynthOslek v14.12 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.13-midi-handler-fallback">
+<title>SynthOslek v14.13 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1620,7 +1620,9 @@ class BleMidiTransport{
         d1.push(b);
       }
       if(d1.length!==len)break;
-      this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
+      this.manager.rxCount++;this.manager.lastRxAt=performance.now();
+    this.manager.setStatus("BLE RX: "+status.toString(16).padStart(2,"0")+" "+d1.map(v=>v.toString(16).padStart(2,"0")).join(" "));
+    this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
     }
 
     /* The continuation flag is reserved for SysEx continuation; channel notes are unaffected. */
@@ -1642,7 +1644,7 @@ class MidiManager{
   constructor(synth){
     this.synth=synth;this.access=null;this.input=null;this.select=$("midiSelect");
     this._midiVisualActive=new Set();this._midiVisualPulse=new Map();this._midiVisualRaf=0;
-    this._pendingStatus="";this._statusRaf=0;this._inputHandler=null;this.rxCount=0;
+    this._pendingStatus="";this._statusRaf=0;this._inputHandler=null;this._useSeq=0;this.rxCount=0;this.lastRxAt=0;this.boundRxCount=0;
   }
   async init(){
     if(!navigator.requestMIDIAccess){this.setStatus("WebMIDI unavailable — touch keyboard still works");return false;}
@@ -1739,17 +1741,23 @@ class MidiManager{
     this.select.value=wanted.id;this.select.onchange=()=>this.useInput(this.select.value);this.useInput(this.select.value);
   }
   async useInput(id){
-    if(this.input&&this._inputHandler){
-      try{this.input.removeEventListener("midimessage",this._inputHandler);}catch(e){}
-      try{this.input.onmidimessage=null;}catch(e){}
+    const seq=++this._useSeq;
+    const oldInput=this.input,oldHandler=this._inputHandler;
+    if(oldInput&&oldHandler){
+      try{oldInput.onmidimessage=null;}catch(e){}
+      try{oldInput.removeEventListener("midimessage",oldHandler);}catch(e){}
     }
     this.input=this.access?.inputs?.get(id)||null;this._inputHandler=null;
     if(this.input){
-      try{localStorage.setItem("so-midi-input-id-v14",this.input.id||"");localStorage.setItem("so-midi-input-name-v14",this.input.name||"");}catch(e){}
+      const input=this.input;
+      try{localStorage.setItem("so-midi-input-id-v14",input.id||"");localStorage.setItem("so-midi-input-name-v14",input.name||"");}catch(e){}
       this._inputHandler=e=>this.onMessage(e);
-      try{this.input.addEventListener("midimessage",this._inputHandler);}catch(e){this.input.onmidimessage=this._inputHandler;}
-      try{await this.input.open();}catch(e){/* Some implementations auto-open inputs; handler remains bound. */}
-      this.setStatus("MIDI ready: "+(this.input.name||"Input")+" · "+(this.input.state||"connected"));
+      try{input.onmidimessage=this._inputHandler;}catch(e){}
+      try{await input.open();}catch(e){}
+      if(seq!==this._useSeq||this.input!==input)return false;
+      try{input.onmidimessage=this._inputHandler;}catch(e){}
+      this.boundRxCount=this.rxCount;this.lastRxAt=performance.now();
+      this.setStatus("MIDI ready: "+(input.name||"Input")+" · "+(input.state||"connected")+" · "+(input.connection||"open"));
       return true;
     }
     return false;
@@ -1813,7 +1821,7 @@ class MidiManager{
   onMessage(e){
     const d=e?.data;
     if(!d||!d.length)return;
-    this.rxCount++;
+    this.rxCount++;this.lastRxAt=performance.now();
     const status=Number(d[0])||0,a=Number(d[1])||0,b=Number(d[2])||0;
     const cmd=status&0xF0,ch=(status&0x0F)+1;
     if(cmd===0x90&&b>0)this.queueStatus("MIDI RX: "+midiToNote(a)+" · CH "+ch);
@@ -1828,7 +1836,14 @@ const midiManager=new MidiManager(synth);
 /* Direct BLE-MIDI fallback for browsers without a usable WebMIDI input. */
 const bleMidi=new BleMidiTransport(midiManager);
 void midiManager.init().then(()=>{
+  midiManager.refresh();
   if(!midiManager.hasSmkInput())return bleMidi.autoReconnect({announce:true});
+  const rxAtBind=midiManager.rxCount;
+  setTimeout(()=>{
+    if(midiManager.hasSmkInput()&&midiManager.rxCount===rxAtBind&&!bleMidi.device?.gatt?.connected){
+      void bleMidi.autoReconnect({announce:true});
+    }
+  },1800);
 }).catch(()=>{});
 
 /* Re-run controller binding after the user's audio unlock gesture.
@@ -1838,14 +1853,22 @@ $("welcomeStart")?.addEventListener("click",async()=>{
     await midiManager.init();
     midiManager.refresh();
     if(!midiManager.hasSmkInput())await bleMidi.autoReconnect({announce:true});
+    else{
+      const rxAtBind=midiManager.rxCount;
+      setTimeout(()=>{
+        if(midiManager.hasSmkInput()&&midiManager.rxCount===rxAtBind&&!bleMidi.device?.gatt?.connected){
+          void bleMidi.autoReconnect({announce:true});
+        }
+      },1800);
+    }
   }catch(e){}
 }, {once:true});
 $("bleMidiBtn")?.addEventListener("click",async()=>{
   const btn=$("bleMidiBtn");
   try{
     btn.disabled=true;
-    if(midiManager.hasSmkInput()&&!bleMidi.device?.gatt?.connected){
-      midiManager.setStatus("WebMIDI active: "+(midiManager.input?.name||"SMK-37")+" · direct BT not needed");
+    if(midiManager.hasSmkInput()&&!bleMidi.device?.gatt?.connected&&midiManager.rxCount>midiManager.boundRxCount){
+      midiManager.setStatus("WebMIDI active: "+(midiManager.input?.name||"SMK-37")+" · RX OK");
       btn.textContent="MIDI OK";
       btn.classList.add("on");
       return;
