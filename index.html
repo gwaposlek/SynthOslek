@@ -265,7 +265,7 @@ header{display:none!important}
 @media(orientation:portrait){.lm-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 
 
-/* v14.0 core UI hooks — deliberately minimal so v13.5 layout remains intact */
+/* v14.0 core UI hooks — deliberately minimal */
 .v14-core-badge{font-size:.5rem;color:#6f86ad;letter-spacing:.08em;white-space:nowrap}
 @media(max-width:900px){.v14-core-badge{display:none}}
 .key:focus-visible,.btn:focus-visible,.tab:focus-visible,.scene-btn:focus-visible,select:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
@@ -1091,7 +1091,7 @@ synth.updateParam=function(k,x,at=null){
   return out;
 };
 
-/* Explicit modulation API; defaults preserve v13.5 sound behavior. */
+/* Explicit modulation API; defaults preserve established sound behavior. */
 synth.modMatrix.setRoute("modWheel","morph",1);
 
 function activeSolo(){return layerState.some(x=>x.enabled && x.solo)}
