@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.3-layout-consolidation">
-<title>SynthOslek v14.3 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.4-state-architecture">
+<title>SynthOslek v14.4 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -475,7 +475,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.3 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.4 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -489,7 +489,7 @@ class SynthStateStore{
     this._listeners=new Set();
     this._past=[];
     this._future=[];
-    this.version="14.2";
+    this.version="14.4";
   }
   _clone(v){
     try{return JSON.parse(JSON.stringify(v));}
@@ -497,9 +497,35 @@ class SynthStateStore{
   }
   getSnapshot(){return this._clone(this._state);}
   subscribe(fn){if(typeof fn!=="function")return()=>{};this._listeners.add(fn);return()=>this._listeners.delete(fn);}
+  _mergeInPlace(target,source){
+    Object.keys(target).forEach(k=>{if(!(k in source))delete target[k];});
+    Object.keys(source).forEach(k=>{
+      const sv=source[k],tv=target[k];
+      if(Array.isArray(sv)){
+        if(!Array.isArray(tv))target[k]=this._clone(sv);
+        else{
+          tv.length=sv.length;
+          sv.forEach((v,i)=>{
+            if(v&&typeof v==="object"&&!Array.isArray(v)){
+              if(!tv[i]||typeof tv[i]!=="object"||Array.isArray(tv[i]))tv[i]={};
+              this._mergeInPlace(tv[i],v);
+            }else if(Array.isArray(v)){
+              if(!Array.isArray(tv[i]))tv[i]=[];
+              this._mergeInPlace(tv[i],v);
+            }else tv[i]=v;
+          });
+        }
+      }else if(sv&&typeof sv==="object"){
+        if(!tv||typeof tv!=="object"||Array.isArray(tv))target[k]={};
+        this._mergeInPlace(target[k],sv);
+      }else target[k]=sv;
+    });
+    return target;
+  }
   replace(next,{history=false,emit=true}={}){
     if(history)this._past.push(this._clone(this._state));
-    this._state=this._clone(next);
+    this._mergeInPlace(this._state,next||{});
+    if(history)this._future.length=0;
     if(emit)this._listeners.forEach(fn=>{try{fn(this.getSnapshot());}catch(e){}});
   }
   patch(mutator,{history=false,emit=true}={}){
@@ -510,16 +536,18 @@ class SynthStateStore{
   }
   undo(){
     if(!this._past.length)return false;
-    this._future.push(this._clone(this._state));
-    this._state=this._past.pop();
-    this._listeners.forEach(fn=>{try{fn(this.getSnapshot());}catch(e){}});
+    const current=this._clone(this._state);
+    const previous=this._past.pop();
+    this._future.push(current);
+    this.replace(previous,{history:false,emit:true});
     return true;
   }
   redo(){
     if(!this._future.length)return false;
-    this._past.push(this._clone(this._state));
-    this._state=this._future.pop();
-    this._listeners.forEach(fn=>{try{fn(this.getSnapshot());}catch(e){}});
+    const current=this._clone(this._state);
+    const next=this._future.pop();
+    this._past.push(current);
+    this.replace(next,{history:false,emit:true});
     return true;
   }
 }
@@ -734,36 +762,44 @@ acid:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.9,osc2Wave:"square",osc2Detune
 Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0});
 Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});Object.assign(PRESETS.lead,{unison:3,spread:10,chorusMix:.15});
 Object.assign(PRESETS.bass,{subLevel:.5});Object.assign(PRESETS.keys,{chorusMix:.35});
-let oct=0;
-const synth=new SynthOslek();
 const LAYER_COUNT=4;
-const layerProfiles=Array.from({length:LAYER_COUNT},()=>({...PRESETS.init}));
-synth.layerProfiles=layerProfiles;synth.params=layerProfiles[0];
-const layerState=Array.from({length:LAYER_COUNT},(_,i)=>({vol:i===0?.8:.65,mute:false,solo:false,enabled:i===0,pan:0,fx:.2,preset:"init"}));
-let midiRouteMode="all";
+const synth=new SynthOslek();
+const initialProfiles=Array.from({length:LAYER_COUNT},()=>({...PRESETS.init}));
+const initialLayers=Array.from({length:LAYER_COUNT},(_,i)=>({vol:i===0?.8:.65,mute:false,solo:false,enabled:i===0,pan:0,fx:.2,preset:"init"}));
 
-/* v14 State + Voice Pool + Modulation foundation */
+/* v14.4 state owns layer/profile/scene data; Web Audio objects remain runtime-local. */
 const synthState=new SynthStateStore({
-  version:"14.2",
+  version:"14.4",
   activeLayer:0,
-  layers:layerState.map(x=>({...x})),
-  profiles:layerProfiles.map(x=>({...x})),
+  layers:initialLayers,
+  profiles:initialProfiles,
   performance:{octave:0,midiRouteMode:"all",sustain:false,bend:0,wheel:0},
   scenes:[null,null,null,null]
 });
 synth.state=synthState;
+const layerState=synthState._state.layers;
+const layerProfiles=synthState._state.profiles;
+const scenes=synthState._state.scenes;
+let oct=synthState._state.performance.octave;
+let midiRouteMode=synthState._state.performance.midiRouteMode;
+synth.layerProfiles=layerProfiles;
+Object.defineProperty(synth,"params",{
+  configurable:true,
+  get(){return this.layerProfiles[this.activeLayer]||this.layerProfiles[0];},
+  set(v){if(v&&this.layerProfiles[this.activeLayer]!==v)this.layerProfiles[this.activeLayer]=v;}
+});
 synth.voicePool=new VoicePool(48);
 synth.modMatrix=new ModulationMatrix();
 
 function syncSynthState(history=false){
-  const previous=synthState.getSnapshot();
-  synthState.replace({
-    version:"14.2",
-    activeLayer:synth.activeLayer,
-    layers:layerState.map(x=>({...x})),
-    profiles:synth.layerProfiles.map(x=>({...x})),
-    performance:{octave:oct,midiRouteMode,sustain:synth.sustain,bend:synth.bend||0,wheel:synth.wheel||0},
-    scenes:previous.scenes||[null,null,null,null]
+  synthState.patch(draft=>{
+    draft.version="14.4";
+    draft.activeLayer=synth.activeLayer;
+    draft.performance.octave=oct;
+    draft.performance.midiRouteMode=midiRouteMode;
+    draft.performance.sustain=!!synth.sustain;
+    draft.performance.bend=synth.bend||0;
+    draft.performance.wheel=synth.wheel||0;
   },{history,emit:true});
 }
 
@@ -925,7 +961,7 @@ function makeSelect(k){
   w.innerHTML=`<label>${label}</label><select>${opts.map(o=>`<option value="${o}">${o[0].toUpperCase()+o.slice(1)}</option>`).join("")}</select>`;
   const s=w.querySelector("select");s.value=synth.params[k];
   s.addEventListener("change",()=>synth.updateParam(k,s.value));
-  UI[k]={k,set(v){s.value=v;synth.updateParam(k,v);}};return w;
+  UI[k]={k,set(v,silent=false){s.value=v;if(!silent)synth.updateParam(k,v);}};return w;
 }
 const TABMAP={"Oscillator 1":"Osc","Oscillator 2":"Osc","Voice":"Osc","Filter":"Filter","LFO":"Filter","Amp Envelope":"Env","Filter Envelope":"Env","Effects":"FX"};
 const PANES={};
@@ -1598,8 +1634,14 @@ $("bleMidiBtn")?.addEventListener("click",async()=>{
 });
 
 
-let scenes=[null,null,null,null];
-try{const saved=JSON.parse(localStorage.getItem("so-scenes-v14")||"[]");if(Array.isArray(saved))scenes=saved.slice(0,4).concat([null,null,null,null]).slice(0,4);}catch(e){}
+/* Scenes are state-owned; localStorage is persistence only. */
+try{
+  const saved=JSON.parse(localStorage.getItem("so-scenes-v14")||"[]");
+  if(Array.isArray(saved)){
+    const normalized=saved.slice(0,4).concat([null,null,null,null]).slice(0,4);
+    normalized.forEach((v,i)=>{scenes[i]=v;});
+  }
+}catch(e){}
 let selectedScene=0;
 function refreshSceneButtons(){
   document.querySelectorAll(".scene-btn").forEach((b,i)=>{
@@ -1608,7 +1650,7 @@ function refreshSceneButtons(){
 }
 function saveScenes(){
   try{localStorage.setItem("so-scenes-v14",JSON.stringify(scenes));}catch(e){}
-  const snap=synthState.getSnapshot();snap.scenes=scenes;synthState.replace(snap,{history:false,emit:false});
+  synthState.patch(draft=>{draft.scenes=scenes;},{history:false,emit:false});
 }
 function captureScene(){
   return {profiles:synth.layerProfiles.map(x=>({...x})),layers:layerState.map(x=>({...x})),activeLayer:synth.activeLayer};
