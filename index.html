@@ -508,6 +508,8 @@ header{display:none!important}
 <div class="footer">SynthOslek v14.0 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
+const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
+
 
 /* ========================= v14.0 CORE ARCHITECTURE ========================= */
 class SynthStateStore{
@@ -1088,7 +1090,7 @@ const updateBendFromPointer=e=>{
   const travel=Math.max(60,r.width*.32);
   const amt=clamp01((e.clientX-pitchGestureStartX)/travel);
   /* Screen Pitch calibration: full negative = -12 semitones, full positive = +2 semitones. */
-  const cents=amt<0?amt*1200:amt*200;
+  const cents=screenPitchCents(amt);
   synth.setBend(cents,.015);
   const pw=$("pitchWheel");
   if(pw){
@@ -1219,6 +1221,9 @@ const endPointer=e=>{
 kb.addEventListener("pointerup",endPointer);
 kb.addEventListener("pointercancel",endPointer);
 kb.addEventListener("lostpointercapture",()=>{if(activeKeys.size===0)isPointerDown=false;});
+function setWheelVisual(el,amt,pitch){const wt=el?.querySelector(".wt");if(wt){const span=Math.max(14,el.clientHeight)-14;wt.style.bottom=((pitch?(amt+1)/2:amt)*span)+"px";}el?.setAttribute("aria-valuenow",String(Number(amt).toFixed(3)));}
+function bindWheel(el,type){if(!el)return;let down=false;const move=e=>{const r=el.getBoundingClientRect();const amt=type==="pitch"?Math.max(-1,Math.min(1,(r.bottom-e.clientY)/Math.max(1,r.height/2)-1)):Math.max(0,Math.min(1,(r.bottom-e.clientY)/Math.max(1,r.height)));if(type==="pitch")synth.setBend(screenPitchCents(amt),.012);else{synth.modMatrix.setSource("modWheel",amt);synth.setModWheel(amt);}setWheelVisual(el,amt,type==="pitch");};el.addEventListener("pointerdown",e=>{e.preventDefault();down=true;try{el.setPointerCapture(e.pointerId);}catch(err){}move(e);});el.addEventListener("pointermove",e=>{if(down)move(e);});const up=e=>{if(!down)return;down=false;if(type==="pitch"){synth.setBend(0,.08);setWheelVisual(el,0,true);}else setWheelVisual(el,0,false);};el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);}
+bindWheel($("pitchWheel"),"pitch");bindWheel($("modWheel"),"mod");
 
 
 /* Scope Renderer */
