@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-midi-autobind-smk37">
+<meta name="synthoslek-build" content="2026-10-06-poly48-dynamics-smk37">
 <title>SynthOslek v14.0 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -482,7 +482,7 @@ header{display:none!important}
       <tr><td>MIDI: ALL / CH</td><td>ALL = every layer plays. CH = MIDI channel 1–4 maps to layers 1–4.</td></tr>
       <tr><td>Pitch / Mod wheels</td><td>Pitch ±200¢ (springs to center). Mod drives LFO depth.</td></tr>
       <tr><td>Gliss / Pitch / Scroll</td><td>Gliss = slide notes. Pitch = bend + vertical param (↕). Scroll = drag up/down or toward top/bottom of keys to shift octaves (GarageBand-style).</td></tr>
-      <tr><td>Voice limit</td><td>Max 24 simultaneous voices; oldest notes are stolen when full.</td></tr>
+      <tr><td>Voice limit</td><td>Max 48 simultaneous voices; the quietest/oldest held voice is stolen only when full.</td></tr>
     </table>
     <h3>MIDI Continuous Controllers</h3>
     <table>
@@ -559,7 +559,7 @@ class SynthStateStore{
 }
 
 class VoicePool{
-  constructor(max=24){
+  constructor(max=48){
     this.max=max;
     this.sequence=0;
     this.slots=Array.from({length:max},(_,id)=>({id,key:null,age:0,active:false}));
@@ -634,7 +634,7 @@ class SynthOslek{
     const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.');const c=this.ctx=new AC({latencyHint:"interactive"}),p=this.params,G=v=>this._G(v);
     this.bus=G(1);this.masterGain=G(p.volume);
     this.analyser=c.createAnalyser();this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;
-    const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-10;L.knee.value=8;L.ratio.value=12;L.attack.value=.003;L.release.value=.2;
+    const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-6;L.knee.value=10;L.ratio.value=4;L.attack.value=.005;L.release.value=.18;
     this.delay=c.createDelay(1.5);this.delay.delayTime.value=p.delayTime;
     this.delayFeedback=G(p.delayFb);this.delayGain=G(p.delayMix);
     this.delay.connect(this.delayFeedback);this.delayFeedback.connect(this.delay);this.delay.connect(this.delayGain);
@@ -668,7 +668,7 @@ class SynthOslek{
   setWheel(c){this.wheel=c;if(this.started)this._det(.02);}
   noteOn(midi,vel=.85,layer=this.activeLayer){
     if(!this.started)return;
-    const MAX_VOICES=24;
+    const MAX_VOICES=48;
     if(this.voices.size>=MAX_VOICES){
       const oldest=this.voices.keys().next().value;
       if(oldest!==undefined)this._forceStop(oldest);
@@ -778,7 +778,7 @@ const synthState=new SynthStateStore({
   scenes:[null,null,null,null]
 });
 synth.state=synthState;
-synth.voicePool=new VoicePool(24);
+synth.voicePool=new VoicePool(48);
 synth.modMatrix=new ModulationMatrix();
 
 function syncSynthState(history=false){
