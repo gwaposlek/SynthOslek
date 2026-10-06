@@ -981,13 +981,21 @@ function drawScope(){
   }
   scopeCtx.lineTo(w,h/2);scopeCtx.stroke();
 }
-drawScope();
+/* v14 renderer owns the animation loop */
 
 /* Welcome Screen */
 document.getElementById("welcomeStart").addEventListener("click",async()=>{
-  await synth.start();
-  document.getElementById("welcome").classList.add("hidden");
-  document.getElementById("dot").classList.add("on");
+  try{
+    await synth.start();
+    document.getElementById("welcome").classList.add("hidden");
+    document.getElementById("dot").classList.add("on");
+    const st=document.getElementById("stxt");if(st)st.textContent="Audio ready — play keys or MIDI";
+  }catch(err){
+    const t=document.getElementById("errorText"),d=document.getElementById("errorDetail"),screen=document.getElementById("errorScreen");
+    if(t)t.textContent="Audio could not start. Check browser audio permission, then try Start again.";
+    if(d)d.textContent=String(err?.message||err);
+    if(screen)screen.style.display="block";
+  }
 });
 
 /* Randomize */
