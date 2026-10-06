@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.21-midi-duplicate-guard">
-<title>SynthOslek v14.21 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.22-voice-transient-guard">
+<title>SynthOslek v14.22 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -658,7 +658,10 @@ class SynthOslek{
     const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.');const c=this.ctx=new AC({latencyHint:"interactive"}),p=this.params,G=v=>this._G(v);
     this.bus=G(1);this.masterGain=G(p.volume);
     this.analyser=c.createAnalyser();this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;
-    const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-6;L.knee.value=10;L.ratio.value=4;L.attack.value=.005;L.release.value=.18;
+    const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-6;L.knee.value=10;L.ratio.value=4;
+    /* v14.22: give the master compressor a little more time to absorb stacked
+       note transients instead of reacting to them as a low-frequency punch. */
+    L.attack.value=.012;L.release.value=.18;
     this.delay=c.createDelay(1.5);this.delay.delayTime.value=p.delayTime;
     this.delayFeedback=G(p.delayFb);this.delayGain=G(1);
     this.delay.connect(this.delayFeedback);this.delayFeedback.connect(this.delay);this.delay.connect(this.delayGain);
@@ -746,10 +749,13 @@ class SynthOslek{
     const env=G(.00001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale(P));
     vf.type=P.filterType;vf.Q.value=P.resonance;
     /* v14.18: never allow an effectively instantaneous amp attack. A short controlled ramp avoids waveform/envelope discontinuities that can sound like a sub thump when MIDI notes are retriggered quickly. */
-    const atk=Math.max(.012,P.attack),dec=Math.max(.01,P.decay);
+    const atk=Math.max(.018,P.attack),dec=Math.max(.01,P.decay);
+    /* v14.22: the oscillator/filter must enter the audible path gently. The
+       previous 12 ms floor protected amplitude, but a fast filter sweep could
+       still create a sharp low-frequency transient on dense MIDI playing. */
     env.gain.exponentialRampToValueAtTime(Math.max(.0001,vel),now+atk);
     env.gain.exponentialRampToValueAtTime(Math.max(.001,P.sustain*vel),now+atk+dec);
-    const amt=P.fEnvAmt*6000*(.4+.6*vel),fA=Math.max(.005,P.fAttack),fD=Math.max(.01,P.fDecay);
+    const amt=P.fEnvAmt*6000*(.4+.6*vel),fA=Math.max(.018,P.fAttack),fD=Math.max(.01,P.fDecay);
     vf.frequency.setValueAtTime(P.cutoff,now);
     vf.frequency.linearRampToValueAtTime(P.cutoff+amt,now+fA);
     vf.frequency.linearRampToValueAtTime(P.cutoff+amt*P.fSustain,now+fA+fD);
