@@ -1226,12 +1226,20 @@ const PANES={};
 /* v14.31: keep the four synth parameter groups permanently visible below
    Layers. The old tab switching remains out of the active UI so Surprise Me
    can be inspected immediately without extra taps. */
-PANES.Layers.appendChild(document.getElementById("layerMixer"));
+/* v14.68: restore the text/AI sound input as an active performance control.
+   The architecture selector is intentionally hidden; engine selection is automatic
+   from the requested sound description. */
 const soundDesigner=document.querySelector(".sound-designer");
-if(soundDesigner)soundDesigner.setAttribute("hidden","");
+if(soundDesigner){
+  soundDesigner.removeAttribute("hidden");
+  PANES.Layers.appendChild(soundDesigner);
+  const architecture=soundDesigner.querySelector(".sd-architecture");
+  if(architecture)architecture.style.display="none";
+}
 const soundPrompt=document.getElementById("soundPrompt"),soundGenerate=document.getElementById("soundGenerate");
-if(soundPrompt)soundPrompt.setAttribute("hidden","");
-if(soundGenerate)soundGenerate.setAttribute("hidden","");
+if(soundPrompt)soundPrompt.removeAttribute("hidden");
+if(soundGenerate)soundGenerate.removeAttribute("hidden");
+PANES.Layers.appendChild(document.getElementById("layerMixer"));
 (function(){const tb=document.querySelector(".top-bar"),h=document.querySelector("header h1");
   if(h){const b=document.createElement("div");b.className="brand";b.appendChild(h.cloneNode(true));tb.insertBefore(b,tb.firstChild);}
 })();
