@@ -82,7 +82,7 @@ body{padding:.5rem}header{margin-bottom:.4rem}header h1{font-size:1.7rem}header 
 html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .keyboard{position:relative;display:flex;gap:0;width:100%;touch-action:none;overscroll-behavior:none}
 .key{flex:1 1 0;min-width:0;width:auto;font-size:.55rem;touch-action:none;overscroll-behavior:none}
-.key.black{position:absolute;top:0;flex:none;margin:0;width:calc(100%/21*.6)}
+.key.black{position:absolute;top:0;flex:none;margin:0;width:calc(100%/25*.62);z-index:2}
 .ovl{position:absolute;left:1rem;top:.45rem;transform:none;display:flex;gap:.4rem;align-items:center;z-index:3}
 .ovl .btn{background:rgba(0,0,0,.6)}
 .seg{display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:rgba(0,0,0,.6)}
@@ -274,7 +274,11 @@ header{display:none!important}
 @media(max-width:900px){.v14-core-badge{display:none}}
 .key:focus-visible,.btn:focus-visible,.tab:focus-visible,.scene-btn:focus-visible,select:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
 
-</style>
+/* v14.0 keyboard geometry safeguard */
+.keyboard{position:relative;isolation:isolate}
+.key:not(.black){position:relative;z-index:1}
+.key.black{pointer-events:auto}
+/* v14.0 keyboard geometry safeguard */</style>
 </head>
 <body>
 <div id="compatBanner" class="compat-banner"></div>
@@ -898,13 +902,23 @@ const kb=document.getElementById("keyboard");
 const NOTES=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 function midiToNote(m){return NOTES[m%12]+(Math.floor(m/12)-1);}
 let activeKeys=new Map();
-for(let m=48;m<=84;m++){
+const KEY_START=48,KEY_END=84;
+const WHITE_TOTAL=Array.from({length:KEY_END-KEY_START+1},(_,i)=>KEY_START+i).filter(m=>!NOTES[m%12].includes("#")).length;
+let whiteIndex=0;
+for(let m=KEY_START;m<=KEY_END;m++){
   const isBlack=NOTES[m%12].includes("#");
   const k=document.createElement("div");
   k.className="key"+(isBlack?" black":"");
   k.dataset.midi=m;
   k.textContent=isBlack?"":midiToNote(m);
   k.tabIndex=0;
+  if(isBlack){
+    const blackWidthPct=(100/WHITE_TOTAL)*.62;
+    const boundaryPct=(whiteIndex/WHITE_TOTAL)*100;
+    k.style.left=(boundaryPct-blackWidthPct/2)+"%";
+  }else{
+    whiteIndex++;
+  }
   kb.appendChild(k);
 }
 let isPointerDown=false;
