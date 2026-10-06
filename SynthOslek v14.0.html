@@ -373,6 +373,22 @@ header{display:none!important}
   .keyboard{height:92px!important;min-height:92px!important;max-height:92px!important}
 }
 
+
+/* v14.0 restored performance wheels */
+.kb-sec{display:flex!important;align-items:stretch!important;gap:.45rem!important}
+.keyboard{flex:1 1 auto!important;min-width:0!important}
+.wheels{display:flex!important;flex:0 0 auto!important;flex-direction:row!important;align-items:stretch!important}
+.wheel{width:34px!important;min-height:92px!important;height:92px!important}
+@media(orientation:landscape) and (max-height:560px){
+  .wheel{width:30px!important;height:68px!important;min-height:68px!important}
+}
+@media(orientation:portrait) and (max-width:700px){
+  .kb-sec{min-width:0!important}
+  .wheel{width:30px!important;height:92px!important}
+}
+.wheel .wt{pointer-events:none}
+.wheel:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
+
 </style>
 </head>
 <body>
@@ -402,7 +418,10 @@ header{display:none!important}
     <div class="row"><select id="midiSelect" title="MIDI input" style="width:130px"><option>No MIDI devices</option></select><button class="btn sec sm" id="bleMidiBtn" type="button" title="Connect a Bluetooth LE MIDI device">BT MIDI</button><button class="btn sec" id="panicBtn">Panic</button><div id="volKnob"></div></div>
   </div>
   <div class="scope" style="position:relative"><div class="ovl"><div class="seg" id="mode"><button data-m="gliss" class="on">Gliss</button><button data-m="pitch">Pitch</button><button data-m="scroll">Scroll</button></div><select id="ydest" title="Pitch mode: slide up/down controls this"><option value="cutoff">↕ Cutoff</option><option value="reso">↕ Reso</option><option value="trem">↕ Tremolo</option><option value="vib">↕ Vibrato</option><option value="rev">↕ Reverb</option><option value="dly">↕ Delay</option><option value="cho">↕ Chorus</option><option value="off">↕ Off</option></select><button class="btn sm sec" id="octDn">Oct −</button><span class="octv" id="oct">0</span><button class="btn sm sec" id="octUp">Oct +</button></div><button class="btn sm sec" id="specBtn" style="position:absolute;right:1.2rem;top:.45rem;transform:none;z-index:3;background:rgba(0,0,0,.6)">Scope</button><div class="viz-title"><span>OSCILLATORS</span><span>OUTPUT</span></div><canvas id="scope" width="1000" height="120"></canvas></div>
-  <div class="kb-sec"><div class="keyboard" id="keyboard"></div></div>
+  <div class="kb-sec"><div class="keyboard" id="keyboard"></div><div class="wheels" id="wheels">
+  <div class="wheel pw" id="pitchWheel" role="slider" aria-label="Pitch Bend" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="0" tabindex="0"><div class="wt"></div><b>PITCH</b></div>
+  <div class="wheel mw" id="modWheel" role="slider" aria-label="Modulation" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" tabindex="0"><div class="wt"></div><b>MOD</b></div>
+</div></div>
 
   <div class="sound-designer" id="soundDesigner">
     <div class="sd-main">
@@ -1044,6 +1063,23 @@ async function ensureStartedFromGesture(){
     return false;
   }
 }
+
+/* Pitch-mode note target + spark feedback */
+function clearPitchFeedback(){
+  document.querySelectorAll(".key.target").forEach(k=>k.classList.remove("target"));
+  document.querySelectorAll(".spark").forEach(k=>k.remove());
+}
+function showPitchFeedback(target,e){
+  clearPitchFeedback();
+  if(!target)return;
+  target.classList.add("target");
+  const spark=document.createElement("div");spark.className="spark";
+  const kbRect=kb.getBoundingClientRect();
+  spark.style.left=(e.clientX-kbRect.left)+"px";
+  spark.style.top=(e.clientY-kbRect.top)+"px";
+  kb.appendChild(spark);
+}
+
 async function handlePointer(e){
   if(!isPointerDown && e.type!=="pointerdown")return;
   if(e.cancelable)e.preventDefault();
@@ -1073,6 +1109,7 @@ async function handlePointer(e){
   target.classList.add("active");
 
   if(modeName==="pitch"){
+    showPitchFeedback(target,e);
     updateBendFromPointer(e);
   }
 }
@@ -1085,6 +1122,7 @@ const endPointer=e=>{
   if(kb.hasPointerCapture?.(e.pointerId))try{kb.releasePointerCapture(e.pointerId);}catch(err){}
   if(activeKeys.size===0)isPointerDown=false;
   document.querySelectorAll(".key.active").forEach(el=>el.classList.remove("active"));
+  clearPitchFeedback();
 };
 kb.addEventListener("pointerup",endPointer);
 kb.addEventListener("pointercancel",endPointer);
@@ -1217,7 +1255,7 @@ class BleMidiTransport{
     if(!navigator.bluetooth)throw new Error("Web Bluetooth is unavailable in this browser.");
     this.manager.setStatus("Select your SMK-37 BLE MIDI device…");
     const d=await navigator.bluetooth.requestDevice({
-      filters:[{namePrefix:"SMK-37"}],
+      acceptAllDevices:true,
       optionalServices:[this.MIDI_SERVICE]
     });
     this.device=d;
@@ -1374,7 +1412,9 @@ $("bleMidiBtn")?.addEventListener("click",async()=>{
     btn.textContent="BT: ON";
     btn.classList.add("on");
   }catch(err){
-    const msg=err?.name==="NotFoundError"?"Bluetooth selection cancelled":"BT MIDI: "+(err?.message||"connection failed");
+    const msg=err?.name==="NotFoundError"
+      ?"Bluetooth selection cancelled"
+      :"BT MIDI failed: "+(err?.name?err.name+" — ":"")+(err?.message||"connection failed");
     midiManager.setStatus(msg);
   }finally{
     btn.disabled=false;
