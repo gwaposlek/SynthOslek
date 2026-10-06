@@ -333,6 +333,46 @@ header{display:none!important}
   .keyboard{height:92px!important;min-height:92px!important}
 }
 
+
+/* v14.0 FINAL KEYBED VISIBILITY + DESKTOP WORKSTATION LAYOUT */
+.kb-sec{
+  display:block!important;
+  position:relative!important;
+  width:100%!important;
+  height:100px!important;
+  min-height:100px!important;
+  max-height:none!important;
+  padding:.25rem .5rem!important;
+  overflow:hidden!important;
+  flex:none!important;
+}
+.keyboard{
+  display:block!important;
+  position:relative!important;
+  width:100%!important;
+  height:92px!important;
+  min-height:92px!important;
+  max-height:92px!important;
+  flex:none!important;
+  overflow:hidden!important;
+}
+.keyboard .key.white{
+  position:absolute!important;
+  top:0!important;
+}
+.keyboard .key.black{
+  position:absolute!important;
+  top:0!important;
+}
+@media (orientation:landscape) and (max-height:560px){
+  .kb-sec{height:76px!important;min-height:76px!important}
+  .keyboard{height:68px!important;min-height:68px!important;max-height:68px!important}
+}
+@media (orientation:portrait){
+  .kb-sec{height:100px!important;min-height:100px!important}
+  .keyboard{height:92px!important;min-height:92px!important;max-height:92px!important}
+}
+
 </style>
 </head>
 <body>
@@ -359,7 +399,7 @@ header{display:none!important}
       <button class="btn sm sec" id="saveBtn">Save</button>
       <button class="btn sm rnd" id="rndBtn">🎲 Randomize</button>
     </div>
-    <div class="row"><select id="midiSelect" title="MIDI input" style="width:130px"><option>No MIDI devices</option></select><button class="btn sec" id="panicBtn">Panic</button><div id="volKnob"></div></div>
+    <div class="row"><select id="midiSelect" title="MIDI input" style="width:130px"><option>No MIDI devices</option></select><button class="btn sec sm" id="bleMidiBtn" type="button" title="Connect a Bluetooth LE MIDI device">BT MIDI</button><button class="btn sec" id="panicBtn">Panic</button><div id="volKnob"></div></div>
   </div>
   <div class="scope" style="position:relative"><div class="ovl"><div class="seg" id="mode"><button data-m="gliss" class="on">Gliss</button><button data-m="pitch">Pitch</button><button data-m="scroll">Scroll</button></div><select id="ydest" title="Pitch mode: slide up/down controls this"><option value="cutoff">↕ Cutoff</option><option value="reso">↕ Reso</option><option value="trem">↕ Tremolo</option><option value="vib">↕ Vibrato</option><option value="rev">↕ Reverb</option><option value="dly">↕ Delay</option><option value="cho">↕ Chorus</option><option value="off">↕ Off</option></select><button class="btn sm sec" id="octDn">Oct −</button><span class="octv" id="oct">0</span><button class="btn sm sec" id="octUp">Oct +</button></div><button class="btn sm sec" id="specBtn" style="position:absolute;right:1.2rem;top:.45rem;transform:none;z-index:3;background:rgba(0,0,0,.6)">Scope</button><div class="viz-title"><span>OSCILLATORS</span><span>OUTPUT</span></div><canvas id="scope" width="1000" height="120"></canvas></div>
   <div class="kb-sec"><div class="keyboard" id="keyboard"></div></div>
@@ -1162,6 +1202,87 @@ resizeScope();
   render();
 })();
 
+
+class BleMidiTransport{
+  constructor(manager){
+    this.manager=manager;
+    this.device=null;
+    this.server=null;
+    this.characteristic=null;
+    this.lastStatus=null;
+    this.MIDI_SERVICE="03B80E5A-EDE8-4B33-A751-6CE34EC4C700";
+    this.MIDI_CHARACTERISTIC="7772E5DB-3868-4112-A1A9-F2669D106BF3";
+  }
+  async connect(){
+    if(!navigator.bluetooth)throw new Error("Web Bluetooth is unavailable in this browser.");
+    this.manager.setStatus("Select your SMK-37 BLE MIDI device…");
+    const d=await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:"SMK-37"}],
+      optionalServices:[this.MIDI_SERVICE]
+    });
+    this.device=d;
+    d.addEventListener?.("gattserverdisconnected",()=>this.onDisconnect());
+    this.server=await d.gatt.connect();
+    const service=await this.server.getPrimaryService(this.MIDI_SERVICE);
+    this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);
+    await this.characteristic.startNotifications();
+    this.characteristic.addEventListener("characteristicvaluechanged",e=>this.onData(e.target.value));
+    this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37 connected"));
+    return true;
+  }
+  onDisconnect(){
+    this.characteristic=null;this.server=null;
+    this.manager.setStatus("BLE MIDI disconnected — reconnect when ready");
+  }
+  onData(view){
+    if(!view||view.byteLength<3)return;
+    const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
+    let i=0;
+    /* BLE-MIDI header timestamp + first timestamp byte. */
+    if((a[i]&0x80)!==0)i++;
+    if(i<a.length&&(a[i]&0x80)!==0)i++;
+    while(i<a.length){
+      /* Every MIDI message is preceded by a BLE-MIDI timestamp byte. */
+      if((a[i]&0x80)!==0)i++;
+      if(i>=a.length)break;
+      let status=a[i++];
+      if(status<0x80){
+        if(this.lastStatus==null)break;
+        i--;status=this.lastStatus;
+      }else{
+        this.lastStatus=status;
+      }
+      const cmd=status&0xf0;
+      const ch=(status&0x0f)+1;
+      if(cmd===0x80||cmd===0x90||cmd===0xB0||cmd===0xE0){
+        const d1=a[i++]||0;
+        const d2=a[i++]||0;
+        if(cmd===0x90&&d2>0)this.manager.noteOn(d1,d2,ch);
+        else if(cmd===0x80||(cmd===0x90&&d2===0))this.manager.noteOff(d1,ch);
+        else if(cmd===0xB0)this.manager.cc(d1,d2,ch);
+        else if(cmd===0xE0){
+          const bend=((d2<<7)|d1)-8192;
+          this.manager.synth.setBend((bend/8192)*200,.008);
+          this.manager.synth.modMatrix.setSource("pitchBend",bend/8192);
+        }
+      }else if(cmd===0xC0||cmd===0xD0){
+        i+=1;
+      }else if(status===0xF8||status===0xFA||status===0xFC||status===0xFB){
+        /* realtime messages have no data bytes */
+      }else if(status===0xF1||status===0xF3){
+        i+=1;
+      }else if(status===0xF2){
+        i+=2;
+      }
+    }
+  }
+  disconnect(){
+    try{this.server?.disconnect();}catch(e){}
+    this.characteristic=null;this.server=null;
+    this.manager.setStatus("BLE MIDI disconnected");
+  }
+}
+
 class MidiManager{
   constructor(synth){
     this.synth=synth;this.access=null;this.input=null;this.select=$("midiSelect");
@@ -1242,6 +1363,24 @@ class MidiManager{
 }
 const midiManager=new MidiManager(synth);
 void midiManager.init();
+
+/* Direct BLE-MIDI fallback for Windows Edge / compatible Chromium browsers. */
+const bleMidi=new BleMidiTransport(midiManager);
+$("bleMidiBtn")?.addEventListener("click",async()=>{
+  const btn=$("bleMidiBtn");
+  try{
+    btn.disabled=true;
+    await bleMidi.connect();
+    btn.textContent="BT: ON";
+    btn.classList.add("on");
+  }catch(err){
+    const msg=err?.name==="NotFoundError"?"Bluetooth selection cancelled":"BT MIDI: "+(err?.message||"connection failed");
+    midiManager.setStatus(msg);
+  }finally{
+    btn.disabled=false;
+  }
+});
+
 
 let scenes=[null,null,null,null];
 try{const saved=JSON.parse(localStorage.getItem("so-scenes-v14")||"[]");if(Array.isArray(saved))scenes=saved.slice(0,4).concat([null,null,null,null]).slice(0,4);}catch(e){}
