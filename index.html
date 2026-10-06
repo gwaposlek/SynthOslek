@@ -1052,9 +1052,11 @@ for(let m=KEY_START;m<=KEY_END;m++){
 }
 let isPointerDown=false;
 const clamp01=v=>Math.max(-1,Math.min(1,v));
+let pitchGestureStartX=0;
 const updateBendFromPointer=e=>{
-  const r=kb.getBoundingClientRect(),center=r.left+r.width/2;
-  const amt=clamp01((e.clientX-center)/Math.max(1,r.width/2));
+  const r=kb.getBoundingClientRect();
+  const travel=Math.max(60,r.width*.32);
+  const amt=clamp01((e.clientX-pitchGestureStartX)/travel);
   synth.setBend(amt*200,.015);
   const pw=$("pitchWheel");
   if(pw){
@@ -1096,6 +1098,7 @@ let yGestureKey=null,yGestureStartY=0,yGestureStartT=0;
 function currentYTarget(){return YDEST_MAP[ydestEl?.value||"cutoff"]||null;}
 function beginYGesture(e){
   yGestureKey=currentYTarget();
+  pitchGestureStartX=e.clientX;
   yGestureStartY=e.clientY;
   if(yGestureKey&&K[yGestureKey]&&Number.isFinite(synth.params[yGestureKey]))yGestureStartT=toT(yGestureKey,synth.params[yGestureKey]);
   else{yGestureKey=null;yGestureStartT=0;}
