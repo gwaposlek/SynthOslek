@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.9-auto-ble-reconnect">
+<meta name="synthoslek-build" content="2026-10-06-v14.9-auto-ble-reconnect-keyfix">
 <title>SynthOslek v14.9 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -1204,10 +1204,12 @@ async function handlePointer(e){
   if(e.cancelable)e.preventDefault();
   if(!isPointerDown&&e.type!=="pointerdown")return;
   const pointer=e.pointerId;
+  /* Capture the touched key before awaiting audio unlock. */
+  let target=e.target instanceof Element?e.target.closest(".key"):null;
+  if(!target?.classList.contains("key"))target=document.elementFromPoint(e.clientX,e.clientY);
   if(e.type==="pointerdown"&&!(await ensureStartedFromGesture()))return;
   if(e.type==="pointerdown"&&modeName==="pitch"&&pitchPointerId===null){pitchPointerId=pointer;beginYGesture(e);}
   if(modeName==="pitch"&&pitchPointerId===pointer){updateBendFromPointer(e);updateYDestination(e);}
-  const target=document.elementFromPoint(e.clientX,e.clientY);
   if(!target?.classList.contains("key")){if(modeName==="pitch"&&pitchPointerId===pointer&&e.type!=="pointerdown"){const active=document.querySelector(".key.active");if(active)showPitchFeedback(active,e);}return;}
   const baseMidi=parseInt(target.dataset.midi,10),midi=baseMidi+oct*12,prev=activeKeys.get(pointer);
   if(!prev||prev.midi!==midi){
