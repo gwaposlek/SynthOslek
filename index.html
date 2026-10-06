@@ -863,7 +863,7 @@ class SynthOslek{
     this.voices.delete(key);this.tailVoices.delete(key);this.voicePool?.release(key,0);
   }
   panic(){return this.dspBackend?.panic();}
-  allNotesOff(){if(!this.started)return;for(const key of [...this.voices.keys()]){const [layer,midi]=key.split(":");this._nativeNoteOff(Number(midi),Number(layer));}this.sustained.clear();}
+  allNotesOff(){if(!this.started)return;for(const key of [...this.voices.keys()]){const [layer,midi]=key.split(":");this.noteOff(Number(midi),Number(layer));}this.sustained.clear();}
   _nativePanic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
   updateParam(k,x,at=null){
     this.params[k]=x;
@@ -1918,7 +1918,7 @@ class MidiManager{
       this.synth.panic();
       this.synth.sustain=false;
       const led=$("sustainLed");if(led){led.classList.remove("on");led.textContent="SUSTAIN OFF";}
-      this.queueMidiVisualClear?.();this.synth.modMatrix.setSource("modWheel",0);this.synth.setModWheel(0,when);
+      this.clearMidiVisuals();this.synth.modMatrix.setSource("modWheel",0);this.synth.setModWheel(0,when);
       syncSynthState(false);return;
     }
     if(cc===123){
