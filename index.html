@@ -513,6 +513,7 @@ header{display:none!important}
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
+const pitchBendCents=norm=>screenPitchCents(Math.max(-1,Math.min(1,Number(norm)||0)));
 
 
 /* ========================= v14.0 CORE ARCHITECTURE ========================= */
@@ -630,9 +631,9 @@ class SynthOslek{
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
     if(this.started){if(this.ctx.state==="suspended")await this.ctx.resume();return;}
-    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.');const c=this.ctx=new AC(),p=this.params,G=v=>this._G(v);
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.');const c=this.ctx=new AC({latencyHint:"interactive"}),p=this.params,G=v=>this._G(v);
     this.bus=G(1);this.masterGain=G(p.volume);
-    this.analyser=c.createAnalyser();this.analyser.fftSize=2048;this.analyser.smoothingTimeConstant=.75;
+    this.analyser=c.createAnalyser();this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;
     const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-10;L.knee.value=8;L.ratio.value=12;L.attack.value=.003;L.release.value=.2;
     this.delay=c.createDelay(1.5);this.delay.delayTime.value=p.delayTime;
     this.delayFeedback=G(p.delayFb);this.delayGain=G(p.delayMix);
@@ -1382,34 +1383,21 @@ resizeScope();
 
 class BleMidiTransport{
   constructor(manager){
-    this.manager=manager;
-    this.device=null;
-    this.server=null;
-    this.characteristic=null;
-    this.lastStatus=null;
+    this.manager=manager;this.device=null;this.server=null;this.characteristic=null;this.lastStatus=null;
     this.MIDI_SERVICE="03b80e5a-ede8-4b33-a751-6ce34ec4c700";
     this.MIDI_CHARACTERISTIC="7772e5db-3868-4112-a1a9-f2669d106bf3";
+    this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";
   }
-  async connect(){
-    if(!navigator.bluetooth)throw new Error("Web Bluetooth is unavailable in this browser.");
-    if(navigator.bluetooth.getAvailability){
-      const available=await navigator.bluetooth.getAvailability();
-      if(!available)throw new Error("Windows reports no Bluetooth adapter available to Web Bluetooth. Check Windows Bluetooth and Edge permissions.");
-    }
-    this.manager.setStatus("Select your SMK-37 BLE MIDI device…");
-    let d;
-    try{
-      d=await navigator.bluetooth.requestDevice({
-        acceptAllDevices:true,
-        optionalServices:[this.MIDI_SERVICE]
-      });
-    }catch(err){
-      /* Retry without optionalServices for Chromium builds that reject this custom 128-bit UUID
-         during requestDevice validation. Service discovery is attempted after GATT connection. */
-      if(err?.name!=="TypeError")throw err;
-      d=await navigator.bluetooth.requestDevice({acceptAllDevices:true});
-    }
+  remembered(){
+    try{return{id:localStorage.getItem(this.storageId)||"",name:localStorage.getItem(this.storageName)||""};}
+    catch(e){return{id:"",name:""};}
+  }
+  async attach(d){
     this.device=d;
+    try{
+      localStorage.setItem(this.storageId,d.id||"");
+      localStorage.setItem(this.storageName,d.name||"SMK-37");
+    }catch(e){}
     d.addEventListener?.("gattserverdisconnected",()=>this.onDisconnect());
     if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
     this.server=await d.gatt.connect();
@@ -1422,26 +1410,57 @@ class BleMidiTransport{
         service=services.find(s=>(s.uuid||"").toLowerCase()===this.MIDI_SERVICE.toLowerCase());
         if(!service)throw firstErr;
       }catch(secondErr){
-        throw new Error("SMK-37 connected, but Edge did not grant this page access to its BLE-MIDI service. On Windows, use M-VAVE's BLE MIDI Connector if this persists.");
+        throw new Error("SMK-37 connected, but Edge did not grant this page access to its BLE-MIDI service. Use M-VAVE's BLE MIDI Connector if this persists.");
       }
     }
-    try{this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);}
-    catch(err){throw new Error("BLE-MIDI service found, but its MIDI data characteristic was unavailable.");}
+    this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);
     await this.characteristic.startNotifications();
     this.characteristic.addEventListener("characteristicvaluechanged",e=>this.onData(e.target.value));
     this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37 connected"));
+    const btn=$("bleMidiBtn");if(btn){btn.textContent="BT: ON";btn.classList.add("on");}
     return true;
+  }
+  async autoReconnect(){
+    if(!navigator.bluetooth?.getDevices)return false;
+    try{
+      const remembered=this.remembered();
+      if(!remembered.id&& !remembered.name)return false;
+      const devices=await navigator.bluetooth.getDevices();
+      const d=devices.find(x=>remembered.id&&x.id===remembered.id)||devices.find(x=>remembered.name&&x.name===remembered.name);
+      if(!d)return false;
+      await this.attach(d);
+      this.manager.setStatus("BLE MIDI: "+(d.name||"SMK-37")+" reconnected");
+      return true;
+    }catch(err){
+      return false;
+    }
+  }
+  async connect(){
+    if(!navigator.bluetooth)throw new Error("Web Bluetooth is unavailable in this browser.");
+    if(navigator.bluetooth.getAvailability){
+      const available=await navigator.bluetooth.getAvailability();
+      if(!available)throw new Error("Windows reports no Bluetooth adapter available to Web Bluetooth. Check Windows Bluetooth and Edge permissions.");
+    }
+    if(await this.autoReconnect())return true;
+    this.manager.setStatus("Select your SMK-37 BLE MIDI device…");
+    let d;
+    try{
+      d=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[this.MIDI_SERVICE]});
+    }catch(err){
+      if(err?.name!=="TypeError")throw err;
+      d=await navigator.bluetooth.requestDevice({acceptAllDevices:true});
+    }
+    return this.attach(d);
   }
   onDisconnect(){
     this.characteristic=null;this.server=null;
-    this.manager.setStatus("BLE MIDI disconnected — reconnect when ready");
+    const btn=$("bleMidiBtn");if(btn){btn.textContent="BT MIDI";btn.classList.remove("on");}
+    this.manager.setStatus("BLE MIDI disconnected — ready to reconnect");
   }
   onData(view){
     if(!view||view.byteLength<3)return;
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
-    let i=2;
-    let status=null;
-    let firstEvent=true;
+    let i=2,status=null,firstEvent=true;
     const emit=(st,d1,d2)=>{
       if(st==null)return;
       const cmd=st&0xf0,ch=(st&0x0f)+1;
@@ -1449,161 +1468,40 @@ class BleMidiTransport{
       else if(cmd===0x80||(cmd===0x90&&d2===0))this.manager.noteOff(d1,ch);
       else if(cmd===0xB0)this.manager.cc(d1,d2,ch);
       else if(cmd===0xE0){
-        const bend=((d2<<7)|d1)-8192;
-        this.manager.synth.setBend((bend/8192)*200,.008);
-        this.manager.synth.modMatrix.setSource("pitchBend",bend/8192);
+        const bend=((d2<<7)|d1)-8192,norm=bend/8192;
+        this.manager.synth.setBend(pitchBendCents(norm),.003);
+        this.manager.synth.modMatrix.setSource("pitchBend",norm);
+        setWheelVisual($("pitchWheel"),norm,true);
       }
     };
-    const need=st=>{
-      const c=st&0xf0;
-      if(c===0xC0||c===0xD0)return 1;
-      if(c>=0x80&&c<=0xE0)return 2;
-      return 0;
-    };
-    /* BLE-MIDI: packet = header + timestamp + MIDI event(s).
-       A timestamp precedes later events; the first event starts immediately
-       after the two-byte packet header. Running status is packet-local. */
+    const need=st=>{const c=st&0xf0;if(c===0xC0||c===0xD0)return 1;if(c>=0x80&&c<=0xE0)return 2;return 0;};
     while(i<a.length){
-      let b=a[i++];
-      if(b>=0xF8)continue;
-
+      let b=a[i++];if(b>=0xF8)continue;
       let data1=null;
       if(firstEvent){
         if(b<0x80)continue;
-        status=b;
-        this.lastStatus=status;
-        firstEvent=false;
+        status=b;this.lastStatus=status;firstEvent=false;
       }else if(b>=0x80){
-        /* Timestamp for the next MIDI event. */
         if(i>=a.length)break;
-        b=a[i++];
-        if(b>=0xF8)continue;
-        if(b>=0x80){
-          status=b;
-          this.lastStatus=status;
-        }else{
-          if(status==null)continue;
-          data1=b; /* running status after timestamp */
-        }
-      }else{
-        if(status==null)continue;
-        data1=b; /* running status without a new timestamp */
-      }
-
-      const count=need(status);
-      if(!count)continue;
-      if(data1===null){
-        if(i>=a.length)break;
-        data1=a[i++];
-        if(data1>=0x80)break;
-      }
-      if(count===1){
-        emit(status,data1,0);
-        continue;
-      }
-      if(i>=a.length)break;
-      const data2=a[i++];
-      if(data2>=0x80)break;
-      emit(status,data1,data2);
+        b=a[i++];if(b>=0xF8)continue;
+        if(b>=0x80){status=b;this.lastStatus=status;}
+        else{if(status==null)continue;data1=b;}
+      }else{if(status==null)continue;data1=b;}
+      const count=need(status);if(!count)continue;
+      if(data1===null){if(i>=a.length)break;data1=a[i++];if(data1>=0x80)break;}
+      if(count===1){emit(status,data1,0);continue;}
+      if(i>=a.length)break;const data2=a[i++];if(data2>=0x80)break;emit(status,data1,data2);
     }
   }
   disconnect(){
     try{this.server?.disconnect();}catch(e){}
     this.characteristic=null;this.server=null;
+    const btn=$("bleMidiBtn");if(btn){btn.textContent="BT MIDI";btn.classList.remove("on");}
     this.manager.setStatus("BLE MIDI disconnected");
   }
 }
-
-class MidiManager{
-  constructor(synth){
-    this.synth=synth;this.access=null;this.input=null;this.select=$("midiSelect");
-  }
-  async init(){
-    if(!navigator.requestMIDIAccess){this.setStatus("WebMIDI unavailable — touch keyboard still works");return false;}
-    try{
-      this.access=await navigator.requestMIDIAccess({sysex:false});
-      this.refresh();
-      this.access.onstatechange=()=>this.refresh();
-      return true;
-    }catch(err){this.setStatus("MIDI permission unavailable");return false;}
-  }
-  setStatus(msg){const st=$("stxt");if(st)st.textContent=msg;}
-  refresh(){
-    if(!this.select)return;
-    const inputs=[...(this.access?.inputs?.values?.()||[])],previous=this.select.value;
-    this.select.innerHTML="";
-    if(!inputs.length){
-      const o=document.createElement("option");o.value="";o.textContent="No MIDI devices";this.select.appendChild(o);
-      this.input=null;
-      return;
-    }
-    inputs.forEach((i,n)=>{const o=document.createElement("option");o.value=i.id;o.textContent=i.name||("MIDI Input "+(n+1));this.select.appendChild(o);});
-    this.select.value=inputs.some(i=>i.id===previous)?previous:inputs[0].id;
-    this.select.onchange=()=>this.useInput(this.select.value);
-    this.useInput(this.select.value);
-  }
-  useInput(id){
-    if(this.input)this.input.onmidimessage=null;
-    this.input=this.access?.inputs?.get(id)||null;
-    if(this.input){this.input.onmidimessage=e=>this.onMessage(e);this.setStatus("MIDI: "+(this.input.name||"Input"));}
-  }
-  layersForChannel(ch){
-    if(midiRouteMode==="ch")return ch>=1&&ch<=LAYER_COUNT?[ch-1]:[];
-    return layerState.map((_,i)=>i).filter(layerAudible);
-  }
-  controlLayer(ch){
-    if(midiRouteMode==="ch"&&ch>=1&&ch<=LAYER_COUNT)return ch-1;
-    return synth.activeLayer;
-  }
-  noteOn(m,v,ch){
-    const vel=Math.max(.001,Math.min(1,(v??100)/127));
-    this.synth.start().then(()=>{for(const layer of this.layersForChannel(ch))this.synth.noteOn(m,vel,layer);}).catch(()=>{});
-  }
-  noteOff(m,ch){
-    if(!this.synth.started)return;
-    const layers=midiRouteMode==="ch"?(ch>=1&&ch<=LAYER_COUNT?[ch-1]:[]):layerState.map((_,i)=>i);
-    for(const layer of layers)this.synth.noteOff(m,layer);
-  }
-  cc(cc,val,ch){
-    const x=Math.max(0,Math.min(1,val/127)),layer=this.controlLayer(ch);
-    if(cc===1){
-      this.synth.modMatrix.setSource("modWheel",x);
-      this.synth.setModWheel(x);
-      setModWheelVisual($("modWheel"),x);
-      const st=$("stxt");if(st)st.textContent="MIDI Mod Wheel: "+Math.round(x*127);
-      syncSynthState(false);
-      return;
-    }
-    if(cc===7){this.synth.updateParam("volume",x);return;}
-    if(cc===10){layerState[layer].pan=x*2-1;refreshLayerGains();return;}
-    if(cc===64){
-      const was=this.synth.sustain;this.synth.sustain=x>=.5;
-      if(was&&!this.synth.sustain)this.synth.releaseSustain();
-      const led=$("sustainLed");
-      if(led){led.classList.toggle("on",this.synth.sustain);led.textContent=this.synth.sustain?"SUSTAIN ON":"SUSTAIN OFF";}
-      syncSynthState(false);return;
-    }
-    if(cc>=20&&cc<=23){layerState[cc-20].vol=x;refreshLayerGains();return;}
-    if(cc>=28&&cc<=31){layerState[cc-28].pan=x*2-1;refreshLayerGains();return;}
-    if(cc>=36&&cc<=39){layerState[cc-36].fx=x;refreshLayerGains();return;}
-    if(cc>=44&&cc<=47){layerState[cc-44].enabled=x>=.5;refreshLayerGains();buildLayerMixer();return;}
-  }
-  onMessage(e){
-    const d=e.data||[],status=d[0]||0,cmd=status&0xf0,ch=(status&0x0f)+1,a=d[1]||0,b=d[2]||0;
-    if(cmd===0x90&&b>0)this.noteOn(a,b,ch);
-    else if(cmd===0x80||(cmd===0x90&&b===0))this.noteOff(a,ch);
-    else if(cmd===0xB0)this.cc(a,b,ch);
-    else if(cmd===0xE0){
-      const bend=((b<<7)|a)-8192,cents=(bend/8192)*200;
-      this.synth.setBend(cents,.008);this.synth.modMatrix.setSource("pitchBend",bend/8192);syncSynthState(false);
-    }
-  }
-}
-const midiManager=new MidiManager(synth);
-void midiManager.init();
-
-/* Direct BLE-MIDI fallback for Windows Edge / compatible Chromium browsers. */
 const bleMidi=new BleMidiTransport(midiManager);
+void bleMidi.autoReconnect();
 $("bleMidiBtn")?.addEventListener("click",async()=>{
   const btn=$("bleMidiBtn");
   try{
