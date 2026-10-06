@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.22-voice-transient-guard">
-<title>SynthOslek v14.22 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.23-audio-runtime-boundary">
+<title>SynthOslek v14.23 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -644,18 +644,46 @@ class ModulationMatrix{
   }
 }
 
+/* v14.23: small runtime boundary around Web Audio creation/lifecycle. This keeps
+   the current native DSP path intact while giving AudioWorklet/WASM a clean seam later. */
+class AudioRuntime{
+  constructor(){this.ctx=null;this._bound=false;}
+  supported(){return !!(window.AudioContext||window.webkitAudioContext);}
+  async create(){
+    if(this.ctx)return this.ctx;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)throw new Error("Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.");
+    this.ctx=new AC({latencyHint:"interactive"});
+    await this.resume();
+    this.bindLifecycle();
+    return this.ctx;
+  }
+  async resume(){
+    try{if(this.ctx&&this.ctx.state==="suspended")await this.ctx.resume();}catch(e){}
+    return this.ctx;
+  }
+  bindLifecycle(){
+    if(this._bound)return;
+    this._bound=true;
+    const wake=()=>{if(!document.hidden)this.resume();};
+    document.addEventListener("visibilitychange",wake,{passive:true});
+    window.addEventListener("pageshow",wake,{passive:true});
+  }
+  state(){return this.ctx?.state||"uninitialized";}
+}
+
 /* Native Web Audio remains the v14.0 DSP path for Safari/iOS/DeX compatibility.
    Voice slots/state/modulation are separated so AudioWorklet/WASM can be added later. */
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this._startPromise=null;this.modWheel=0;this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.ctx=null;this.audioRuntime=new AudioRuntime();this._startPromise=null;this.modWheel=0;this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreq=440;this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
     this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
     if(this.started){if(this.ctx.state==="suspended")await this.ctx.resume();return;}
-    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw new Error('Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.');const c=this.ctx=new AC({latencyHint:"interactive"}),p=this.params,G=v=>this._G(v);
+    const c=this.ctx=await this.audioRuntime.create(),p=this.params,G=v=>this._G(v);
     this.bus=G(1);this.masterGain=G(p.volume);
     this.analyser=c.createAnalyser();this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;
     const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-6;L.knee.value=10;L.ratio.value=4;
@@ -676,7 +704,7 @@ class SynthOslek{
     /* v14.18: DC blocking before the master compressor prevents subsonic/DC transients from becoming audible low-end thumps during rapid retriggering. */
     this.dcBlock=c.createBiquadFilter();this.dcBlock.type="highpass";this.dcBlock.frequency.value=18;this.dcBlock.Q.value=.707;
     this.analyser.connect(this.dcBlock);this.dcBlock.connect(L);L.connect(this.masterGain);this.masterGain.connect(c.destination);
-    this.started=true;if(c.state==="suspended")await c.resume();
+    this.started=true;await this.audioRuntime.resume();
   }
   _impulse(d,dec){const r=this.ctx.sampleRate,l=r*d,b=this.ctx.createBuffer(2,l,r);
     for(let c=0;c<2;c++){const a=b.getChannelData(c);for(let i=0;i<l;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/l,dec);}return b;}
