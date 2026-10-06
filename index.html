@@ -320,6 +320,19 @@ header{display:none!important}
   .keyboard{min-width:720px!important;width:720px!important;height:92px!important}
 }
 
+
+/* v14.0 keybed container height fix */
+.keyboard{height:92px!important;min-height:92px!important}
+@media (orientation:landscape) and (max-width:1000px){
+  .keyboard{height:68px!important;min-height:68px!important}
+}
+@media (orientation:landscape) and (min-width:1001px){
+  .keyboard{height:92px!important;min-height:92px!important}
+}
+@media (orientation:portrait) and (max-width:700px){
+  .keyboard{height:92px!important;min-height:92px!important}
+}
+
 </style>
 </head>
 <body>
