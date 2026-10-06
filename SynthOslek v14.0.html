@@ -53,10 +53,12 @@ select{background:var(--knob);color:var(--text);border:1px solid var(--border);b
 .kb-sec{padding:1rem;background:var(--panel2);border-top:1px solid var(--border);overflow-x:auto}
 .hint{font-size:.7rem;color:var(--muted);margin-bottom:.6rem;text-align:center}
 .keyboard{display:flex;justify-content:center;gap:2px;user-select:none;touch-action:none;overscroll-behavior:none}
-.key{width:34px;height:110px;flex:none;background:#e8e8e8;border-radius:0 0 5px 5px;cursor:pointer;border:1px solid #999;display:flex;align-items:flex-end;justify-content:center;padding-bottom:7px;font-size:.6rem;color:#444;font-weight:600}
-.key.black{width:22px;height:72px;background:#111;color:#777;margin:0 -11px;z-index:2;border-color:#000}
-.key.active{background:var(--accent)!important;color:#fff!important;box-shadow:0 0 16px var(--glow)}
-.key.black.active{background:var(--accent2)!important}
+.key{width:34px;height:110px;flex:none;background:#080808;border-radius:0 0 5px 5px;cursor:pointer;border:1px solid #2a2a2a;display:flex;align-items:flex-end;justify-content:center;padding-bottom:7px;font-size:.6rem;color:#aeb6c7;font-weight:600;box-shadow:inset 0 -7px 0 rgba(255,255,255,.02);transition:box-shadow .12s,transform .08s,filter .12s}
+.key.black{width:22px;height:72px;background:#ff7a00;color:#1b0b00;margin:0 -11px;z-index:2;border-color:#b94e00;box-shadow:inset 0 -7px 0 rgba(60,18,0,.16)}
+.key:hover{filter:brightness(1.18)}
+.key.black:hover{filter:brightness(1.08)}
+.key.active{background:#080808!important;color:#f5f7ff!important;transform:translateY(1px);box-shadow:inset 0 0 0 2px rgba(91,140,255,.8),inset 0 -7px 0 rgba(91,140,255,.08),0 0 14px rgba(91,140,255,.45)!important}
+.key.black.active{background:#ff7a00!important;color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 -7px 0 rgba(255,210,80,.16),0 0 16px rgba(255,122,0,.7)!important}
 .footer{margin-top:1rem;font-size:.7rem;color:#444;text-align:center}
 @media(max-width:640px){.key{width:26px;height:90px}.key.black{width:16px;height:58px;margin:0 -8px}}
 .rot{display:none;font-size:.7rem;color:var(--muted);text-align:center;margin-bottom:.4rem}
@@ -181,7 +183,10 @@ body{overflow:auto}
   .kb-sec{position:relative;z-index:20}
 }
 .ovl select{width:auto;min-width:0;padding:.25rem .3rem;font-size:.68rem}
-.key.target{background:#ffd34d!important;color:#000!important;box-shadow:0 0 14px #ffd34d}
+/* Pitch feedback keeps the key colors intact; motion is shown with glow/outline. */
+.key.target{background:#080808!important;color:#f5f7ff!important;box-shadow:inset 0 0 0 2px #7c5cff,inset 0 0 18px rgba(124,92,255,.2),0 0 18px rgba(124,92,255,.6)!important;animation:pitchKeyPulse .52s ease-in-out infinite alternate}
+.key.black.target{background:#ff7a00!important;color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 0 18px rgba(255,210,80,.18),0 0 20px rgba(255,122,0,.75)!important}
+@keyframes pitchKeyPulse{from{filter:brightness(1);transform:translateY(0) scale(1)}to{filter:brightness(1.22);transform:translateY(-1px) scale(1.015)}}
 .panes>.tabpane>.layer-mixer{grid-column:1/-1;display:block!important;border:0;background:var(--panel);overflow:auto}
 @media(orientation:landscape){
  .synth{display:flex!important;flex-direction:column;height:calc(100dvh - .5rem)!important;overflow:hidden}
@@ -1608,3 +1613,9 @@ syncSynthState(false);
 .wheels{order:0}
 .keyboard{order:1;min-width:0}
 @media(orientation:portrait){.kb-sec{flex-direction:row}.wheels{order:0}.keyboard{order:1}}
+
+/* v14.0 Pitch Mode visual feedback */
+.key.target{position:relative}
+.key.target::after{content:"";position:absolute;inset:3px;border-radius:0 0 3px 3px;border:1px solid rgba(255,255,255,.7);pointer-events:none;opacity:.9;animation:pitchTargetRing .7s ease-in-out infinite alternate}
+.key.black.target::after{inset:2px;border-color:rgba(255,226,153,.95)}
+@keyframes pitchTargetRing{from{opacity:.35;transform:scale(.96)}to{opacity:1;transform:scale(1.02)}}
