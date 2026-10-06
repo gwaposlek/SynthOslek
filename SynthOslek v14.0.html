@@ -215,8 +215,8 @@ header{display:none!important}
 .sd-bar .sd-input,.sd-bar #soundPrompt{flex:1 1 auto;min-width:0;height:36px!important;min-height:36px!important;max-height:36px;resize:none;font-size:.8rem;padding:.4rem .6rem}
 .sd-bar .sd-btn,.sd-bar #soundGenerate{flex:none;white-space:nowrap;height:36px;min-height:36px!important;padding:.3rem 1rem!important;margin:0!important}
 .kb-sec{display:flex!important;gap:.45rem;align-items:stretch}
-.keyboard{flex:1 1 auto}
-.wheels{display:flex;gap:.3rem;flex:none}
+.wheels{order:0;display:flex;gap:.3rem;flex:none}
+.keyboard{order:1;flex:1 1 auto;min-width:0}
 .wheel{position:relative;width:30px;min-height:60px;border-radius:7px;border:1px solid #2a2a2a;overflow:hidden;touch-action:none;cursor:ns-resize;background:linear-gradient(90deg,rgba(0,0,0,.65),rgba(255,255,255,.07) 50%,rgba(0,0,0,.65)),repeating-linear-gradient(0deg,#101010 0 3px,#232323 3px 4px)}
 .wheel .wt{position:absolute;left:1px;right:1px;height:14px;bottom:calc((100% - 14px)*.5);border-radius:4px;background:linear-gradient(#7ea2ff,#3f66d8);box-shadow:0 0 10px var(--glow)}
 .wheel.mw .wt{background:linear-gradient(#b79bff,#6a45e6);box-shadow:0 0 10px rgba(124,92,255,.5)}
@@ -1084,6 +1084,27 @@ function showPitchFeedback(target,e){
   kb.appendChild(spark);
 }
 
+const ydestEl=$("ydest");
+const YDEST_MAP={cutoff:"cutoff",reso:"resonance",trem:"lfoDepth",vib:"lfoDepth",rev:"reverbMix",dly:"delayMix",cho:"chorusMix",off:null};
+let yGestureKey=null,yGestureStartY=0,yGestureStartT=0;
+function currentYTarget(){return YDEST_MAP[ydestEl?.value||"cutoff"]||null;}
+function beginYGesture(e){
+  yGestureKey=currentYTarget();
+  yGestureStartY=e.clientY;
+  if(yGestureKey&&K[yGestureKey]&&Number.isFinite(synth.params[yGestureKey]))yGestureStartT=toT(yGestureKey,synth.params[yGestureKey]);
+  else{yGestureKey=null;yGestureStartT=0;}
+}
+function updateYDestination(e){
+  if(modeName!=="pitch"||!yGestureKey)return;
+  const r=kb.getBoundingClientRect();
+  const travel=Math.max(42,r.height*.85);
+  const delta=(yGestureStartY-e.clientY)/travel;
+  const next=fromT(yGestureKey,yGestureStartT+delta);
+  if(UI[yGestureKey]?.set)UI[yGestureKey].set(next);
+  else synth.updateParam(yGestureKey,next);
+}
+function clearYGesture(){yGestureKey=null;yGestureStartY=0;yGestureStartT=0;}
+
 async function handlePointer(e){
   if(!isPointerDown && e.type!=="pointerdown")return;
   if(e.cancelable)e.preventDefault();
@@ -1252,8 +1273,8 @@ class BleMidiTransport{
     this.server=null;
     this.characteristic=null;
     this.lastStatus=null;
-    this.MIDI_SERVICE="03B80E5A-EDE8-4B33-A751-6CE34EC4C700";
-    this.MIDI_CHARACTERISTIC="7772E5DB-3868-4112-A1A9-F2669D106BF3";
+    this.MIDI_SERVICE="03b80e5a-ede8-4b33-a751-6ce34ec4c700";
+    this.MIDI_CHARACTERISTIC="7772e5db-3868-4112-a1a9-f2669d106bf3";
   }
   async connect(){
     if(!navigator.bluetooth)throw new Error("Web Bluetooth is unavailable in this browser.");
@@ -1262,10 +1283,18 @@ class BleMidiTransport{
       if(!available)throw new Error("Windows reports no Bluetooth adapter available to Web Bluetooth. Check Windows Bluetooth and Edge permissions.");
     }
     this.manager.setStatus("Select your SMK-37 BLE MIDI device…");
-    const d=await navigator.bluetooth.requestDevice({
-      acceptAllDevices:true,
-      optionalServices:[this.MIDI_SERVICE]
-    });
+    let d;
+    try{
+      d=await navigator.bluetooth.requestDevice({
+        acceptAllDevices:true,
+        optionalServices:[this.MIDI_SERVICE]
+      });
+    }catch(err){
+      /* Retry without optionalServices for Chromium builds that reject this custom 128-bit UUID
+         during requestDevice validation. Service discovery is attempted after GATT connection. */
+      if(err?.name!=="TypeError")throw err;
+      d=await navigator.bluetooth.requestDevice({acceptAllDevices:true});
+    }
     this.device=d;
     d.addEventListener?.("gattserverdisconnected",()=>this.onDisconnect());
     if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
@@ -1529,3 +1558,9 @@ syncSynthState(false);
 </html>
 
 
+
+/* v14.0 hardware-standard wheel placement: pitch/mod wheels left of the keys */
+.kb-sec{flex-direction:row}
+.wheels{order:0}
+.keyboard{order:1;min-width:0}
+@media(orientation:portrait){.kb-sec{flex-direction:row}.wheels{order:0}.keyboard{order:1}}
