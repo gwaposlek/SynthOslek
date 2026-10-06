@@ -263,18 +263,6 @@ header{display:none!important}
 @media(orientation:portrait){.lm-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 
 
-/* v13.5 scroll mode */
-.kb-sec{position:relative}
-.scroll-hint{display:none;position:absolute;left:50%;transform:translateX(-50%);font-size:.55rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;pointer-events:none;z-index:5;opacity:.85}
-.scroll-hint.top{top:2px}
-.scroll-hint.bot{bottom:2px}
-.kb-sec.scroll-mode .scroll-hint{display:block}
-.kb-sec.scroll-mode .keyboard{cursor:ns-resize}
-.kb-sec.scroll-mode .key{cursor:ns-resize}
-.kb-sec.scroll-mode .key.active{background:#e8e8e8!important;color:#444!important;box-shadow:none}
-.kb-sec.scroll-mode .key.black.active{background:#111!important;color:#777!important}
-
-
 /* v14.0 core UI hooks — deliberately minimal so v13.5 layout remains intact */
 .v14-core-badge{font-size:.5rem;color:#6f86ad;letter-spacing:.08em;white-space:nowrap}
 @media(max-width:900px){.v14-core-badge{display:none}}
@@ -285,142 +273,6 @@ header{display:none!important}
 .key:not(.black){position:relative;z-index:1}
 .key.black{pointer-events:auto}
 /* v14.0 keyboard geometry safeguard */
-/* v14.0 FINAL PIANO KEYBED — deterministic geometry */
-.keyboard{
-  position:relative!important;
-  display:block!important;
-  width:100%!important;
-  min-width:0!important;
-  height:100%!important;
-  margin:0!important;
-  padding:0!important;
-  gap:0!important;
-  overflow:hidden!important;
-  isolation:isolate;
-}
-.keyboard .key{
-  box-sizing:border-box!important;
-  position:absolute!important;
-  top:0!important;
-  margin:0!important;
-  padding-bottom:7px!important;
-  flex:none!important;
-  transform:none!important;
-}
-.keyboard .key.white{
-  z-index:1!important;
-  background:#e8e8e8!important;
-  border:1px solid #999!important;
-  border-radius:0 0 5px 5px!important;
-}
-.keyboard .key.black{
-  z-index:3!important;
-  background:#111!important;
-  border:1px solid #000!important;
-  border-radius:0 0 4px 4px!important;
-}
-.keyboard .key.active{
-  z-index:4!important;
-}
-@media (orientation:portrait) and (max-width:700px){
-  .keyboard{min-width:720px!important;width:720px!important;height:92px!important}
-}
-
-
-/* v14.0 keybed container height fix */
-.keyboard{height:92px!important;min-height:92px!important}
-@media (orientation:landscape) and (max-width:1000px){
-  .keyboard{height:68px!important;min-height:68px!important}
-}
-@media (orientation:landscape) and (min-width:1001px){
-  .keyboard{height:92px!important;min-height:92px!important}
-}
-@media (orientation:portrait) and (max-width:700px){
-  .keyboard{height:92px!important;min-height:92px!important}
-}
-
-
-/* v14.0 FINAL KEYBED VISIBILITY + DESKTOP WORKSTATION LAYOUT */
-.kb-sec{
-  display:block!important;
-  position:relative!important;
-  width:100%!important;
-  height:100px!important;
-  min-height:100px!important;
-  max-height:none!important;
-  padding:.25rem .5rem!important;
-  overflow:hidden!important;
-  flex:none!important;
-}
-.keyboard{
-  display:block!important;
-  position:relative!important;
-  width:100%!important;
-  height:92px!important;
-  min-height:92px!important;
-  max-height:92px!important;
-  flex:none!important;
-  overflow:hidden!important;
-}
-.keyboard .key.white{
-  position:absolute!important;
-  top:0!important;
-}
-.keyboard .key.black{
-  position:absolute!important;
-  top:0!important;
-}
-@media (orientation:landscape) and (max-height:560px){
-  .kb-sec{height:76px!important;min-height:76px!important}
-  .keyboard{height:68px!important;min-height:68px!important;max-height:68px!important}
-}
-@media (orientation:portrait){
-  .kb-sec{height:100px!important;min-height:100px!important}
-  .keyboard{height:92px!important;min-height:92px!important;max-height:92px!important}
-}
-
-
-/* v14.0 restored performance wheels */
-.kb-sec{display:flex!important;align-items:stretch!important;gap:.45rem!important}
-.keyboard{flex:1 1 auto!important;min-width:0!important}
-.wheels{display:flex!important;flex:0 0 auto!important;flex-direction:row!important;align-items:stretch!important}
-.wheel{width:34px!important;min-height:92px!important;height:92px!important}
-@media(orientation:landscape) and (max-height:560px){
-  .wheel{width:30px!important;height:68px!important;min-height:68px!important}
-}
-@media(orientation:portrait) and (max-width:700px){
-  .kb-sec{min-width:0!important}
-  .wheel{width:30px!important;height:92px!important}
-}
-.wheel .wt{pointer-events:none}
-.wheel:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
-
-
-/* v14.0 FINAL KEYBED PALETTE — placed last to override legacy key rules */
-.key{background:#080808!important;color:#aeb6c7!important;border-color:#2a2a2a!important}
-.key.black{background:#ff7a00!important;color:#1b0b00!important;border-color:#b94e00!important}
-.key.active{color:#f5f7ff!important;box-shadow:inset 0 0 0 2px rgba(91,140,255,.9),inset 0 -7px 0 rgba(91,140,255,.08),0 0 16px rgba(91,140,255,.55)!important}
-.key.black.active{color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 -7px 0 rgba(255,210,80,.18),0 0 18px rgba(255,122,0,.8)!important}
-.key.target{background:#080808!important;color:#f5f7ff!important;box-shadow:inset 0 0 0 2px #7c5cff,inset 0 0 18px rgba(124,92,255,.22),0 0 20px rgba(124,92,255,.65)!important}
-.key.black.target{background:#ff7a00!important;color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 0 18px rgba(255,210,80,.2),0 0 22px rgba(255,122,0,.8)!important}
-
-/* v14.0 FINAL KEY FOCUS — never draw a browser square around pressed keys */
-.keyboard .key:focus,
-.keyboard .key:focus-visible{
-  outline:none!important;
-  outline-offset:0!important;
-}
-.keyboard .key.target::after{
-  border-radius:0 0 4px 4px!important;
-}
-.keyboard .key.black.target::after{
-  border-radius:0 0 3px 3px!important;
-}
-.keyboard .key:active,.keyboard .key:focus,.keyboard .key:focus-visible{outline:none!important;outline-offset:0!important;appearance:none!important;-webkit-appearance:none!important}
-
-/* FINAL: screen keys keep black/orange fills in every state */
-.keyboard .key,.keyboard .key:active,.keyboard .key:focus,.keyboard .key:focus-visible,.keyboard .key.target{background-color:#080808!important;outline:none!important}
-.keyboard .key.black,.keyboard .key.black:active,.keyboard .key.black:focus,.keyboard .key.black:focus-visible,.keyboard .key.black.target{background-color:#ff7a00!important;outline:none!important}
 /* v14.1 scoped input/gesture cleanup */
 .synth .sd-input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:text;touch-action:manipulation}
 .synth .kb-sec{--keyboard-scroll-edge:22%}
@@ -434,6 +286,107 @@ header{display:none!important}
 .key.target::after{content:"";position:absolute;inset:3px;border-radius:0 0 3px 3px;border:1px solid rgba(255,255,255,.7);pointer-events:none;opacity:.9;animation:pitchTargetRing .7s ease-in-out infinite alternate}
 .key.black.target::after{inset:2px;border-color:rgba(255,226,153,.95)}
 @keyframes pitchTargetRing{from{opacity:.35;transform:scale(.96)}to{opacity:1;transform:scale(1.02)}}
+
+/* v14.3 layout foundation — one canonical responsive keybed/workstation layer */
+.synth{
+  --key-white:#080808;
+  --key-white-border:#2a2a2a;
+  --key-black:#ff7a00;
+  --key-black-border:#b94e00;
+  --key-label:#aeb6c7;
+  --keybed-h:92px;
+  --kb-sec-h:100px;
+  --wheel-w:34px;
+}
+.synth .kb-sec{
+  position:relative;display:flex;flex-direction:row;align-items:stretch;gap:.45rem;
+  width:100%;height:var(--kb-sec-h);min-height:var(--kb-sec-h);padding:.25rem .5rem;
+  overflow:hidden;flex:none;border-top:0;border-bottom:1px solid var(--border);
+}
+.synth .keyboard{
+  position:relative;display:block;order:1;flex:1 1 auto;width:100%;min-width:0;
+  height:var(--keybed-h);min-height:var(--keybed-h);max-height:var(--keybed-h);
+  margin:0;padding:0;gap:0;overflow:hidden;isolation:isolate;
+  touch-action:none;overscroll-behavior:none;
+}
+.synth .keyboard .key{
+  box-sizing:border-box;position:absolute;top:0;margin:0;padding-bottom:7px;flex:none;
+  touch-action:none;overscroll-behavior:none;background:var(--key-white);color:var(--key-label);
+  border:1px solid var(--key-white-border);border-radius:0 0 5px 5px;z-index:1;
+  outline:none;-webkit-appearance:none;appearance:none;
+}
+.synth .keyboard .key.black{
+  width:calc(100% / 25 * .62);height:63%;background:var(--key-black);color:#1b0b00;
+  border-color:var(--key-black-border);border-radius:0 0 4px 4px;z-index:3;
+}
+.synth .keyboard .key.active{z-index:4;color:#f5f7ff;box-shadow:inset 0 0 0 2px rgba(91,140,255,.9),inset 0 -7px 0 rgba(91,140,255,.08),0 0 16px rgba(91,140,255,.55)}
+.synth .keyboard .key.black.active{color:#1b0b00;box-shadow:inset 0 0 0 2px #ffd166,inset 0 -7px 0 rgba(255,210,80,.18),0 0 18px rgba(255,122,0,.8)}
+.synth .keyboard .key.target{position:absolute;background:var(--key-white);color:#f5f7ff;box-shadow:inset 0 0 0 2px #7c5cff,inset 0 0 18px rgba(124,92,255,.22),0 0 20px rgba(124,92,255,.65)}
+.synth .keyboard .key.black.target{background:var(--key-black);color:#1b0b00;box-shadow:inset 0 0 0 2px #ffd166,inset 0 0 18px rgba(255,210,80,.2),0 0 22px rgba(255,122,0,.8)}
+.synth .keyboard .key.target::after{content:"";position:absolute;inset:3px;border-radius:0 0 4px 4px;border:1px solid rgba(255,255,255,.7);pointer-events:none;opacity:.9;animation:pitchTargetRing .7s ease-in-out infinite alternate}
+.synth .keyboard .key.black.target::after{inset:2px;border-color:rgba(255,226,153,.95);border-radius:0 0 3px 3px}
+.synth .keyboard .key:hover{filter:brightness(1.18)}.synth .keyboard .key.black:hover{filter:brightness(1.08)}
+.synth .keyboard .key:active,.synth .keyboard .key:focus,.synth .keyboard .key:focus-visible{outline:none;outline-offset:0}
+.synth .wheels{order:0;display:flex;flex:0 0 auto;flex-direction:row;align-items:stretch;gap:.3rem}
+.synth .wheel{width:var(--wheel-w);min-height:var(--keybed-h);height:var(--keybed-h);position:relative}
+.synth .wheel .wt{pointer-events:none}.synth .wheel:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
+.synth .tabs{order:4}.synth>.panes{order:5}.synth .sd-bar{order:0}
+@media (orientation:landscape){
+  .synth{display:flex;flex-direction:column;height:calc(100dvh - .5rem);overflow:hidden}
+  .synth>*{flex:none}.synth>.panes{flex:1 1 auto;min-height:0;overflow:auto}
+  .synth>.top-bar{order:0}.synth>.scope{order:1;display:flex;align-items:center;gap:.5rem;height:auto;padding:.25rem .5rem}
+  .synth>.scope .ovl,.synth>.scope #specBtn{position:static;flex:none;transform:none}
+  .synth>.scope canvas{flex:1 1 0;min-width:0;width:auto;height:50px;margin:0}
+  .synth>.kb-sec{order:2;height:var(--kb-sec-h);min-height:var(--kb-sec-h)}
+  .synth>.perf-bar{order:3;padding:.15rem .5rem;min-height:0}.synth>.tabs{order:4}.synth>.panes{order:5}
+  .synth>.perf-bar button{min-height:0;padding:.15rem .5rem}
+}
+@media (orientation:landscape) and (max-height:560px){
+  .synth{--keybed-h:68px;--kb-sec-h:76px;--wheel-w:30px}
+  .synth .layer-mixer{padding:.2rem .4rem}.synth .layer-strip{min-height:0;padding:.25rem}
+  .synth .layer-knob{min-height:0;gap:0}.synth .layer-knob svg{width:30px;height:30px}
+  .synth .layer-knob .lk-v{font-size:.55rem;line-height:1}
+  .synth .layer-knob .lk-n,.synth .layer-knob .lk-l{font-size:.5rem;line-height:1}
+}
+@media (orientation:landscape){
+  .synth .keyboard{width:auto}.synth .keyboard .key.black{height:63%}
+  .synth .layer-knobs{display:grid;grid-template-columns:repeat(3,1fr);align-items:start;justify-items:center}
+}
+@media (orientation:landscape) and (min-width:1001px){
+  .synth{max-width:1440px}.synth>.panes>.tabpane.on{grid-template-columns:repeat(4,minmax(210px,1fr))}
+  .synth .layer-knob{width:100%;min-height:0;display:flex;flex-direction:column;align-items:center;touch-action:none;user-select:none}
+  .synth .layer-knob svg{width:42px;height:42px;max-width:100%}
+  .synth .layer-knob .lk-v{font-size:.62rem;line-height:1.1;color:var(--text);font-variant-numeric:tabular-nums}
+  .synth .layer-knob .lk-n{font-size:.52rem;line-height:1.1;color:var(--muted)}
+}
+@media (orientation:landscape) and (max-width:1000px){
+  .synth .layer-mixer{display:block}.synth .lm-grid{grid-template-columns:repeat(8,minmax(82px,1fr));overflow-x:auto}.synth .layer-strip{min-width:82px}
+}
+@media (orientation:portrait){
+  .synth{width:100%;max-width:none;overflow:visible}
+  .synth .top-bar{padding:.45rem .55rem;gap:.4rem;align-items:flex-start}
+  .synth .top-bar .row{width:100%;justify-content:flex-start}.synth .top-bar .status{width:100%}
+  .synth .scope{position:relative;z-index:1;padding:.25rem .5rem .35rem}
+  .synth .scope canvas{height:90px;margin-top:2rem}
+  .synth .kb-sec{z-index:20;overflow-x:auto;overflow-y:hidden}
+  .synth .keyboard{flex:none;width:720px;min-width:720px;height:92px;min-height:92px;max-height:92px}
+  .synth .wheel{width:30px;height:92px;min-height:92px}
+  .synth .layer-mixer{display:block;padding:.4rem .45rem}.synth .lm-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}
+  .synth .layer-strip{padding:.35rem;background:#070707;border-color:#161616;min-height:168px}
+  .synth .layer-name{font-size:.7rem;min-height:30px;padding:.2rem .35rem}.synth .layer-preset{min-height:34px;font-size:.65rem;padding:.2rem}
+  .synth .layer-buttons{gap:.25rem;margin-top:.25rem}.synth .layer-buttons button{min-height:32px;font-size:.62rem;padding:.2rem .4rem;flex:1}
+  .synth .layer-meter{height:4px;margin:.3rem 0}
+  .synth .layer-knobs{display:grid;grid-template-columns:repeat(3,1fr);gap:.1rem;align-items:start;justify-items:center;margin-top:.15rem}
+  .synth .layer-knob{width:100%;min-height:74px;display:flex;flex-direction:column;align-items:center;touch-action:none;user-select:none;gap:1px}
+  .synth .layer-knob svg{width:42px;height:42px}.synth .layer-knob .lk-v{font-size:.62rem;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.1}.synth .layer-knob .lk-n{font-size:.52rem;color:var(--muted);line-height:1.1}
+  .synth .perf-bar{display:flex;flex-wrap:nowrap;overflow-x:auto}.synth .tabs{position:relative;z-index:5;padding:0 .2rem}.synth .tab{flex:0 0 auto;padding:.55rem .8rem;min-height:42px}
+  .synth>.panes{display:block;overflow:visible}.synth>.panes>.tabpane.on{display:block;min-height:0;overflow:visible}.synth>.panes>.tabpane.on .panel{padding:.65rem .5rem}.synth>.panes>.tabpane.on .knobs{justify-content:center;gap:.7rem .35rem}
+  .synth .knob{width:68px;min-height:74px}.synth .knob svg{width:48px;height:48px}.synth .sel{min-width:120px}.synth .sel select{min-height:40px}
+}
+@media (orientation:portrait) and (min-width:600px){.synth .lm-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.synth .sd-input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:text;touch-action:manipulation}
+.synth .kb-sec.scroll-mode{overflow-x:auto;overflow-y:hidden;touch-action:pan-x}
+.synth .kb-sec.scroll-mode .keyboard{min-width:720px;touch-action:pan-x;cursor:grab}.synth .kb-sec.scroll-mode .keyboard:active{cursor:grabbing}.synth .kb-sec.scroll-mode .key{touch-action:pan-x}
 </style>
 </head>
 <body>
