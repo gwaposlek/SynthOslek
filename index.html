@@ -1127,12 +1127,30 @@ async function handlePointer(e){
     }
   }
 
-  const target=document.elementFromPoint(e.clientX,e.clientY);
-  if(!target||!target.classList.contains("key"))return;
-  const baseMidi=parseInt(target.dataset.midi,10),midi=baseMidi+oct*12;
   const pointer=e.pointerId;
 
   if(e.type==="pointerdown" && !(await ensureStartedFromGesture()))return;
+  if(e.type==="pointerdown" && modeName==="pitch")beginYGesture(e);
+
+  /* In Pitch mode the gesture remains active for the whole drag.
+     Horizontal movement = pitch bend; vertical movement = selected Y destination.
+     Process these before key hit-testing so leaving the key rectangle does not
+     cancel the parameter gesture. */
+  if(modeName==="pitch"){
+    updateBendFromPointer(e);
+    updateYDestination(e);
+  }
+
+  const target=document.elementFromPoint(e.clientX,e.clientY);
+  if(!target||!target.classList.contains("key")){
+    if(modeName==="pitch" && e.type!=="pointerdown"){
+      const active=document.querySelector(".key.active");
+      if(active)showPitchFeedback(active,e);
+    }
+    return;
+  }
+
+  const baseMidi=parseInt(target.dataset.midi,10),midi=baseMidi+oct*12;
 
   if(!activeKeys.has(pointer)||activeKeys.get(pointer)!==midi){
     if(activeKeys.has(pointer))synth.noteOff(activeKeys.get(pointer));
@@ -1144,7 +1162,6 @@ async function handlePointer(e){
 
   if(modeName==="pitch"){
     showPitchFeedback(target,e);
-    updateBendFromPointer(e);
   }
 }
 kb.addEventListener("pointerdown",async e=>{isPointerDown=true;try{kb.setPointerCapture(e.pointerId);}catch(err){}await handlePointer(e);});
