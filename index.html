@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.13-midi-handler-fallback">
-<title>SynthOslek v14.13 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.14-systematic-stability">
+<title>SynthOslek v14.14 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1257,17 +1257,46 @@ const scopeCanvas=document.getElementById("scope"),scopeCtx=scopeCanvas.getConte
 /* v14 renderer owns the animation loop */
 
 /* Welcome Screen */
-document.getElementById("welcomeStart").addEventListener("click",async()=>{
+const welcomeStart=document.getElementById("welcomeStart");
+let startupBusy=false;
+async function initializeControllersAfterAudio(){
+  try{
+    await midiManager.init();
+    midiManager.refresh();
+    if(!midiManager.hasSmkInput()) await bleMidi.autoReconnect({announce:true});
+    else{
+      const rxAtBind=midiManager.rxCount;
+      setTimeout(()=>{
+        try{
+          if(midiManager.hasSmkInput()&&midiManager.rxCount===rxAtBind&&!bleMidi.device?.gatt?.connected){
+            void bleMidi.autoReconnect({announce:true});
+          }
+        }catch(e){}
+      },1800);
+    }
+  }catch(e){
+    /* MIDI/BLE is optional; never allow controller failure to block audio startup. */
+  }
+}
+welcomeStart?.addEventListener("click",async()=>{
+  if(startupBusy)return;
+  startupBusy=true;
+  const welcome=document.getElementById("welcome"),dot=document.getElementById("dot"),st=document.getElementById("stxt");
   try{
     await synth.start();
-    document.getElementById("welcome").classList.add("hidden");
-    document.getElementById("dot").classList.add("on");
-    const st=document.getElementById("stxt");if(st)st.textContent="Audio ready — play keys or MIDI";
+    welcome?.classList.add("hidden");
+    dot?.classList.add("on");
+    if(st)st.textContent="Audio ready — play keys or MIDI";
+    /* Controller setup intentionally follows the audio unlock gesture. */
+    void initializeControllersAfterAudio();
   }catch(err){
+    if(st)st.textContent="Audio start failed — try Start again";
     const t=document.getElementById("errorText"),d=document.getElementById("errorDetail"),screen=document.getElementById("errorScreen");
     if(t)t.textContent="Audio could not start. Check browser audio permission, then try Start again.";
     if(d)d.textContent=String(err?.message||err);
     if(screen)screen.style.display="block";
+  }finally{
+    startupBusy=false;
   }
 });
 
@@ -1292,7 +1321,7 @@ function surprisePatch(){
     lfoDest:pick(["cutoff","cutoff","cutoff","pitch","amp"]),lfoRate:r(.15,8),lfoDepth:r(0,.35),
     unison,spread,subLevel:r(0,.45),noiseLevel:r(0,.06),glide:pick([0,0,5,10,20,35,60]),
     delayTime:r(.08,.7),delayFb:r(.05,.65),delayMix:r(0,.38),
-    reverbMix:r(.03,.5),chorusMix:r(0,.55),volume:r(.46,.72)
+    reverbMix:r(.03,.5),chorusMix:r(0,.55)
   };
   const extreme=unison>=4||p.resonance>8||p.noiseLevel>.045||(p.filterType!=="lowpass"&&p.cutoff<700)||p.chorusMix>.48;
   return {patch:p,extreme};
@@ -1805,7 +1834,11 @@ class MidiManager{
       this.synth.modMatrix.setSource("modWheel",x);this.synth.setModWheel(x,when);setModWheelVisual($("modWheel"),x);
       return;
     }
-    if(cc===7){this.synth.updateParam("volume",x,when);return;}
+    if(cc===7){
+      this.synth.updateParam("volume",x,when);
+      UI.volume?.set(x,true);
+      return;
+    }
     if(cc===10){layerState[layer].pan=x*2-1;refreshLayerGains(when);return;}
     if(cc===64){
       const was=this.synth.sustain;this.synth.sustain=x>=.5;
@@ -1833,36 +1866,10 @@ class MidiManager{
 }
 const midiManager=new MidiManager(synth);
 
-/* Direct BLE-MIDI fallback for browsers without a usable WebMIDI input. */
+/* Direct BLE-MIDI fallback for browsers without a usable WebMIDI input.
+   Controller discovery is deferred until Start so optional MIDI/BLE permission
+   failures can never interfere with the initial audio unlock. */
 const bleMidi=new BleMidiTransport(midiManager);
-void midiManager.init().then(()=>{
-  midiManager.refresh();
-  if(!midiManager.hasSmkInput())return bleMidi.autoReconnect({announce:true});
-  const rxAtBind=midiManager.rxCount;
-  setTimeout(()=>{
-    if(midiManager.hasSmkInput()&&midiManager.rxCount===rxAtBind&&!bleMidi.device?.gatt?.connected){
-      void bleMidi.autoReconnect({announce:true});
-    }
-  },1800);
-}).catch(()=>{});
-
-/* Re-run controller binding after the user's audio unlock gesture.
-   This covers the common Windows case where Bluetooth/MIDI appears after load. */
-$("welcomeStart")?.addEventListener("click",async()=>{
-  try{
-    await midiManager.init();
-    midiManager.refresh();
-    if(!midiManager.hasSmkInput())await bleMidi.autoReconnect({announce:true});
-    else{
-      const rxAtBind=midiManager.rxCount;
-      setTimeout(()=>{
-        if(midiManager.hasSmkInput()&&midiManager.rxCount===rxAtBind&&!bleMidi.device?.gatt?.connected){
-          void bleMidi.autoReconnect({announce:true});
-        }
-      },1800);
-    }
-  }catch(e){}
-}, {once:true});
 $("bleMidiBtn")?.addEventListener("click",async()=>{
   const btn=$("bleMidiBtn");
   try{
