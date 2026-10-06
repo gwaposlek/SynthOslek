@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.11-restore-lfo-scale-audio-fix">
-<title>SynthOslek v14.11 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.12-midi-input-open-and-ble-parser-fix">
+<title>SynthOslek v14.12 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -480,7 +480,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
   
 </div>
-<div class="footer">SynthOslek v14.8 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
+<div class="footer">SynthOslek v14.12 · Core + Voice Pool + MIDI · Web Audio + WebMIDI</div>
 
 <script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
@@ -1539,50 +1539,92 @@ class BleMidiTransport{
   onData(view){
     if(!view||view.byteLength<3)return;
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
-    if((a[0]&0x80)===0)return;
-    let i=2,tsMsb=a[0]&0x3F,lastLow=a[1]&0x7F,currentTs=((tsMsb<<7)|lastLow)&0x1FFF,status=null,first=true;
-    const skipRealtime=()=>{
-      while(i<a.length&&a[i]>=0xF8)i++;
-      return i<a.length;
-    };
-    const readTimestamp=()=>{
-      if(!skipRealtime())return false;
-      const b=a[i++];
-      if(b<0x80)return false;
-      const low=b&0x7F;
-      if(low<lastLow)tsMsb=(tsMsb+1)&0x3F;
-      lastLow=low;currentTs=((tsMsb<<7)|low)&0x1FFF;
+    const header=a[0];
+    if((header&0x80)===0)return;
+    const sysexContinuation=!!(header&0x40);
+    let i=2;
+    let tsHigh=header&0x3F;
+    let lastLow=a[1]&0x7F;
+    let currentTs=((tsHigh<<7)|lastLow)&0x1FFF;
+    let runningStatus=null;
+    const realtime=b=>b>=0xF8;
+    const emitRealtime=b=>{this.manager.dispatch(b,0,0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);};
+    const advanceTimestamp=()=>{
+      while(i<a.length&&realtime(a[i]))emitRealtime(a[i++]);
+      if(i>=a.length)return false;
+      const lowByte=a[i++];
+      if((lowByte&0x80)===0)return false;
+      const low=lowByte&0x7F;
+      if(low<lastLow)tsHigh=(tsHigh+1)&0x3F;
+      lastLow=low;
+      currentTs=((tsHigh<<7)|low)&0x1FFF;
       return true;
     };
-    const readData=()=>{
-      if(!skipRealtime())return null;
-      const b=a[i];
-      if(b&0x80)return null;
-      i++;return b;
-    };
-    const need=st=>{
-      const c=st&0xF0;
+    const msgLen=status=>{
+      const c=status&0xF0;
       if(c===0xC0||c===0xD0)return 1;
       if(c>=0x80&&c<=0xE0)return 2;
       return 0;
     };
+
+    /* Standard BLE-MIDI packets put timestamp-low before each MIDI message.
+       Running Status may omit the status byte, but not the timestamp-low byte.
+       System Real-Time bytes may appear anywhere and do not cancel Running Status. */
     while(i<a.length){
-      if(!first&&!readTimestamp())break;
-      if(!skipRealtime())break;
-      const b=a[i++];
-      let d1=null;
-      if(b>=0x80)status=b;
-      else if(status!=null)d1=b;
-      else break;
-      const count=need(status);
-      if(!count){first=false;continue;}
-      if(d1==null)d1=readData();
-      if(d1==null)break;
-      const d2=count===2?readData():0;
-      if(count===2&&d2==null)break;
-      this.manager.dispatch(status,d1,d2,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
-      first=false;
+      if(!advanceTimestamp())break;
+      while(i<a.length&&realtime(a[i]))emitRealtime(a[i++]);
+      if(i>=a.length)break;
+
+      let status=a[i++];
+      if(realtime(status)){emitRealtime(status);continue;}
+      if(status>=0x80){
+        if(status<0xF0){
+          runningStatus=status;
+        }else{
+          /* System messages do not participate in channel-message running status. */
+          runningStatus=null;
+          if(status===0xF0){
+            /* Ignore SysEx payload here; note/control messages resume after F7. */
+            while(i<a.length){
+              if(a[i]===0xF7){i++;break;}
+              if(realtime(a[i])){emitRealtime(a[i++]);continue;}
+              i++;
+            }
+            continue;
+          }
+        }
+      }else{
+        if(!runningStatus)break;
+        i--;
+        status=runningStatus;
+      }
+
+      const len=msgLen(status);
+      if(!len){
+        if(status>=0xF0&&status!==0xF8&&status!==0xF9&&status!==0xFA&&status!==0xFB&&status!==0xFC&&status!==0xFD&&status!==0xFE&&status!==0xFF){
+          /* F1/F2/F3/F6 are ignored in the performance path. */
+        }
+        continue;
+      }
+
+      const d1=[];
+      while(d1.length<len){
+        while(i<a.length&&realtime(a[i]))emitRealtime(a[i++]);
+        if(i>=a.length)break;
+        const b=a[i++];
+        if(b&0x80){
+          /* Unexpected status inside a short message: leave parser at a safe boundary. */
+          i--;
+          break;
+        }
+        d1.push(b);
+      }
+      if(d1.length!==len)break;
+      this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
     }
+
+    /* The continuation flag is reserved for SysEx continuation; channel notes are unaffected. */
+    void sysexContinuation;
   }
   disconnect(){
     this._manualDisconnect=true;
@@ -1600,7 +1642,7 @@ class MidiManager{
   constructor(synth){
     this.synth=synth;this.access=null;this.input=null;this.select=$("midiSelect");
     this._midiVisualActive=new Set();this._midiVisualPulse=new Map();this._midiVisualRaf=0;
-    this._pendingStatus="";this._statusRaf=0;
+    this._pendingStatus="";this._statusRaf=0;this._inputHandler=null;this.rxCount=0;
   }
   async init(){
     if(!navigator.requestMIDIAccess){this.setStatus("WebMIDI unavailable — touch keyboard still works");return false;}
@@ -1696,14 +1738,27 @@ class MidiManager{
     const wanted=inputs.find(i=>i.id===rememberedId)||inputs.find(i=>i.name===rememberedName)||preferred||inputs.find(i=>i.id===previous)||inputs[0];
     this.select.value=wanted.id;this.select.onchange=()=>this.useInput(this.select.value);this.useInput(this.select.value);
   }
-  useInput(id){
-    if(this.input)try{this.input.onmidimessage=null;}catch(e){}
-    this.input=this.access?.inputs?.get(id)||null;
+  async useInput(id){
+    if(this.input&&this._inputHandler){
+      try{this.input.removeEventListener("midimessage",this._inputHandler);}catch(e){}
+      try{this.input.onmidimessage=null;}catch(e){}
+    }
+    this.input=this.access?.inputs?.get(id)||null;this._inputHandler=null;
     if(this.input){
       try{localStorage.setItem("so-midi-input-id-v14",this.input.id||"");localStorage.setItem("so-midi-input-name-v14",this.input.name||"");}catch(e){}
-      this.input.onmidimessage=e=>this.onMessage(e);
-      this.setStatus("MIDI ready: "+(this.input.name||"Input"));
+      this._inputHandler=e=>this.onMessage(e);
+      try{this.input.addEventListener("midimessage",this._inputHandler);}catch(e){this.input.onmidimessage=this._inputHandler;}
+      try{await this.input.open();}catch(e){/* Some implementations auto-open inputs; handler remains bound. */}
+      this.setStatus("MIDI ready: "+(this.input.name||"Input")+" · "+(this.input.state||"connected"));
+      return true;
     }
+    return false;
+  }
+  hasSmkInput(){
+    return !!(this.input&&/smk[-\s]?37|m[-\s]?vave/i.test(this.input.name||""));
+  }
+  hasInput(){
+    return !!this.input;
   }
   layersForChannel(ch){
     if(midiRouteMode==="ch")return ch>=1&&ch<=LAYER_COUNT?[ch-1]:[];
@@ -1756,8 +1811,14 @@ class MidiManager{
     if(cc>=44&&cc<=47){layerState[cc-44].enabled=x>=.5;refreshLayerGains(when);buildLayerMixer();return;}
   }
   onMessage(e){
-    const d=e.data||[];if(!d.length)return;
-    const status=d[0]||0,a=d[1]||0,b=d[2]||0;
+    const d=e?.data;
+    if(!d||!d.length)return;
+    this.rxCount++;
+    const status=Number(d[0])||0,a=Number(d[1])||0,b=Number(d[2])||0;
+    const cmd=status&0xF0,ch=(status&0x0F)+1;
+    if(cmd===0x90&&b>0)this.queueStatus("MIDI RX: "+midiToNote(a)+" · CH "+ch);
+    else if(cmd===0x80||(cmd===0x90&&b===0))this.queueStatus("MIDI RX: OFF · "+midiToNote(a)+" · CH "+ch);
+    else this.queueStatus("MIDI RX: "+Array.from(d).map(v=>v.toString(16).padStart(2,"0")).join(" "));
     const stamp=this._eventTimestamp(e);
     this.dispatch(status,a,b,stamp,.75);
   }
@@ -1767,7 +1828,9 @@ void midiManager.init();
 
 /* Direct BLE-MIDI fallback for Windows Edge / compatible Chromium browsers. */
 const bleMidi=new BleMidiTransport(midiManager);
-void bleMidi.autoReconnect({announce:true});
+void midiManager.init().then(()=>{
+  if(!midiManager.hasSmkInput())return bleMidi.autoReconnect({announce:true});
+}).catch(()=>{});
 
 /* Re-run controller binding after the user's audio unlock gesture.
    This covers the common Windows case where Bluetooth/MIDI appears after load. */
@@ -1775,13 +1838,19 @@ $("welcomeStart")?.addEventListener("click",async()=>{
   try{
     await midiManager.init();
     midiManager.refresh();
-    await bleMidi.autoReconnect({announce:true});
+    if(!midiManager.hasSmkInput())await bleMidi.autoReconnect({announce:true});
   }catch(e){}
 }, {once:true});
 $("bleMidiBtn")?.addEventListener("click",async()=>{
   const btn=$("bleMidiBtn");
   try{
     btn.disabled=true;
+    if(midiManager.hasSmkInput()&&!bleMidi.device?.gatt?.connected){
+      midiManager.setStatus("WebMIDI active: "+(midiManager.input?.name||"SMK-37")+" · direct BT not needed");
+      btn.textContent="MIDI OK";
+      btn.classList.add("on");
+      return;
+    }
     if(bleMidi.device?.gatt?.connected&&bleMidi.characteristic){bleMidi.disconnect();return;}
     await bleMidi.connect();
     btn.textContent="BT: ON";
