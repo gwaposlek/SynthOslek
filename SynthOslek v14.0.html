@@ -1300,8 +1300,17 @@ class BleMidiTransport{
     if(!d.gatt)throw new Error("The selected device does not expose GATT to Edge.");
     this.server=await d.gatt.connect();
     let service;
-    try{service=await this.server.getPrimaryService(this.MIDI_SERVICE);}
-    catch(err){throw new Error("SMK-37 was found, but Edge could not access its standard BLE-MIDI service. On Windows, try M-VAVE's BLE MIDI Connector.");}
+    try{
+      service=await this.server.getPrimaryService(this.MIDI_SERVICE);
+    }catch(firstErr){
+      try{
+        const services=await this.server.getPrimaryServices();
+        service=services.find(s=>(s.uuid||"").toLowerCase()===this.MIDI_SERVICE.toLowerCase());
+        if(!service)throw firstErr;
+      }catch(secondErr){
+        throw new Error("SMK-37 connected, but Edge did not grant this page access to its BLE-MIDI service. On Windows, use M-VAVE's BLE MIDI Connector if this persists.");
+      }
+    }
     try{this.characteristic=await service.getCharacteristic(this.MIDI_CHARACTERISTIC);}
     catch(err){throw new Error("BLE-MIDI service found, but its MIDI data characteristic was unavailable.");}
     await this.characteristic.startNotifications();
