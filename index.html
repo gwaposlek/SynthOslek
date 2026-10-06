@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-06-v14.14-systematic-stability">
-<title>SynthOslek v14.14 — Responsive Performance Workstation</title>
+<meta name="synthoslek-build" content="2026-10-06-v14.15-smk37-midi">
+<title>SynthOslek v14.15 — Responsive Performance Workstation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -1570,35 +1570,37 @@ class BleMidiTransport{
     const a=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
     const header=a[0];
     if((header&0x80)===0)return;
+
+    /* BLE-MIDI is normally timestamped, but some M-VAVE firmware/bridges emit
+       a compact packet variant. Accept both forms so SMK-37 Elite remains usable
+       across Chromium/Windows Bluetooth stacks. */
+    const looksTimestamped=a.length>=3 && (a[1]&0x80);
     const sysexContinuation=!!(header&0x40);
-    let i=2;
+    let i=looksTimestamped?2:1;
     let tsHigh=header&0x3F;
-    let lastLow=a[1]&0x7F;
-    let currentTs=((tsHigh<<7)|lastLow)&0x1FFF;
+    let lastLow=looksTimestamped?(a[1]&0x7F):0;
+    let currentTs=looksTimestamped?((tsHigh<<7)|lastLow)&0x1FFF:0;
     let runningStatus=null;
     const realtime=b=>b>=0xF8;
     const emitRealtime=b=>{this.manager.dispatch(b,0,0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);};
-    const advanceTimestamp=()=>{
-      while(i<a.length&&realtime(a[i]))emitRealtime(a[i++]);
-      if(i>=a.length)return false;
-      const lowByte=a[i++];
-      if((lowByte&0x80)===0)return false;
-      const low=lowByte&0x7F;
-      if(low<lastLow)tsHigh=(tsHigh+1)&0x3F;
-      lastLow=low;
-      currentTs=((tsHigh<<7)|low)&0x1FFF;
-      return true;
-    };
     const msgLen=status=>{
       const c=status&0xF0;
       if(c===0xC0||c===0xD0)return 1;
       if(c>=0x80&&c<=0xE0)return 2;
       return 0;
     };
+    const advanceTimestamp=()=>{
+      if(!looksTimestamped)return i<a.length;
+      while(i<a.length&&realtime(a[i]))emitRealtime(a[i++]);
+      if(i>=a.length)return false;
+      const lowByte=a[i++];
+      if((lowByte&0x80)===0){i--;return true;}
+      const low=lowByte&0x7F;
+      if(low<lastLow)tsHigh=(tsHigh+1)&0x3F;
+      lastLow=low;currentTs=((tsHigh<<7)|low)&0x1FFF;
+      return true;
+    };
 
-    /* Standard BLE-MIDI packets put timestamp-low before each MIDI message.
-       Running Status may omit the status byte, but not the timestamp-low byte.
-       System Real-Time bytes may appear anywhere and do not cancel Running Status. */
     while(i<a.length){
       if(!advanceTimestamp())break;
       while(i<a.length&&realtime(a[i]))emitRealtime(a[i++]);
@@ -1607,13 +1609,10 @@ class BleMidiTransport{
       let status=a[i++];
       if(realtime(status)){emitRealtime(status);continue;}
       if(status>=0x80){
-        if(status<0xF0){
-          runningStatus=status;
-        }else{
-          /* System messages do not participate in channel-message running status. */
+        if(status<0xF0)runningStatus=status;
+        else{
           runningStatus=null;
           if(status===0xF0){
-            /* Ignore SysEx payload here; note/control messages resume after F7. */
             while(i<a.length){
               if(a[i]===0xF7){i++;break;}
               if(realtime(a[i])){emitRealtime(a[i++]);continue;}
@@ -1624,37 +1623,24 @@ class BleMidiTransport{
         }
       }else{
         if(!runningStatus)break;
-        i--;
-        status=runningStatus;
+        i--;status=runningStatus;
       }
 
       const len=msgLen(status);
-      if(!len){
-        if(status>=0xF0&&status!==0xF8&&status!==0xF9&&status!==0xFA&&status!==0xFB&&status!==0xFC&&status!==0xFD&&status!==0xFE&&status!==0xFF){
-          /* F1/F2/F3/F6 are ignored in the performance path. */
-        }
-        continue;
-      }
-
+      if(!len)continue;
       const d1=[];
       while(d1.length<len){
         while(i<a.length&&realtime(a[i]))emitRealtime(a[i++]);
         if(i>=a.length)break;
         const b=a[i++];
-        if(b&0x80){
-          /* Unexpected status inside a short message: leave parser at a safe boundary. */
-          i--;
-          break;
-        }
+        if(b&0x80){i--;break;}
         d1.push(b);
       }
       if(d1.length!==len)break;
       this.manager.rxCount++;this.manager.lastRxAt=performance.now();
-    this.manager.setStatus("BLE RX: "+status.toString(16).padStart(2,"0")+" "+d1.map(v=>v.toString(16).padStart(2,"0")).join(" "));
-    this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
+      this.manager.setStatus("BLE RX: "+status.toString(16).padStart(2,"0")+" "+d1.map(v=>v.toString(16).padStart(2,"0")).join(" "));
+      this.manager.dispatch(status,d1[0],d1.length>1?d1[1]:0,this.clock.toPerformanceTime(currentTs),this.bleLeadMs);
     }
-
-    /* The continuation flag is reserved for SysEx continuation; channel notes are unaffected. */
     void sysexContinuation;
   }
   disconnect(){
