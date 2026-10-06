@@ -403,6 +403,19 @@ header{display:none!important}
 .key.black.active{background:#ff7a00!important;color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 -7px 0 rgba(255,210,80,.18),0 0 18px rgba(255,122,0,.8)!important}
 .key.target{background:#080808!important;color:#f5f7ff!important;box-shadow:inset 0 0 0 2px #7c5cff,inset 0 0 18px rgba(124,92,255,.22),0 0 20px rgba(124,92,255,.65)!important}
 .key.black.target{background:#ff7a00!important;color:#1b0b00!important;box-shadow:inset 0 0 0 2px #ffd166,inset 0 0 18px rgba(255,210,80,.2),0 0 22px rgba(255,122,0,.8)!important}
+
+/* v14.0 FINAL KEY FOCUS — never draw a browser square around pressed keys */
+.keyboard .key:focus,
+.keyboard .key:focus-visible{
+  outline:none!important;
+  outline-offset:0!important;
+}
+.keyboard .key.target::after{
+  border-radius:0 0 4px 4px!important;
+}
+.keyboard .key.black.target::after{
+  border-radius:0 0 3px 3px!important;
+}
 </style>
 </head>
 <body>
