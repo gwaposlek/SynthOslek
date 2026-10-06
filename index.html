@@ -1087,7 +1087,9 @@ const updateBendFromPointer=e=>{
   const r=kb.getBoundingClientRect();
   const travel=Math.max(60,r.width*.32);
   const amt=clamp01((e.clientX-pitchGestureStartX)/travel);
-  synth.setBend(amt*200,.015);
+  /* Screen Pitch calibration: full negative = -12 semitones, full positive = +2 semitones. */
+  const cents=amt<0?amt*1200:amt*200;
+  synth.setBend(cents,.015);
   const pw=$("pitchWheel");
   if(pw){
     pw.setAttribute("aria-valuenow",amt.toFixed(3));
