@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v15.3-fm-synthesis">
-<title>SynthOslek v15.3 — FM Synthesis</title>
+<meta name="synthoslek-build" content="2026-10-07-v15.4-modulation-matrix">
+<title>SynthOslek v15.4 — Modulation Matrix</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -727,7 +727,7 @@ class ModulationMatrix{
     this.sources={modWheel:0,velocity:0,lfo1:0,aftertouch:0,pitchBend:0};
   }
   setRoute(source,destination,amount=0){
-    amount=Number(amount)||0;
+    amount=Math.max(-1,Math.min(1,Number(amount)||0));
     const r=this.routes.find(x=>x.source===source&&x.destination===destination);
     if(r)r.amount=amount;
     else this.routes.push({source,destination,amount});
@@ -736,13 +736,15 @@ class ModulationMatrix{
   removeRoute(source,destination){this.routes=this.routes.filter(x=>!(x.source===source&&x.destination===destination));}
   clear(){this.routes=[];}
   getRoutes(){return this.routes.map(x=>({...x}));}
-  setSource(source,value){this.sources[source]=Number(value)||0;}
+  setSource(source,value){this.sources[source]=Math.max(-1,Math.min(1,Number(value)||0));}
   getSource(source){return Number(this.sources[source])||0;}
   value(destination,base=0){
     let out=Number(base)||0;
     for(const r of this.routes)if(r.destination===destination)out+=this.getSource(r.source)*r.amount;
     return out;
   }
+  sum(destination,base=0){return this.value(destination,base);}
+  snapshot(){return {sources:{...this.sources},routes:this.getRoutes()};}
 }
 
 /* v14.23: small runtime boundary around Web Audio creation/lifecycle. This keeps
@@ -827,6 +829,15 @@ class SynthOslek{
   _lfoScale(P=this.params){
     const dest=({cutoff:1800,pitch:50,amp:.35})[P?.lfoDest];
     return (Number.isFinite(dest)?dest:0)*(Number(P?.lfoDepth)||0);
+  }
+  _routeValue(destination,base=0,voice=null){
+    const mm=this.modMatrix;if(!mm)return Number(base)||0;
+    if(voice){
+      mm.setSource("velocity",Math.max(0,Math.min(1,Number(voice.velocity)||0)));
+      mm.setSource("aftertouch",Math.max(0,Math.min(1,Number(voice.mpePressure)||0)));
+      mm.setSource("pitchBend",Math.max(-1,Math.min(1,(Number(voice.mpeBend)||0)/200)));
+    }
+    return mm.value(destination,base);
   }
   _morphAmount(){
     const raw=this.modMatrix?this.modMatrix.value("morph",0):this.modWheel;
@@ -936,7 +947,7 @@ class SynthOslek{
     fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
     this.lfo.connect(lm);
     if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);
-    const v={env,vf,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:vel,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const maxUnison=this.voices.size>24?4:8;
     const n=Math.max(1,Math.min(maxUnison,Math.round(Number(P.unison)||1))),
@@ -2256,7 +2267,7 @@ syncSynthState(false);
   "use strict";
   if(window.__SO67)return; window.__SO67=true;
 
-  const SO={version:"15.3",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
+  const SO={version:"15.4",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
