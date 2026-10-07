@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v15.6-audioworklet-ready">
-<title>SynthOslek v15.6 — AudioWorklet Ready</title>
+<meta name="synthoslek-build" content="2026-10-07-v15.7-audioworklet-voice-oscillators">
+<title>SynthOslek v15.7 — AudioWorklet Voice Oscillators</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -761,38 +761,31 @@ class DSPBackend{
   dispose(){}
 }
 class NativeWebAudioBackend extends DSPBackend{
-  constructor(){
-    super();this.name="native-web-audio";
-    this.capabilities={native:true,audioWorklet:false,wasm:false};
-    this.workletReady=false;this.workletURL=null;
-  }
+  constructor(){super();this.name="native-web-audio";this.capabilities={native:true,audioWorklet:false,wasm:false};this.workletReady=false;this.workletURL=null;}
   async init(runtime,synth){
-    await super.init(runtime,synth);
-    const c=runtime?.ctx;
-    if(c?.audioWorklet&&typeof AudioWorkletNode==="function"){
-      try{
-        const src=`
-          class SynthOslekDSPProcessor extends AudioWorkletProcessor{
-            process(inputs,outputs){
-              for(const out of outputs)for(const ch of out)ch.fill(0);
-              return true;
-            }
-          }
-          registerProcessor("synthoslek-dsp",SynthOslekDSPProcessor);
-        `;
-        const blob=new Blob([src],{type:"application/javascript"});
-        this.workletURL=URL.createObjectURL(blob);
-        await c.audioWorklet.addModule(this.workletURL);
-        this.workletReady=true;this.capabilities.audioWorklet=true;
-      }catch(e){
-        this.workletReady=false;this.capabilities.audioWorklet=false;
-      }
-    }
+    await super.init(runtime,synth);const c=runtime?.ctx;
+    if(c?.audioWorklet&&typeof AudioWorkletNode==="function"){try{
+      const src=[
+        "class SynthOslekDSPProcessor extends AudioWorkletProcessor{",
+        "static get parameterDescriptors(){return[{name:\"frequency\",defaultValue:440,minValue:0,maxValue:24000,automationRate:\"a-rate\"},{name:\"detune\",defaultValue:0,minValue:-4800,maxValue:4800,automationRate:\"a-rate\"}];}",
+        "constructor(){super();this.phase=0;this.wave=\"sine\";this.running=true;this.port.onmessage=e=>{if(e.data?.type===\"wave\")this.wave=e.data.wave||\"sine\";if(e.data?.type===\"stop\")this.running=false;};}",
+        "process(inputs,outputs,params){const out=outputs[0]?.[0];if(!out)return true;if(!this.running){out.fill(0);return true;}const f=params.frequency,d=params.detune;for(let i=0;i<out.length;i++){const hz=Math.max(0,Math.min(24000,(f.length>1?f[i]:f[0])*Math.pow(2,((d.length>1?d[i]:d[0])/1200))));const p=this.phase;let x;if(this.wave===\"square\")x=p<.5?1:-1;else if(this.wave===\"sawtooth\")x=2*p-1;else if(this.wave===\"triangle\")x=1-4*Math.abs(p-.5);else x=Math.sin(2*Math.PI*p);out[i]=x;this.phase=(p+hz/sampleRate)%1;}return true;}",
+        "}",
+        "registerProcessor(\"synthoslek-dsp\",SynthOslekDSPProcessor);"
+      ].join("\\n");
+      const blob=new Blob([src],{type:"application/javascript"});this.workletURL=URL.createObjectURL(blob);
+      await c.audioWorklet.addModule(this.workletURL);this.workletReady=true;this.capabilities.audioWorklet=true;
+    }catch(e){this.workletReady=false;this.capabilities.audioWorklet=false;}}
     return this;
   }
-  dispose(){
-    if(this.workletURL){try{URL.revokeObjectURL(this.workletURL);}catch(e){}this.workletURL=null;}
+  createVoiceOscillator(ctx,wave){
+    if(!this.workletReady)return ctx.createOscillator();
+    const n=new AudioWorkletNode(ctx,"synthoslek-dsp",{outputChannelCount:[1]});
+    n.frequency=n.parameters.get("frequency");n.detune=n.parameters.get("detune");n.type=wave||"sine";n._stopTimer=null;n.start=()=>{};
+    n.stop=(when=ctx.currentTime)=>{try{n.port.postMessage({type:"stop"});}catch(e){}const ms=Math.max(0,(when-ctx.currentTime)*1000);clearTimeout(n._stopTimer);n._stopTimer=setTimeout(()=>{try{n.disconnect();}catch(e){}try{n.onended?.();}catch(e){}},ms+20);};
+    n.port.postMessage({type:"wave",wave:wave||"sine"});return n;
   }
+  dispose(){if(this.workletURL){try{URL.revokeObjectURL(this.workletURL);}catch(e){}this.workletURL=null;}}
 }
 class AudioRuntime{
   constructor(){this.ctx=null;this._bound=false;}
@@ -997,7 +990,7 @@ class SynthOslek{
       spreadShape=(i)=>n===1?0:Math.sign(i-(n-1)/2)*Math.pow(Math.abs((i-(n-1)/2)/((n-1)/2)),.82),
       norm=1/Math.sqrt(n);
     for(const w of[1,2])for(let i=0;i<n;i++){
-      const o=c.createOscillator(),off=spreadShape(i),ng=G(norm);
+      const o=this.dspBackend.createVoiceOscillator(c,P["osc"+w+"Wave"]),off=spreadShape(i),ng=G(norm);
       o.type=P["osc"+w+"Wave"];fq(o,freq);o.detune.setValueAtTime((Number(P["osc"+w+"Coarse"])||0)*100+(Number(P["osc"+w+"Detune"])||0)+off*(Number(P.spread)||0)+this.bend+(this.wheel||0)+(v.mpeBend||0),now);
       o.connect(ng);ng.connect(v["g"+w]);if(P.lfoDest==="pitch")lm.connect(o.detune);
       o.start(now);v.oscs.push({o,w,off});v.all.push(o);
@@ -1006,7 +999,7 @@ class SynthOslek{
        modulator drives OSC1 frequency. Zero amount creates no extra oscillator. */
     const fmAmount=Math.max(0,Math.min(3000,Number(P.fmAmount)||0)),fmRatio=Math.max(.125,Math.min(16,Number(P.fmRatio)||2));
     if(fmAmount>.001){
-      const fmMod=c.createOscillator(),fmGain=G(0);
+      const fmMod=this.dspBackend.createVoiceOscillator(c,P.osc2Wave||"sine"),fmGain=G(0);
       fmMod.type=P.osc2Wave||"sine";
       fmMod.frequency.setValueAtTime(Math.max(1,freq*fmRatio),now);
       fmGain.gain.setValueAtTime(fmAmount*Math.max(.05,vel),now);
@@ -1017,7 +1010,7 @@ class SynthOslek{
     }
     /* v14.26: skip zero-level sub/noise sources to reduce unnecessary low-frequency startup sources. */
     if((Number(P.subLevel)||0)>.0005){
-      const so=c.createOscillator();fq(so,freq/2);so.detune.setValueAtTime(this.bend+(this.wheel||0),now);so.connect(v.gs);if(P.lfoDest==="pitch")lm.connect(so.detune);so.start(now);v.oscs.push({o:so,w:0,off:0,kind:"sub"});v.all.push(so);
+      const so=this.dspBackend.createVoiceOscillator(c,"sine");fq(so,freq/2);so.detune.setValueAtTime(this.bend+(this.wheel||0),now);so.connect(v.gs);if(P.lfoDest==="pitch")lm.connect(so.detune);so.start(now);v.oscs.push({o:so,w:0,off:0,kind:"sub"});v.all.push(so);
     }
     if((Number(P.noiseLevel)||0)>.0005){
       const ns=c.createBufferSource();ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.all.push(ns);
