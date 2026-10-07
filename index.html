@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v15.4-modulation-matrix">
-<title>SynthOslek v15.4 — Modulation Matrix</title>
+<meta name="synthoslek-build" content="2026-10-07-v15.5-modulation-expansion">
+<title>SynthOslek v15.5 — Modulation Expansion</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -878,11 +878,11 @@ class SynthOslek{
     const routeCutoff=Math.max(20,Math.min(18000,P.cutoff+this._routeValue("cutoff",0,v)*6000));
     const routeRes=Math.max(.0001,Math.min(18,P.resonance+this._routeValue("resonance",0,v)*8));
     const routeOsc1=Math.max(0,Math.min(1,P.osc1Level+this._routeValue("osc1Level",0,v)));
-    const routeOsc2=Math.max(0,Math.min(1,P.osc2Level+this._routeValue("osc2Level",0,v)));
+    const routeOsc2=Math.max(0,Math.min(1,P.osc2Level+this._routeValue("osc2Level",0,v)));\n    const routeSpread=Math.max(0,Math.min(100,Number(P.spread||0)+this._routeValue("spread",0,v)*50));\n    const routeFm=Math.max(0,Math.min(3000,Number(P.fmAmount||0)+this._routeValue("fmAmount",0,v)*1500));\n    const routeLfo=Math.max(0,Math.min(1,Number(P.lfoDepth||0)+this._routeValue("lfoDepth",0,v)));
     T(v.vf?.frequency,routeCutoff,.012);T(v.vf?.Q,routeRes,.012);
     T(v.g1?.gain,routeOsc1,.008);T(v.g2?.gain,routeOsc2,.008);
     T(v.gs?.gain,P.subLevel,.008);T(v.gn?.gain,P.noiseLevel,.008);
-    T(v.lm?.gain,this._lfoScale(P),.012);
+    T(v.lm?.gain,this._lfoScale({...P,lfoDepth:routeLfo}),.012);\n    if(v.fmGain)T(v.fmGain.gain,routeFm,.012);
     T(v.fxDelay?.gain,P.delayMix,.012);T(v.fxReverb?.gain,P.reverbMix,.012);T(v.fxChorus?.gain,P.chorusMix,.012);
   }
   setModWheel(v,at=null){
@@ -898,8 +898,8 @@ class SynthOslek{
     for(const v of this.voices.values()){
       const P=v.params||this.params;
       for(const x of v.oscs){
-        const base=x.kind==="sub"?0:(Number(P["osc"+x.w+"Coarse"])||0)*100+(Number(P["osc"+x.w+"Detune"])||0)+(x.kind==="sub"?0:(x.w===1?10:-10)*m);
-        const spread=x.kind==="sub"?0:x.off*(Number(P.spread||0)+22*m);
+        const base=x.kind==="sub"?0:(Number(P["osc"+x.w+"Coarse"])||0)*100+(Number(P["osc"+x.w+"Detune"])||0)+(x.kind==="sub"?0:(x.w===1?10:-10)*m)+this._routeValue("pitch",0,v)*1200;
+        const spread=x.kind==="sub"?0:x.off*(Math.max(0,Math.min(100,Number(P.spread||0)+this._routeValue("spread",0,v)*50))+22*m);
         x.o.detune.setTargetAtTime(base+spread+this.bend+(this.wheel||0)+(v.mpeBend||0),t,tc);
       }
     }
@@ -2277,7 +2277,7 @@ syncSynthState(false);
   "use strict";
   if(window.__SO67)return; window.__SO67=true;
 
-  const SO={version:"15.4",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
+  const SO={version:"15.5",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
