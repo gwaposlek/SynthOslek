@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.28-performance-hardening">
-<title>SynthOslek v16.28 — Performance Hardening</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.30-voice-lifecycle-hardening">
+<title>SynthOslek v16.30 — Voice Lifecycle Hardening</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -708,7 +708,7 @@ class VoicePool{
     }
     if(!slot){
       let held=null;for(const x of this.active.values()){if(!held||x.velocity<held.velocity||(x.velocity===held.velocity&&x.age<held.age))held=x;}
-      if(held.length){slot=held[0];stolenKey=slot.key;reason="held-velocity-age";this.active.delete(stolenKey);}
+      if(held){slot=held;stolenKey=slot.key;reason="held-velocity-age";this.active.delete(stolenKey);}
     }
     if(slot){
       slot.active=true;slot.key=key;slot.velocity=Math.max(0,Math.min(1,Number(velocity)||0));
