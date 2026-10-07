@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.4-fx-send-architecture">
-<title>SynthOslek v16.4 — FX Send Architecture</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.5-modulation-refinement">
+<title>SynthOslek v16.5 — Modulation Engine Refinement</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -724,7 +724,7 @@ class VoicePool{
 class ModulationMatrix{
   constructor(){
     this.routes=[];
-    this.sources={modWheel:0,velocity:0,lfo1:0,aftertouch:0,pitchBend:0};
+    this.sources={modWheel:0,velocity:0,lfo1:0,aftertouch:0,pitchBend:0,mpeTimbre:0};
   }
   setRoute(source,destination,amount=0){
     amount=Math.max(-1,Math.min(1,Number(amount)||0));
@@ -879,6 +879,7 @@ class SynthOslek{
         if(r.source==="velocity")src=Math.max(0,Math.min(1,Number(voice.velocity)||0));
         else if(r.source==="aftertouch")src=Math.max(0,Math.min(1,Number(voice.mpePressure)||0));
         else if(r.source==="pitchBend")src=Math.max(-1,Math.min(1,(Number(voice.mpeBend)||0)/200));
+        else if(r.source==="mpeTimbre")src=Math.max(0,Math.min(1,Number(voice.mpeTimbre)||0));
       }
       out+=src*Number(r.amount||0);
     }
@@ -946,20 +947,27 @@ class SynthOslek{
       }
     }
   }
-  setBend(c,tc,at=null){this.bend=c;if(this.started)this._det(tc,at);}
+  setBend(c,tc=.01,at=null){this.bend=Number.isFinite(c)?c:0;this.modMatrix?.setSource("pitchBend",Math.max(-1,Math.min(1,this.bend/200)));if(this.started){for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);this._det(tc,at);}}
   setMPEChannelBend(channel,cents,tc=.006,at=null){
-    const ch=Math.max(1,Math.min(16,Number(channel)||1)),bend=Number(cents)||0,t=Math.max(this.ctx?.currentTime||0,Number.isFinite(at)?at:(this.ctx?.currentTime||0));
-    for(const v of this.voices.values())if(v.mpeChannel===ch){v.mpeBend=bend;for(const x of v.oscs){const base=x.kind==="sub"?0:(Number(v.params["osc"+x.w+"Coarse"])||0)*100+(Number(v.params["osc"+x.w+"Detune"])||0),spread=x.kind==="sub"?0:x.off*(Number(v.params.spread||0));x.o.detune.setTargetAtTime(base+spread+this.bend+(this.wheel||0)+bend,t,tc);}}
+    const ch=Math.max(1,Math.min(16,Number(channel)||1)),bend=Number(cents)||0;
+    this.modMatrix?.setSource("pitchBend",Math.max(-1,Math.min(1,bend/200)));
+    if(this.started){for(const v of this.voices.values())if(v.mpeChannel===ch){v.mpeBend=bend;this._applyMorphToVoice(v,at);}this._det(tc,at);}
   }
   setMPEPressure(channel,value,tc=.012,at=null){
-    const ch=Math.max(1,Math.min(16,Number(channel)||1)),p=Math.max(0,Math.min(1,Number(value)||0)),t=Math.max(this.ctx?.currentTime||0,Number.isFinite(at)?at:(this.ctx?.currentTime||0));
-    for(const v of this.voices.values())if(v.mpeChannel===ch&&v.va){v.mpePressure=p;v.va.gain.setTargetAtTime(p,t,tc);this._applyMorphToVoice(v,t);}
+    const ch=Math.max(1,Math.min(16,Number(channel)||1)),p=Math.max(0,Math.min(1,Number(value)||0));
+    this.modMatrix?.setSource("aftertouch",p);
+    if(this.started)for(const v of this.voices.values())if(v.mpeChannel===ch){v.mpePressure=p;this._applyMorphToVoice(v,at);}
   }
   setMPETimbre(channel,value,tc=.02,at=null){
     const ch=Math.max(1,Math.min(16,Number(channel)||1)),x=Math.max(0,Math.min(1,Number(value)||0)),t=Math.max(this.ctx?.currentTime||0,Number.isFinite(at)?at:(this.ctx?.currentTime||0));
-    for(const v of this.voices.values())if(v.mpeChannel===ch&&v.vf){const base=Number(v.params.cutoff)||2000;v.vf.frequency.setTargetAtTime(Math.max(80,Math.min(16000,base*Math.pow(4,x-.5))),t,tc);}
+    this.modMatrix?.setSource("mpeTimbre",x);
+    if(this.started)for(const v of this.voices.values())if(v.mpeChannel===ch){
+      v.mpeTimbre=x;this._applyMorphToVoice(v,t);
+      const base=Number(v.params.cutoff)||2000,cut=Math.max(80,Math.min(16000,base*Math.pow(4,x-.5)));
+      try{v.vf?.frequency.setTargetAtTime(cut,t,tc);v.voiceDSP?.update("cutoff",cut,t);}catch(e){}
+    }
   }
-  setWheel(c,at=null){this.wheel=c;if(this.started)this._det(.02,at);}
+  setWheel(c,at=null){this.wheel=Number.isFinite(c)?c:0;if(this.started){for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);this._det(.02,at);}}
   noteOn(midi,vel=.85,layer=this.activeLayer,when=null,stealFadeMs=6,mpeChannel=0,mpeBend=0){
     return this.dspBackend?.noteOn(midi,vel,layer,when,stealFadeMs,mpeChannel,mpeBend);
   }
@@ -1003,7 +1011,7 @@ class SynthOslek{
     fx.connect(fxDelay);fx.connect(fxReverb);fx.connect(fxChorus);
     fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
     if(!this.dspBackend.workletReady){this.lfo.connect(lm);if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);}
-    const v={env,vf,va,voiceDSP:null,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:vel,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,va,voiceDSP:null,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const maxUnison=this.voices.size>24?4:8;
     const n=Math.max(1,Math.min(maxUnison,Math.round(Number(P.unison)||1))),
