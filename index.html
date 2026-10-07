@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v15.2-oscillator-filter-quality">
-<title>SynthOslek v15.2 — Oscillator & Filter Quality</title>
+<meta name="synthoslek-build" content="2026-10-07-v15.3-fm-synthesis">
+<title>SynthOslek v15.3 — FM Synthesis</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -793,7 +793,7 @@ class AudioRuntime{
 class SynthOslek{
   constructor(){
     this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreqByLayer=Array.from({length:4},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
-    this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0};
+    this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
@@ -936,7 +936,7 @@ class SynthOslek{
     fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
     this.lfo.connect(lm);
     if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);
-    const v={env,vf,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const maxUnison=this.voices.size>24?4:8;
     const n=Math.max(1,Math.min(maxUnison,Math.round(Number(P.unison)||1))),
@@ -949,6 +949,19 @@ class SynthOslek{
       o.type=P["osc"+w+"Wave"];fq(o,freq);o.detune.setValueAtTime((Number(P["osc"+w+"Coarse"])||0)*100+(Number(P["osc"+w+"Detune"])||0)+off*(Number(P.spread)||0)+this.bend+(this.wheel||0)+(v.mpeBend||0),now);
       o.connect(ng);ng.connect(v["g"+w]);if(P.lfoDest==="pitch")lm.connect(o.detune);
       o.start(now);v.oscs.push({o,w,off});v.all.push(o);
+    }
+    /* v15.3: native FM voice path. OSC2 remains audible while a dedicated
+       modulator drives OSC1 frequency. Zero amount creates no extra oscillator. */
+    const fmAmount=Math.max(0,Math.min(3000,Number(P.fmAmount)||0)),fmRatio=Math.max(.125,Math.min(16,Number(P.fmRatio)||2));
+    if(fmAmount>.001){
+      const fmMod=c.createOscillator(),fmGain=G(0);
+      fmMod.type=P.osc2Wave||"sine";
+      fmMod.frequency.setValueAtTime(Math.max(1,freq*fmRatio),now);
+      fmGain.gain.setValueAtTime(fmAmount*Math.max(.05,vel),now);
+      const fmHold=fmAmount*Math.max(.05,vel)*Math.max(0,Math.min(1,Number(P.fmEnv)??.5));
+      fmGain.gain.linearRampToValueAtTime(fmHold,now+Math.max(.01,Number(P.fDecay)||.2));
+      fmMod.connect(fmGain);fmGain.connect(v.oscs.filter(x=>x.w===1).map(x=>x.o.frequency));
+      fmMod.start(now);v.fmMod=fmMod;v.fmGain=fmGain;v.all.push(fmMod);
     }
     /* v14.26: skip zero-level sub/noise sources to reduce unnecessary low-frequency startup sources. */
     if((Number(P.subLevel)||0)>.0005){
@@ -964,7 +977,7 @@ class SynthOslek{
     /* v15.1: release graph references promptly; scheduled tails remain audible
        through Web Audio, but JS maps no longer retain the completed voice. */
     if(key)this.tailVoices.set(key,v);
-    if(v.all[0])v.all[0].onended=()=>{if(key&&this.tailVoices.get(key)===v)this.tailVoices.delete(key);try{this.lfo.disconnect(v.lm);}catch(e){}try{v.lm.disconnect();}catch(e){}try{v.va.disconnect();}catch(e){}try{v.fx?.disconnect();}catch(e){}try{v.fxDelay?.disconnect();}catch(e){}try{v.fxReverb?.disconnect();}catch(e){}try{v.fxChorus?.disconnect();}catch(e){}try{v.layerGain?.disconnect();}catch(e){}try{v.pan?.disconnect();}catch(e){}};
+    if(v.all[0])v.all[0].onended=()=>{if(key&&this.tailVoices.get(key)===v)this.tailVoices.delete(key);try{this.lfo.disconnect(v.lm);}catch(e){}try{v.lm.disconnect();}catch(e){}try{v.va.disconnect();}catch(e){}try{v.fmMod?.disconnect();}catch(e){}try{v.fmGain?.disconnect();}catch(e){}try{v.fx?.disconnect();}catch(e){}try{v.fxDelay?.disconnect();}catch(e){}try{v.fxReverb?.disconnect();}catch(e){}try{v.fxChorus?.disconnect();}catch(e){}try{v.layerGain?.disconnect();}catch(e){}try{v.pan?.disconnect();}catch(e){}};
   }
   _nativeNoteOff(midi,layer=null,when=null){
     const matches=[...this.voices.entries()].filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer));
@@ -2243,7 +2256,7 @@ syncSynthState(false);
   "use strict";
   if(window.__SO67)return; window.__SO67=true;
 
-  const SO={version:"15.2",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
+  const SO={version:"15.3",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
