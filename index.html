@@ -506,7 +506,7 @@ header{display:none!important}
     <h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
     <div class="welcome-tag">Performance Workstation</div>
     <p class="welcome-desc">A web-based <b>subtractive synth</b> with 4 layers, touch keys, WebMIDI, scenes, and a text sound designer — built for live play on desktop, tablet, and controllers like the SMK 37.</p>
-    <button class="btn" id="welcomeStart" type="button" onclick="this.textContent='Starting…';this.disabled=true;if(window.synth){window.synth.start().then(function(){document.getElementById('welcome')?.classList.add('hidden');document.getElementById('dot')?.classList.add('on');}).catch(function(e){this.disabled=false;this.textContent='Start';var s=document.getElementById('errorScreen'),d=document.getElementById('errorDetail');if(d)d.textContent=String(e?.message||e);if(s)s.style.display='block';}.bind(this));}else{var d=document.getElementById('errorDetail');if(d)d.textContent='Synth engine script did not initialize.';var s=document.getElementById('errorScreen');if(s)s.style.display='block';}">Start</button>
+    <button class="btn" id="welcomeStart" type="button">Start</button>
     <div class="welcome-foot">Tap Start to unlock audio · Chrome / Edge / Safari recommended</div>
   </div>
 </div>
@@ -810,7 +810,7 @@ class NativeWebAudioBackend extends DSPBackend{
 class AudioRuntime{
   constructor(){this.ctx=null;this._bound=false;}
   supported(){return !!(window.AudioContext||window.webkitAudioContext);}
-  async create(){
+  create(){
     if(this.ctx)return this.ctx;
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC)throw new Error("Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.");
@@ -845,7 +845,7 @@ class SynthOslek{
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
     if(this.started){if(this.ctx.state==="suspended")await this.ctx.resume();return;}
-    const c=this.ctx=await this.audioRuntime.create(),p=this.params,G=v=>this._G(v);
+    const c=this.ctx=this.audioRuntime.create(),p=this.params,G=v=>this._G(v);
     /* v15.0: explicit headroom before dynamics keeps stacked polyphony clean instead of relying on the compressor to repair clipping. */
     this.bus=G(.72);this.masterGain=G(Math.min(.8,Math.max(.05,Number(p.volume)||.6)));
     this.analyser=c.createAnalyser();this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;
@@ -1136,7 +1136,6 @@ Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});Object.assign(PRESE
 Object.assign(PRESETS.bass,{subLevel:.5});Object.assign(PRESETS.keys,{chorusMix:.35});
 const LAYER_COUNT=4;
 const synth=new SynthOslek();
-window.synth=synth;
 /* v14.29: mobile/background transitions can prevent a matching Note Off from
    reaching the page. Treat hidden as a transport boundary, but never
    auto-start audio when the page becomes visible again. */
