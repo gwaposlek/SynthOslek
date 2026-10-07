@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.26-fx-voice-refinement">
-<title>SynthOslek v16.26 — FX & Voice Refinement</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.27-morph-engine">
+<title>SynthOslek v16.27 — Morph Engine</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -928,19 +928,21 @@ void Promise.race([
     const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
     return {
       ...P,
-      cutoff:Math.min(12000,P.cutoff+(12000-P.cutoff)*.72*m),
-      resonance:Math.min(20,P.resonance+3*m),
-      osc1Level:clamp(P.osc1Level*(1-.18*m)),
-      osc2Level:clamp(P.osc2Level*(1+.22*m)),
+      cutoff:Math.min(14000,P.cutoff+(14000-P.cutoff)*.72*m),
+      resonance:Math.min(20,P.resonance+3.5*m),
+      osc1Level:clamp(P.osc1Level*(1-.22*m)),
+      osc2Level:clamp(P.osc2Level*(1+.28*m)),
       osc1Detune:clamp(P.osc1Detune+10*m,-100,100),
       osc2Detune:clamp(P.osc2Detune-10*m,-100,100),
-      spread:Math.min(50,P.spread+22*m),
-      lfoDepth:clamp(P.lfoDepth+.15*m),
+      spread:Math.min(65,P.spread+28*m),
+      lfoDepth:clamp(P.lfoDepth+.22*m),
       subLevel:clamp(P.subLevel+.06*m),
       noiseLevel:clamp(P.noiseLevel+.025*m),
-      delayMix:clamp(P.delayMix+.12*m),
-      reverbMix:clamp(P.reverbMix+.22*m),
-      chorusMix:clamp(P.chorusMix+.25*m)
+      delayMix:clamp(P.delayMix+.18*m),
+      reverbMix:clamp(P.reverbMix+.25*m),
+      chorusMix:clamp(P.chorusMix+.14*m),
+      flangerMix:clamp((Number(P.flangerMix)||0)+.18*m),
+      fmAmount:Math.max(0,Math.min(3000,(Number(P.fmAmount)||0)+900*m))
     };
   }
   _applyMorphToVoice(v,at=null){
@@ -963,11 +965,12 @@ void Promise.race([
     /* FX mix controls are independent send gains. */
     T(v.fxDelay?.gain,Math.max(0,Math.min(1,Number(P.delayMix)||0)),.012);
     T(v.fxReverb?.gain,Math.max(0,Math.min(1,Number(P.reverbMix)||0)),.012);
-    T(v.fxChorus?.gain,Math.max(0,Math.min(1,Number(P.chorusMix)||0)),.012);
+    T(v.fxChorus?.gain,Math.max(0,Math.min(1,Number(P.chorusMix)||0)),.012);T(this.flangerGain?.gain,Math.max(0,Math.min(1,Number(P.flangerMix)||0)),.012);
   }
   setModWheel(v,at=null){
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
+    this.morphArpOct=this.modWheel>=.78?1:0;this.morphSeqOct=this.modWheel>=.9?1:0;
     if(this.started){
       for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);
       this._det(.012,at);
@@ -2711,7 +2714,7 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.26",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.27",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
