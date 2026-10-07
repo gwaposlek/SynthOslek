@@ -1616,7 +1616,9 @@ welcomeStart?.addEventListener("click",async()=>{
     /* Controller setup intentionally follows the audio unlock gesture. */
     void initializeControllersAfterAudio();
   }catch(err){
-    if(st)st.textContent="Audio start failed — try Start again";
+    /* v16.15: reveal startup errors instead of leaving the welcome overlay above them. */
+    welcome?.classList.add("hidden");
+    if(st)st.textContent="Audio start failed — check the error details";
     const t=document.getElementById("errorText"),d=document.getElementById("errorDetail"),screen=document.getElementById("errorScreen");
     if(t)t.textContent="Audio could not start. Check browser audio permission, then try Start again.";
     if(d)d.textContent=String(err?.message||err);
