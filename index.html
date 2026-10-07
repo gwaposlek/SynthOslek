@@ -2378,7 +2378,8 @@ syncSynthState(false);
   if(window.__SO67)return; window.__SO67=true;
 
   const SO={version:"16.23",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
-    seq:{on:false,bpm:120,step:0,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
+    seq:{on:false,bpm:120,step:0,length:16,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
+    music:{root:0,scale:"major",chord:"off"},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
 
@@ -2410,7 +2411,7 @@ syncSynthState(false);
     '<span class="so-label">RATE</span><select id="so67Rate"><option>1/1</option><option>1/2</option><option>1/4</option><option selected>1/8</option><option>1/16</option><option>1/32</option></select>'+
     '<span class="so-label">OCT</span><select id="so67Oct"><option>1</option><option>2</option><option>3</option><option>4</option></select>'+
     '<span class="so-label">GATE</span><input id="so67Gate" type="range" min=".15" max="1" step=".01" value=".82"></span>'+
-    '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button>'+
+    '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button><span class="so-group"><span class="so-label">SCALE</span><select id="so67Scale"><option value="off">OFF</option><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><select id="so67Chord"><option value="off" selected>OFF</option><option value="major">MAJOR</option><option value="minor">MINOR</option><option value="7">7TH</option><option value="maj7">MAJ7</option><option value="min7">MIN7</option><option value="sus2">SUS2</option><option value="sus4">SUS4</option></select><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></span>'+
     '<span class="so-status" id="so67Status">v14.67 ready</span>';
   const panel=document.createElement("div"); panel.id="so67Panel";
   panel.innerHTML=
@@ -2433,10 +2434,12 @@ syncSynthState(false);
   const arpHeld=new Map(); let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null;
   const baseOn=synth.noteOn.bind(synth), baseOff=synth.noteOff.bind(synth);
   const basePanic=synth.panic.bind(synth), baseAllOff=synth.allNotesOff?.bind(synth);
-  function arpCandidates(){
-    const a=[...arpHeld.values()].sort((x,y)=>x.midi-y.midi); if(!a.length)return [];
-    const out=[]; for(let o=0;o<SO.arp.oct;o++)a.forEach(n=>out.push({...n,midi:n.midi+12*o})); return out;
-  }
+  const SCALE_INTERVALS={off:[0,1,2,3,4,5,6,7,8,9,10,11],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],mixolydian:[0,2,4,5,7,9,10],pentatonic:[0,2,4,7,9],blues:[0,3,5,6,7,10]};
+  const CHORD_INTERVALS={off:[0],major:[0,4,7],minor:[0,3,7],"7":[0,4,7,10],maj7:[0,4,7,11],min7:[0,3,7,10],sus2:[0,2,7],sus4:[0,5,7]};
+  const musicNote=midi=>{const root=SO.music.root%12,sc=SCALE_INTERVALS[SO.music.scale]||SCALE_INTERVALS.off;if(SO.music.scale==="off")return midi;const rel=midi-root,oct=Math.floor(rel/12),pc=((rel%12)+12)%12;let best=sc[0],dist=99;for(const iv of sc){const d=Math.abs(d-0)+Math.abs(iv-pc);if(d<dist){dist=d;best=iv;}}return root+oct*12+best;};
+  const chordNotes=midi=>{const ints=CHORD_INTERVALS[SO.music.chord]||[0];if(SO.music.chord==="off")return [musicNote(midi)];const base=musicNote(midi),chordRoot=SO.music.root+Math.round((base-SO.music.root)/12)*12;if(((base%12)-SO.music.root+12)%12!==0)return [base];return ints.map(iv=>chordRoot+iv);};
+  const transformNote=midi=>chordNotes(midi).map(musicNote).filter((v,i,a)=>i===0||v!==a[i-1]);
+  function arpCandidates(){const a=[...arpHeld.values()].sort((x,y)=>x.midi-y.midi);if(!a.length)return [];const out=[];for(let o=0;o<SO.arp.oct;o++)a.forEach(n=>transformNote(n.midi+12*o).forEach(midi=>out.push({...n,midi})));return out;}
   function arpPick(){
     const a=arpCandidates();if(!a.length)return null;
     if(SO.arp.mode==="random")return a[Math.floor(Math.random()*a.length)];
@@ -2482,18 +2485,22 @@ syncSynthState(false);
   let seqTimer=0,seqHeld=[];
   function seqStep(){
     if(!SO.seq.on)return;
-    const p=SO.seq.pattern[SO.seq.step%16], now=audioNow(), dur=SO.clock.divisionSeconds("1/16");
+    const p=SO.seq.pattern[SO.seq.step%SO.seq.length], now=audioNow(), dur=SO.clock.divisionSeconds("1/16");
     document.querySelectorAll(".so-step").forEach((e,i)=>e.classList.toggle("play",i===SO.seq.step%16));
     seqHeld.forEach(n=>{try{baseOff(n.midi,n.layer,now)}catch(e){}});seqHeld=[];
     if(p?.on){
-      const layer=synth.activeLayer,m=p.note,v=p.vel;
+      const layer=synth.activeLayer,m=transformNote(p.note)[0]??p.note,v=p.vel;
       baseOn(m,v,layer,now);seqHeld.push({midi:m,layer});
       setTimeout(()=>{try{baseOff(m,layer)}catch(e){}},Math.max(10,dur*p.gate*1000));
     }
-    SO.seq.step=(SO.seq.step+1)%16;seqTimer=setTimeout(seqStep,Math.max(20,dur*1000));
+    SO.seq.step=(SO.seq.step+1)%SO.seq.length;seqTimer=setTimeout(seqStep,Math.max(20,dur*1000));
   }
   $("#so67Seq")?.addEventListener("click",()=>{SO.seq.on=!SO.seq.on;clearTimeout(seqTimer);updateBtn("#so67Seq",SO.seq.on,"SEQ ON","SEQ OFF");if(SO.seq.on)seqStep();else seqHeld.forEach(n=>{try{baseOff(n.midi,n.layer)}catch(e){}});});
   $("#so67Clear")?.addEventListener("click",()=>{SO.seq.pattern.forEach(x=>x.on=false);document.querySelectorAll(".so-step").forEach(e=>e.classList.remove("on"));});
+  $("#so67Scale")?.addEventListener("change",e=>{SO.music.scale=e.target.value;setStatus("Scale "+e.target.value.toUpperCase());});
+  $("#so67Root")?.addEventListener("change",e=>{SO.music.root=+e.target.value;setStatus("Root "+e.target.options[e.target.selectedIndex].text);});
+  $("#so67Chord")?.addEventListener("change",e=>{SO.music.chord=e.target.value;setStatus("Chord "+e.target.options[e.target.selectedIndex].text);});
+  $("#so67SeqLen")?.addEventListener("change",e=>{SO.seq.length=+e.target.value;SO.seq.step%=SO.seq.length;document.querySelectorAll(".so-step").forEach((el,i)=>el.style.opacity=i<SO.seq.length?"1":".28");setStatus(SO.seq.length+"-step sequence");});
 
   /* ---------- routing / split ---------- */
   const oldLayersForChannel=midiManager?.layersForChannel?.bind(midiManager);
@@ -2587,7 +2594,7 @@ syncSynthState(false);
   function vlq(n){let b=n&127,a=[];while(n>>=7){b<<=8;b|=((n&127)|128);}for(;;){a.push(b&255);if(b&128)b>>=8;else break;}return a;}
   function exportMidi(){
     const ppq=480,tempo=Math.round(60000000/Math.max(20,SO.clock.bpm)),events=[];
-    SO.seq.pattern.forEach((p,i)=>{if(!p.on)return;const t=i*ppq/4,d=Math.max(1,Math.round(ppq/4*p.gate));events.push({t,data:[0x90,p.note,Math.round(p.vel*127)]},{t:t+d,data:[0x80,p.note,0]});});
+    SO.seq.pattern.slice(0,SO.seq.length).forEach((p,i)=>{if(!p.on)return;const t=i*ppq/4,m=transformNote(p.note)[0]??p.note,d=Math.max(1,Math.round(ppq/4*p.gate));events.push({t,data:[0x90,m,Math.round(p.vel*127)]},{t:t+d,data:[0x80,m,0]});});
     events.sort((a,b)=>a.t-b.t);let last=0,track=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255];
     events.forEach(e=>{track.push(...vlq(Math.max(0,e.t-last)),...e.data);last=e.t;});track.push(0,0xff,0x2f,0);
     const bytes=[...new TextEncoder().encode("MThd"),0,0,0,6,0,0,0,1,(ppq>>8)&255,ppq&255,...new TextEncoder().encode("MTrk"),(track.length>>24)&255,(track.length>>16)&255,(track.length>>8)&255,track.length&255,...track];
@@ -2596,10 +2603,10 @@ syncSynthState(false);
   $("#so67ExportMidi")?.addEventListener("click",exportMidi);
 
   /* ---------- preset share / local library ---------- */
-  function presetState(){return {version:"14.67",arp:SO.arp,seq:SO.seq,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x}))};}
+  function presetState(){return {version:"16.24",arp:SO.arp,seq:SO.seq,music:SO.music,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x}))};}
   function encode(o){return btoa(unescape(encodeURIComponent(JSON.stringify(o))));}
   function decode(s){return JSON.parse(decodeURIComponent(escape(atob(s))));}
-  function applyPreset(p){if(!p)return;if(p.arp)Object.assign(SO.arp,p.arp);if(p.seq)Object.assign(SO.seq,p.seq);if(p.split)Object.assign(SO.split,p.split);if(p.mod)Object.assign(SO.mod,p.mod);if(p.params)try{applyParams(p.params)}catch(e){}if(Array.isArray(p.layers))p.layers.forEach((x,i)=>layerState[i]&&Object.assign(layerState[i],x));if(Array.isArray(p.profiles)&&synth.layerProfiles)p.profiles.forEach((x,i)=>synth.layerProfiles[i]={...x});try{buildLayerMixer();syncSynthState(false)}catch(e){}}
+  function applyPreset(p){if(!p)return;if(p.arp)Object.assign(SO.arp,p.arp);if(p.seq)Object.assign(SO.seq,p.seq);if(p.music)Object.assign(SO.music,p.music);if(p.split)Object.assign(SO.split,p.split);if(p.mod)Object.assign(SO.mod,p.mod);if(p.params)try{applyParams(p.params)}catch(e){}if(Array.isArray(p.layers))p.layers.forEach((x,i)=>layerState[i]&&Object.assign(layerState[i],x));if(Array.isArray(p.profiles)&&synth.layerProfiles)p.profiles.forEach((x,i)=>synth.layerProfiles[i]={...x});try{buildLayerMixer();syncSynthState(false)}catch(e){}}
   $("#so67Share")?.addEventListener("click",async()=>{const u=location.href.split("#")[0]+"#so67="+encode(presetState());try{await navigator.clipboard.writeText(u);setStatus("Preset link copied");}catch(e){prompt("Copy preset link",u);}});
   $("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v14.67-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
   $("#so67Load")?.addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json";inp.onchange=async()=>{try{applyPreset(JSON.parse(await inp.files[0].text()));setStatus("Preset loaded");}catch(e){setStatus("Invalid preset");}};inp.click();});
@@ -2696,7 +2703,7 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.23",features:{tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.24",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
