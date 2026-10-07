@@ -864,7 +864,7 @@ class AudioRuntime{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:4},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreqByLayer=Array.from({length:4},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:4},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreqByLayer=Array.from({length:4},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
     this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
@@ -1109,7 +1109,11 @@ void Promise.race([
     /* v15.1: release graph references promptly; scheduled tails remain audible
        through Web Audio, but JS maps no longer retain the completed voice. */
     if(key)this.tailVoices.set(key,v);
-    if(v.all[0])v.all[0].onended=()=>{if(key&&this.tailVoices.get(key)===v)this.tailVoices.delete(key);try{this.lfo.disconnect(v.lm);}catch(e){}try{v.lm.disconnect();}catch(e){}try{v.va.disconnect();}catch(e){}try{v.voiceDSP?.disconnect();}catch(e){}try{v.fmMod?.disconnect();}catch(e){}try{v.fmGain?.disconnect();}catch(e){}try{v.fx?.disconnect();}catch(e){}try{v.fxDelay?.disconnect();}catch(e){}try{v.fxReverb?.disconnect();}catch(e){}try{v.fxChorus?.disconnect();}catch(e){}try{v.layerGain?.disconnect();}catch(e){}try{v.pan?.disconnect();}catch(e){}};
+    const cleanup=()=>{if(key&&this.tailVoices.get(key)===v)this.tailVoices.delete(key);const nodes=[v.lm,v.va,v.voiceDSP,v.fmMod,v.fmGain,v.fx,v.fxDelay,v.fxReverb,v.fxChorus,v.layerGain,v.pan];for(const n of nodes){try{n?.disconnect();}catch(e){}}};
+    const oldTimer=key&&this._voiceCleanupTimers.get(key);if(oldTimer)clearTimeout(oldTimer);
+    const ms=80;
+    if(key)this._voiceCleanupTimers.set(key,setTimeout(()=>{this._voiceCleanupTimers.delete(key);cleanup();},ms));
+    const first=v.all?.[0];if(first)first.onended=()=>{if(key){const tm=this._voiceCleanupTimers.get(key);if(tm)clearTimeout(tm);this._voiceCleanupTimers.delete(key);}cleanup();};
   }
   _nativeNoteOff(midi,layer=null,when=null){
     if(layer!=null&&this.params.voiceMode==="mono"){this.monoHeld[layer]=(this.monoHeld[layer]||[]).filter(n=>n!==midi);if(this.monoHeld[layer].length)return;}
@@ -2726,7 +2730,7 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.29",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.30",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
