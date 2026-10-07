@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.3-gain-staging">
-<title>SynthOslek v16.3 — Gain Staging</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.4-fx-send-architecture">
+<title>SynthOslek v16.4 — FX Send Architecture</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -847,8 +847,8 @@ class SynthOslek{
     /* v14.22: give the master compressor a little more time to absorb stacked
        note transients instead of reacting to them as a low-frequency punch. */
     L.attack.value=.012;L.release.value=.18;
-    this.delay=c.createDelay(1.5);this.delay.delayTime.value=p.delayTime;
-    this.delayFeedback=G(p.delayFb);this.delayGain=G(1);
+    this.delay=c.createDelay(1.5);this.delay.delayTime.value=Math.max(.001,Math.min(1.5,Number(p.delayTime)||.25));
+    this.delayFeedback=G(Math.max(0,Math.min(.92,Number(p.delayFb)||0)));this.delayGain=G(1);
     this.delay.connect(this.delayFeedback);this.delayFeedback.connect(this.delay);this.delay.connect(this.delayGain);
     this.convolver=c.createConvolver();this.convolver.buffer=this._impulse(2.2,2.5);this.reverbGain=G(1);
     this.lfo=c.createOscillator();this.lfo.frequency.value=p.lfoRate;this.lfo.start();
@@ -922,7 +922,10 @@ class SynthOslek{
     T(v.g1?.gain,routeOsc1,.008);T(v.g2?.gain,routeOsc2,.008);
     T(v.gs?.gain,P.subLevel,.008);T(v.gn?.gain,P.noiseLevel,.008);
     const nonLfoCutoff=this._routeValue("cutoff",0,v,"lfo1")*6000,lfo1Cutoff=this._routeValue("cutoff",0,v)-this._routeValue("cutoff",0,v,"lfo1"),lfoCutoffHz=(P.lfoDest==="cutoff"?this._lfoScale({...P,lfoDepth:routeLfo}):0)+lfo1Cutoff*6000,lfo1Amp=this._routeValue("amp",0,v)-this._routeValue("amp",0,v,"lfo1");if(v.voiceDSP){v.voiceDSP.update("lfoRate",P.lfoRate,t);v.voiceDSP.update("lfoCutoff",lfoCutoffHz,t);v.voiceDSP.update("lfoAmp",lfo1Amp,t);v.voiceDSP.update("cutoffMod",nonLfoCutoff,t);v.voiceDSP.update("ampMod",this._routeValue("amp",0,v,"lfo1"),t);v.voiceDSP.update("pitchMod",this._routeValue("pitch",0,v)*1200,t);}else{T(v.lm?.gain,this._lfoScale({...P,lfoDepth:routeLfo}),.012);}v.voiceDSP?.update("velocity",Math.max(0,Math.min(1,Number(v.velocity)||0)),t);v.voiceDSP?.update("attack",Math.max(.018,P.attack),t);v.voiceDSP?.update("decay",Math.max(.01,P.decay),t);v.voiceDSP?.update("sustain",P.sustain,t);v.voiceDSP?.update("release",Math.max(.02,P.release),t);\n    if(v.fmGain)T(v.fmGain.gain,routeFm,.012);
-    T(v.fxDelay?.gain,P.delayMix,.012);T(v.fxReverb?.gain,P.reverbMix,.012);T(v.fxChorus?.gain,P.chorusMix,.012);
+    /* FX mix controls are independent send gains. */
+    T(v.fxDelay?.gain,Math.max(0,Math.min(1,Number(P.delayMix)||0)),.012);
+    T(v.fxReverb?.gain,Math.max(0,Math.min(1,Number(P.reverbMix)||0)),.012);
+    T(v.fxChorus?.gain,Math.max(0,Math.min(1,Number(P.chorusMix)||0)),.012);
   }
   setModWheel(v,at=null){
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
@@ -992,7 +995,12 @@ class SynthOslek{
     /* v15.1: shared FX sends are fed through one per-voice send gain only; the
        effect processors themselves remain global, avoiding per-voice effect graphs. */
     va.connect(lg);lg.connect(pan);pan.connect(this.bus);
-    lg.connect(fx);fx.connect(fxDelay);fx.connect(fxReverb);fx.connect(fxChorus);
+    /* v16.4: true parallel FX sends. Delay/reverb/chorus are independent
+       branches from the voice send instead of accidentally feeding one effect
+       through the next. This keeps wet levels predictable and avoids
+       multiplying the three mix controls together. */
+    lg.connect(fx);
+    fx.connect(fxDelay);fx.connect(fxReverb);fx.connect(fxChorus);
     fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
     if(!this.dspBackend.workletReady){this.lfo.connect(lm);if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);}
     const v={env,vf,va,voiceDSP:null,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:vel,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
