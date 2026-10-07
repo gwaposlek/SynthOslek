@@ -937,8 +937,7 @@ class SynthOslek{
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime),m=this._morphAmount();
     for(const v of this.voices.values()){
       const P=v.params||this.params;
-      for(const x of v.oscs){
-        const pitchRoute=this._routeValue("pitch",0,v),spreadRoute=this._routeValue("spread",0,v),effectiveSpread=Math.max(0,Math.min(100,Number(P.spread||0)+spreadRoute*50))+22*m;
+      const pitchRoute=this._routeValue("pitch",0,v),spreadRoute=this._routeValue("spread",0,v),effectiveSpread=Math.max(0,Math.min(100,Number(P.spread||0)+spreadRoute*50))+22*m;
       for(const x of v.oscs){
         const base=x.kind==="sub"?0:(Number(P["osc"+x.w+"Coarse"])||0)*100+(Number(P["osc"+x.w+"Detune"])||0)+(x.kind==="sub"?0:(x.w===1?10:-10)*m)+pitchRoute*1200;
         const spread=x.kind==="sub"?0:x.off*effectiveSpread;
