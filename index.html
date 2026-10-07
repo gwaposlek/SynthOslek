@@ -1091,7 +1091,7 @@ void Promise.race([
       fmMod.frequency.setValueAtTime(Math.max(1,freq*fmRatio),now);
       fmGain.gain.setValueAtTime(fmAmount*Math.max(.05,vel),now);
       const fmHold=fmAmount*Math.max(.05,vel)*Math.max(0,Math.min(1,Number(P.fmEnv)??.5));
-      fmGain.gain.linearRampToValueAtTime(fmHold,now+Math.max(.01,Number(P.fDecay)||.2));
+      try{fmGain.gain.cancelScheduledValues(now);fmGain.gain.setValueAtTime(fmGain.gain.value,now);fmGain.gain.linearRampToValueAtTime(fmHold,now+Math.max(.01,Number(P.fDecay)||.2));}catch(e){}
       fmMod.connect(fmGain);for(const carrier of v.oscs)if(carrier.w===1)fmGain.connect(carrier.o.frequency);
       fmMod.start(now);v.fmMod=fmMod;v.fmGain=fmGain;v.all.push(fmMod);
     }
@@ -2071,7 +2071,7 @@ class MidiManager{
     try{
       this.access=await navigator.requestMIDIAccess({sysex:false});
       this.refresh();
-      this.access.onstatechange=()=>this.refresh();
+      this.access.onstatechange=()=>{const before=this.input;this.refresh();if(before&&!this.access?.inputs?.has?.(before.id)){try{this.synth.panic();this.synth.sustain=false;this.clearMidiVisuals();}catch(e){}}};
       clearInterval(this._watchTimer);
       this._watchTimer=setInterval(()=>{
         try{
