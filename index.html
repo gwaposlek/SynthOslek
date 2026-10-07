@@ -947,7 +947,8 @@ void Promise.race([
     if(!this.started||!v)return;
     const P=this._morphParams(v.params||this.params),t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
     const T=(a,x,tc=.015)=>{try{a.setTargetAtTime(x,t,tc);}catch(e){}};
-    const rCut=this._routeValue("cutoff",0,v),rRes=this._routeValue("resonance",0,v),rO1=this._routeValue("osc1Level",0,v),rO2=this._routeValue("osc2Level",0,v),rSpread=this._routeValue("spread",0,v),rFm=this._routeValue("fmAmount",0,v),rLfo=this._routeValue("lfoDepth",0,v);\n    const routeCutoff=Math.max(20,Math.min(18000,P.cutoff+rCut*6000));
+    const rCut=this._routeValue("cutoff",0,v),rRes=this._routeValue("resonance",0,v),rO1=this._routeValue("osc1Level",0,v),rO2=this._routeValue("osc2Level",0,v),rSpread=this._routeValue("spread",0,v),rFm=this._routeValue("fmAmount",0,v),rLfo=this._routeValue("lfoDepth",0,v);
+    const routeCutoff=Math.max(20,Math.min(18000,P.cutoff+rCut*6000));
     const routeRes=Math.max(.0001,Math.min(18,P.resonance+rRes*8));
     const routeOsc1=Math.max(0,Math.min(1,P.osc1Level+rO1));
     const routeOsc2=Math.max(0,Math.min(1,P.osc2Level+rO2));
