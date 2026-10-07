@@ -19,3 +19,33 @@ jobs:
           PY
       - name: Parse JavaScript
         run: node --check /tmp/index-inline.js
+      - name: Browser boot test
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright --silent
+          npx playwright install --with-deps chromium
+          python3 -m http.server 4173 >/tmp/http.log 2>&1 &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID" EXIT
+          node - <<'NODE'
+          const { chromium } = require("playwright");
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            const page=await browser.newPage();
+            const errors=[];
+            page.on("pageerror",e=>errors.push("PAGEERROR: "+e.message));
+            page.on("console",m=>{if(m.type()==="error")errors.push("CONSOLE: "+m.text());});
+            await page.goto("http://127.0.0.1:4173/index.html");
+            await page.locator("#welcomeStart").click();
+            await page.waitForTimeout(1000);
+            const state=await page.evaluate(()=>({
+              welcomeHidden:document.getElementById("welcome")?.classList.contains("hidden"),
+              started:!!window.synth?.started,
+              audioState:window.synth?.audioRuntime?.state?.(),
+              button:document.getElementById("welcomeStart")?.textContent
+            }));
+            console.log(JSON.stringify({state,errors},null,2));
+            if(errors.length || !state.welcomeHidden || !state.started) process.exitCode=1;
+            await browser.close();
+          })();
+          NODE
