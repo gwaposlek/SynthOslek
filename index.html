@@ -2683,8 +2683,20 @@ syncSynthState(false);
     setLfoSync:d=>synth.setLfoSync(d),
     divisionSeconds:d=>SO.clock.divisionSeconds(d)
   };
+  /* Lightweight diagnostics only: no per-frame polling, no DSP work. */
+  window.SynthOslekPerformance={
+    snapshot:()=>({
+      audioState:synth?.ctx?.state||"uninitialized",
+      bpm:SO.clock.bpm,
+      activeVoices:synth?.voices?.size||0,
+      tailVoices:synth?.tailVoices?.size||0,
+      sampleRate:synth?.ctx?.sampleRate||0,
+      baseLatency:synth?.ctx?.baseLatency||0,
+      outputLatency:synth?.ctx?.outputLatency||0
+    })
+  };
 
-  window.SynthOslekRoadmap={version:"16.23",features:{tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceMonitor:true,
+  window.SynthOslekRoadmap={version:"16.23",features:{tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
