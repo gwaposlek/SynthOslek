@@ -866,7 +866,17 @@ class SynthOslek{
     /* v14.18: DC blocking before the master compressor prevents subsonic/DC transients from becoming audible low-end thumps during rapid retriggering. */
     this.dcBlock=c.createBiquadFilter();this.dcBlock.type="highpass";this.dcBlock.frequency.value=18;this.dcBlock.Q.value=.707;
     this.analyser.connect(this.dcBlock);this.dcBlock.connect(L);L.connect(this.masterGain);this.masterGain.connect(c.destination);
-    this.started=true;await this.audioRuntime.resume();await this.dspBackend.init(this.audioRuntime,this);
+    this.started=true;
+/* v16.13: never block the user-gesture startup on AudioWorklet module loading.
+   Some Samsung/DeX/iOS browser builds can delay or stall addModule(); native
+   Web Audio is already fully wired above, so audio must become available first.
+   Worklet capability is detected in the background and native DSP remains the
+   automatic fallback until it is ready. */
+await this.audioRuntime.resume();
+void Promise.race([
+  this.dspBackend.init(this.audioRuntime,this),
+  new Promise(resolve=>setTimeout(resolve,1500))
+]).catch(()=>{});
   }
   _impulse(d,dec){const r=this.ctx.sampleRate,l=r*d,b=this.ctx.createBuffer(2,l,r);
     for(let c=0;c<2;c++){const a=b.getChannelData(c);for(let i=0;i<l;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/l,dec);}return b;}
