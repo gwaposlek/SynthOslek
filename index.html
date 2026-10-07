@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.10-oscillator-parameter-optimization">
-<title>SynthOslek v16.10 — Oscillator Parameter Optimization</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.11-voice-dsp-parameter-cache">
+<title>SynthOslek v16.11 — Voice DSP Parameter Cache</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -784,15 +784,18 @@ class NativeWebAudioBackend extends DSPBackend{
   createVoiceDSP(ctx,opts={}){ 
     if(!this.workletReady)return null;
     const n=new AudioWorkletNode(ctx,"synthoslek-voice",{outputChannelCount:[1]});
-    const set=(name,v)=>{const p=n.parameters.get(name);if(p)p.setValueAtTime(Number(v)||0,ctx.currentTime);};
+    /* v16.11: cache the Worklet parameter map once per voice. */
+    n._params=Object.create(null);for(const [name,p] of n.parameters)n._params[name]=p;
+    n._lastParamValues=Object.create(null);
+    const set=(name,v)=>{const p=n._params[name];if(p){const x=Number(v)||0;p.setValueAtTime(x,ctx.currentTime);n._lastParamValues[name]=x;}};
     set("attack",Math.max(.018,opts.attack||.02));set("decay",Math.max(.01,opts.decay||.1));set("sustain",Math.max(0,Math.min(1,opts.sustain??.7)));set("release",Math.max(.02,opts.release||.3));
     set("cutoff",Math.max(20,Math.min(18000,opts.cutoff||2000)));set("resonance",Math.max(.0001,Math.min(18,opts.resonance||0)));set("filterType",opts.filterType==="highpass"?1:opts.filterType==="bandpass"?2:0);set("fAttack",Math.max(.018,opts.fAttack||.02));set("fDecay",Math.max(.01,opts.fDecay||.2));set("fSustain",Math.max(0,Math.min(1,opts.fSustain??.4)));set("fRelease",Math.max(.02,opts.fRelease||.3));set("fEnvAmt",Math.max(-12000,Math.min(12000,opts.fEnvAmt||0)));set("amp",1);set("velocity",Math.max(0,Math.min(1,opts.velocity??1)));set("pitchMod",0);set("cutoffMod",0);set("ampMod",0);set("lfoRate",Math.max(.01,Math.min(40,opts.lfoRate||2)));set("lfoCutoff",0);set("lfoAmp",0);
-    n._started=false;n._lastParamValues=Object.create(null);n.start=(when=ctx.currentTime)=>{n.port.postMessage({type:"start",at:Math.max(ctx.currentTime,when)});n._started=true;};
+    n._started=false;n.start=(when=ctx.currentTime)=>{n.port.postMessage({type:"start",at:Math.max(ctx.currentTime,when)});n._started=true;};
     n.release=(when=ctx.currentTime)=>{n.port.postMessage({type:"release",at:Math.max(ctx.currentTime,when)});};
     n.stop=(when=ctx.currentTime)=>{const ms=Math.max(0,(when-ctx.currentTime)*1000);clearTimeout(n._stopTimer);n._stopTimer=setTimeout(()=>{try{n.port.postMessage({type:"stop"});}catch(e){}try{n.disconnect();}catch(e){}try{n.onended?.();}catch(e){}},ms);};
     /* v16.9: avoid rescheduling identical Worklet parameters on every MIDI/CC
        update. This is especially important for high-voice-count modulation. */
-    n.update=(name,value,at=ctx.currentTime)=>{try{const p=n.parameters.get(name);if(!p)return;const x=Number(value)||0,last=n._lastParamValues[name];if(last!==undefined&&Math.abs(last-x)<1e-6)return;n._lastParamValues[name]=x;if(p.automationRate==="a-rate")p.setValueAtTime(x,at);else p.setTargetAtTime(x,at,.012);}catch(e){}};
+    n.update=(name,value,at=ctx.currentTime)=>{try{const p=n._params[name];if(!p)return;const x=Number(value)||0,last=n._lastParamValues[name];if(last!==undefined&&Math.abs(last-x)<1e-6)return;n._lastParamValues[name]=x;if(p.automationRate==="a-rate")p.setValueAtTime(x,at);else p.setTargetAtTime(x,at,.012);}catch(e){}};
     return n;
   }
   createVoiceOscillator(ctx,wave){
