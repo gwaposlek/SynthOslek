@@ -2436,7 +2436,7 @@ syncSynthState(false);
   const basePanic=synth.panic.bind(synth), baseAllOff=synth.allNotesOff?.bind(synth);
   const SCALE_INTERVALS={off:[0,1,2,3,4,5,6,7,8,9,10,11],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],mixolydian:[0,2,4,5,7,9,10],pentatonic:[0,2,4,7,9],blues:[0,3,5,6,7,10]};
   const CHORD_INTERVALS={off:[0],major:[0,4,7],minor:[0,3,7],"7":[0,4,7,10],maj7:[0,4,7,11],min7:[0,3,7,10],sus2:[0,2,7],sus4:[0,5,7]};
-  const musicNote=midi=>{const root=SO.music.root%12,sc=SCALE_INTERVALS[SO.music.scale]||SCALE_INTERVALS.off;if(SO.music.scale==="off")return midi;const rel=midi-root,oct=Math.floor(rel/12),pc=((rel%12)+12)%12;let best=sc[0],dist=99;for(const iv of sc){const d=Math.abs(d-0)+Math.abs(iv-pc);if(d<dist){dist=d;best=iv;}}return root+oct*12+best;};
+  const musicNote=midi=>{const root=SO.music.root%12,sc=SCALE_INTERVALS[SO.music.scale]||SCALE_INTERVALS.off;if(SO.music.scale==="off")return midi;const rel=midi-root,oct=Math.floor(rel/12),pc=((rel%12)+12)%12;let best=sc[0],dist=99;for(const iv of sc){const d=Math.abs(iv-pc);if(d<dist){dist=d;best=iv;}}return root+oct*12+best;};
   const chordNotes=midi=>{const ints=CHORD_INTERVALS[SO.music.chord]||[0];if(SO.music.chord==="off")return [musicNote(midi)];const base=musicNote(midi),chordRoot=SO.music.root+Math.round((base-SO.music.root)/12)*12;if(((base%12)-SO.music.root+12)%12!==0)return [base];return ints.map(iv=>chordRoot+iv);};
   const transformNote=midi=>chordNotes(midi).map(musicNote).filter((v,i,a)=>i===0||v!==a[i-1]);
   function arpCandidates(){const a=[...arpHeld.values()].sort((x,y)=>x.midi-y.midi);if(!a.length)return [];const out=[];for(let o=0;o<SO.arp.oct;o++)a.forEach(n=>transformNote(n.midi+12*o).forEach(midi=>out.push({...n,midi})));return out;}
