@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v15.9-audioworklet-modulation">
-<title>SynthOslek v15.9 — AudioWorklet Modulation</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.0-audioworklet-lfo">
+<title>SynthOslek v16.0 — AudioWorklet LFO</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -772,9 +772,9 @@ class NativeWebAudioBackend extends DSPBackend{
         "process(inputs,outputs,params){const out=outputs[0]?.[0];if(!out)return true;if(!this.running||currentTime<this.startAt){out.fill(0);return true;}const f=params.frequency,d=params.detune;for(let i=0;i<out.length;i++){const hz=Math.max(0,Math.min(24000,(f.length>1?f[i]:f[0])*Math.pow(2,((d.length>1?d[i]:d[0])/1200))));const p=this.phase;let x;if(this.wave===\"square\")x=p<.5?1:-1;else if(this.wave===\"sawtooth\")x=2*p-1;else if(this.wave===\"triangle\")x=1-4*Math.abs(p-.5);else x=Math.sin(2*Math.PI*p);out[i]=x;this.phase=(p+hz/sampleRate)%1;}return true;}",
         "}",
         "class SynthOslekVoiceProcessor extends AudioWorkletProcessor{",
-"static get parameterDescriptors(){return[{name:\"attack\",defaultValue:.02,minValue:.001,maxValue:10,automationRate:\"k-rate\"},{name:\"decay\",defaultValue:.1,minValue:.001,maxValue:10,automationRate:\"k-rate\"},{name:\"sustain\",defaultValue:.7,minValue:0,maxValue:1,automationRate:\"k-rate\"},{name:\"release\",defaultValue:.3,minValue:.01,maxValue:10,automationRate:\"k-rate\"},{name:\"cutoff\",defaultValue:2000,minValue:20,maxValue:18000,automationRate:\"k-rate\"},{name:\"resonance\",defaultValue:0,minValue:.0001,maxValue:18,automationRate:\"k-rate\"},{name:\"amp\",defaultValue:1,minValue:0,maxValue:2,automationRate:\"k-rate\"},{name:\"pitchMod\",defaultValue:0,minValue:-2400,maxValue:2400,automationRate:\"a-rate\"},{name:\"cutoffMod\",defaultValue:0,minValue:-12000,maxValue:12000,automationRate:\"a-rate\"},{name:\"ampMod\",defaultValue:0,minValue:-1,maxValue:1,automationRate:\"a-rate\"}];}",
-"constructor(){super();this.env=0;this.stage=\"idle\";this.y1=0;this.y2=0;this.x1=0;this.x2=0;this.phase=0;this.port.onmessage=e=>{if(e.data?.type===\"start\"){this.stage=\"attack\";this.env=0;}if(e.data?.type===\"release\")this.stage=\"release\";if(e.data?.type===\"stop\"){this.stage=\"idle\";this.env=0;}};}",
-"process(inputs,outputs,params){const input=inputs[0]?.[0],out=outputs[0]?.[0];if(!out)return true;const atk=Math.max(.001,params.attack[0]),dec=Math.max(.001,params.decay[0]),sus=Math.max(0,Math.min(1,params.sustain[0])),rel=Math.max(.01,params.release[0]),cut=Math.max(20,Math.min(18000,params.cutoff[0])),q=Math.max(.0001,Math.min(18,params.resonance[0])),amp=Math.max(0,params.amp[0]);const aStep=1/(atk*sampleRate),dStep=(1-sus)/(dec*sampleRate),rStep=Math.max(.000001,1/(rel*sampleRate));for(let i=0;i<out.length;i++){if(this.stage===\"attack\"){this.env=Math.min(1,this.env+aStep);if(this.env>=1)this.stage=\"decay\";}else if(this.stage===\"decay\"){this.env=Math.max(sus,this.env-dStep);if(this.env<=sus)this.stage=\"sustain\";}else if(this.stage===\"release\"){this.env=Math.max(0,this.env-rStep);if(this.env<=.00001)this.stage=\"idle\";}const pm=params.pitchMod.length>1?params.pitchMod[i]:params.pitchMod[0],cm=params.cutoffMod.length>1?params.cutoffMod[i]:params.cutoffMod[0],am=params.ampMod.length>1?params.ampMod[i]:params.ampMod[0];const gain=Math.max(0,Math.min(2,amp*(1+am)));const x=(input?.[i]||0)*this.env*gain;const nyq=sampleRate*.49;const fc=Math.max(20,Math.min(nyq,cut+cm));const w=2*Math.PI*fc/sampleRate;const alpha=Math.sin(w)/(2*Math.max(.05,Math.min(20,q)));const b0=(1-Math.cos(w))/2,b1=1-Math.cos(w),b2=b0,a0=1+alpha,a1=-2*Math.cos(w),a2=1-alpha;const y=(b0*x+b1*this.x1+b2*this.x2-a1*this.y1-a2*this.y2)/a0;this.x2=this.x1;this.x1=x;this.y2=this.y1;this.y1=y;out[i]=y;}return true;}","registerProcessor(\"synthoslek-dsp\",SynthOslekDSPProcessor);registerProcessor(\"synthoslek-voice\",SynthOslekVoiceProcessor);"
+"static get parameterDescriptors(){return[{name:\"attack\",defaultValue:.02,minValue:.001,maxValue:10,automationRate:\"k-rate\"},{name:\"decay\",defaultValue:.1,minValue:.001,maxValue:10,automationRate:\"k-rate\"},{name:\"sustain\",defaultValue:.7,minValue:0,maxValue:1,automationRate:\"k-rate\"},{name:\"release\",defaultValue:.3,minValue:.01,maxValue:10,automationRate:\"k-rate\"},{name:\"cutoff\",defaultValue:2000,minValue:20,maxValue:18000,automationRate:\"k-rate\"},{name:\"resonance\",defaultValue:0,minValue:.0001,maxValue:18,automationRate:\"k-rate\"},{name:\"amp\",defaultValue:1,minValue:0,maxValue:2,automationRate:\"k-rate\"},{name:\"pitchMod\",defaultValue:0,minValue:-2400,maxValue:2400,automationRate:\"a-rate\"},{name:\"cutoffMod\",defaultValue:0,minValue:-12000,maxValue:12000,automationRate:\"a-rate\"},{name:\"ampMod\",defaultValue:0,minValue:-1,maxValue:1,automationRate:\"a-rate\"},{name:\"lfoRate\",defaultValue:2,minValue:.01,maxValue:40,automationRate:\"k-rate\"},{name:\"lfoCutoff\",defaultValue:0,minValue:-12000,maxValue:12000,automationRate:\"a-rate\"},{name:\"lfoAmp\",defaultValue:0,minValue:-1,maxValue:1,automationRate:\"a-rate\"}];}",
+"constructor(){super();this.env=0;this.stage=\"idle\";this.y1=0;this.y2=0;this.x1=0;this.x2=0;this.lfoPhase=0;this.port.onmessage=e=>{if(e.data?.type===\"start\"){this.stage=\"attack\";this.env=0;}if(e.data?.type===\"release\")this.stage=\"release\";if(e.data?.type===\"stop\"){this.stage=\"idle\";this.env=0;}};}",
+"process(inputs,outputs,params){const input=inputs[0]?.[0],out=outputs[0]?.[0];if(!out)return true;const atk=Math.max(.001,params.attack[0]),dec=Math.max(.001,params.decay[0]),sus=Math.max(0,Math.min(1,params.sustain[0])),rel=Math.max(.01,params.release[0]),cut=Math.max(20,Math.min(18000,params.cutoff[0])),q=Math.max(.0001,Math.min(18,params.resonance[0])),amp=Math.max(0,params.amp[0]);const aStep=1/(atk*sampleRate),dStep=(1-sus)/(dec*sampleRate),rStep=Math.max(.000001,1/(rel*sampleRate));for(let i=0;i<out.length;i++){if(this.stage===\"attack\"){this.env=Math.min(1,this.env+aStep);if(this.env>=1)this.stage=\"decay\";}else if(this.stage===\"decay\"){this.env=Math.max(sus,this.env-dStep);if(this.env<=sus)this.stage=\"sustain\";}else if(this.stage===\"release\"){this.env=Math.max(0,this.env-rStep);if(this.env<=.00001)this.stage=\"idle\";}const pm=params.pitchMod.length>1?params.pitchMod[i]:params.pitchMod[0],cm=params.cutoffMod.length>1?params.cutoffMod[i]:params.cutoffMod[0],am=params.ampMod.length>1?params.ampMod[i]:params.ampMod[0],lr=Math.max(.01,Math.min(40,params.lfoRate[0])),lc=params.lfoCutoff.length>1?params.lfoCutoff[i]:params.lfoCutoff[0],la=params.lfoAmp.length>1?params.lfoAmp[i]:params.lfoAmp[0];const lfo=Math.sin(2*Math.PI*this.lfoPhase);this.lfoPhase=(this.lfoPhase+lr/sampleRate)%1;const gain=Math.max(0,Math.min(2,amp*(1+am+lfo*la)));const x=(input?.[i]||0)*this.env*gain;const nyq=sampleRate*.49;const fc=Math.max(20,Math.min(nyq,cut+cm+lfo*lc));const w=2*Math.PI*fc/sampleRate;const alpha=Math.sin(w)/(2*Math.max(.05,Math.min(20,q)));const b0=(1-Math.cos(w))/2,b1=1-Math.cos(w),b2=b0,a0=1+alpha,a1=-2*Math.cos(w),a2=1-alpha;const y=(b0*x+b1*this.x1+b2*this.x2-a1*this.y1-a2*this.y2)/a0;this.x2=this.x1;this.x1=x;this.y2=this.y1;this.y1=y;out[i]=y;}return true;}","registerProcessor(\"synthoslek-dsp\",SynthOslekDSPProcessor);registerProcessor(\"synthoslek-voice\",SynthOslekVoiceProcessor);"
       ].join("\\n");
       const blob=new Blob([src],{type:"application/javascript"});this.workletURL=URL.createObjectURL(blob);
       await c.audioWorklet.addModule(this.workletURL);this.workletReady=true;this.capabilities.audioWorklet=true;
@@ -786,7 +786,7 @@ class NativeWebAudioBackend extends DSPBackend{
     const n=new AudioWorkletNode(ctx,"synthoslek-voice",{outputChannelCount:[1]});
     const set=(name,v)=>{const p=n.parameters.get(name);if(p)p.setValueAtTime(Number(v)||0,ctx.currentTime);};
     set("attack",Math.max(.018,opts.attack||.02));set("decay",Math.max(.01,opts.decay||.1));set("sustain",Math.max(0,Math.min(1,opts.sustain??.7)));set("release",Math.max(.02,opts.release||.3));
-    set("cutoff",Math.max(20,Math.min(18000,opts.cutoff||2000)));set("resonance",Math.max(.0001,Math.min(18,opts.resonance||0)));set("amp",1);set("pitchMod",0);set("cutoffMod",0);set("ampMod",0);
+    set("cutoff",Math.max(20,Math.min(18000,opts.cutoff||2000)));set("resonance",Math.max(.0001,Math.min(18,opts.resonance||0)));set("amp",1);set("pitchMod",0);set("cutoffMod",0);set("ampMod",0);set("lfoRate",Math.max(.01,Math.min(40,opts.lfoRate||2)));set("lfoCutoff",0);set("lfoAmp",0);
     n._started=false;n.start=(when=ctx.currentTime)=>{n.port.postMessage({type:"start",at:Math.max(ctx.currentTime,when)});n._started=true;};
     n.release=(when=ctx.currentTime)=>{n.port.postMessage({type:"release",at:Math.max(ctx.currentTime,when)});};
     n.stop=(when=ctx.currentTime)=>{const ms=Math.max(0,(when-ctx.currentTime)*1000);clearTimeout(n._stopTimer);n._stopTimer=setTimeout(()=>{try{n.port.postMessage({type:"stop"});}catch(e){}try{n.disconnect();}catch(e){}try{n.onended?.();}catch(e){}},ms);};
@@ -796,7 +796,7 @@ class NativeWebAudioBackend extends DSPBackend{
   createVoiceOscillator(ctx,wave){
     if(!this.workletReady)return ctx.createOscillator();
     const n=new AudioWorkletNode(ctx,"synthoslek-dsp",{outputChannelCount:[1]});
-    n.frequency=n.parameters.get("frequency");n.detune=n.parameters.get("detune");n.type=wave||"sine";n._stopTimer=null;n.start=()=>{};
+    n.frequency=n.parameters.get("frequency");n.detune=n.parameters.get("detune");n.type=wave||"sine";n._stopTimer=null;n._started=false;n.start=(when=ctx.currentTime)=>{try{n.port.postMessage({type:"start",at:Math.max(ctx.currentTime,when)});}catch(e){}n._started=true;};
     n.stop=(when=ctx.currentTime)=>{try{n.port.postMessage({type:"stop"});}catch(e){}const ms=Math.max(0,(when-ctx.currentTime)*1000);clearTimeout(n._stopTimer);n._stopTimer=setTimeout(()=>{try{n.disconnect();}catch(e){}try{n.onended?.();}catch(e){}},ms+20);};
     n.port.postMessage({type:"wave",wave:wave||"sine"});return n;
   }
@@ -869,11 +869,11 @@ class SynthOslek{
     const dest=({cutoff:1800,pitch:50,amp:.35})[P?.lfoDest];
     return (Number.isFinite(dest)?dest:0)*(Number(P?.lfoDepth)||0);
   }
-  _routeValue(destination,base=0,voice=null){
+  _routeValue(destination,base=0,voice=null,excludeSource=null){
     const mm=this.modMatrix;if(!mm)return Number(base)||0;
     let out=Number(base)||0;
     for(const r of mm.routes||[]){
-      if(r.destination!==destination)continue;
+      if(r.destination!==destination||r.source===excludeSource)continue;
       let src=mm.getSource(r.source);
       if(voice){
         if(r.source==="velocity")src=Math.max(0,Math.min(1,Number(voice.velocity)||0));
@@ -921,7 +921,7 @@ class SynthOslek{
     T(v.vf?.frequency,routeCutoff,.012);T(v.vf?.Q,routeRes,.012);v.voiceDSP?.update("cutoff",routeCutoff,t);v.voiceDSP?.update("resonance",routeRes,t);
     T(v.g1?.gain,routeOsc1,.008);T(v.g2?.gain,routeOsc2,.008);
     T(v.gs?.gain,P.subLevel,.008);T(v.gn?.gain,P.noiseLevel,.008);
-    T(v.lm?.gain,this._lfoScale({...P,lfoDepth:routeLfo}),.012);v.voiceDSP?.update("cutoffMod",this._routeValue("cutoff",0,v)*6000,t);v.voiceDSP?.update("ampMod",this._routeValue("amp",0,v),t);v.voiceDSP?.update("pitchMod",this._routeValue("pitch",0,v)*1200,t);v.voiceDSP?.update("attack",Math.max(.018,P.attack),t);v.voiceDSP?.update("decay",Math.max(.01,P.decay),t);v.voiceDSP?.update("sustain",P.sustain,t);v.voiceDSP?.update("release",Math.max(.02,P.release),t);\n    if(v.fmGain)T(v.fmGain.gain,routeFm,.012);
+    const nonLfoCutoff=this._routeValue("cutoff",0,v,"lfo1")*6000,lfo1Cutoff=this._routeValue("cutoff",0,v)-this._routeValue("cutoff",0,v,"lfo1"),lfoCutoffHz=(P.lfoDest==="cutoff"?this._lfoScale({...P,lfoDepth:routeLfo}):0)+lfo1Cutoff*6000,lfo1Amp=this._routeValue("amp",0,v)-this._routeValue("amp",0,v,"lfo1");if(v.voiceDSP){v.voiceDSP.update("lfoRate",P.lfoRate,t);v.voiceDSP.update("lfoCutoff",lfoCutoffHz,t);v.voiceDSP.update("lfoAmp",lfo1Amp,t);v.voiceDSP.update("cutoffMod",nonLfoCutoff,t);v.voiceDSP.update("ampMod",this._routeValue("amp",0,v,"lfo1"),t);v.voiceDSP.update("pitchMod",this._routeValue("pitch",0,v)*1200,t);}else{T(v.lm?.gain,this._lfoScale({...P,lfoDepth:routeLfo}),.012);}v.voiceDSP?.update("attack",Math.max(.018,P.attack),t);v.voiceDSP?.update("decay",Math.max(.01,P.decay),t);v.voiceDSP?.update("sustain",P.sustain,t);v.voiceDSP?.update("release",Math.max(.02,P.release),t);\n    if(v.fmGain)T(v.fmGain.gain,routeFm,.012);
     T(v.fxDelay?.gain,P.delayMix,.012);T(v.fxReverb?.gain,P.reverbMix,.012);T(v.fxChorus?.gain,P.chorusMix,.012);
   }
   setModWheel(v,at=null){
@@ -994,8 +994,7 @@ class SynthOslek{
     va.connect(lg);lg.connect(pan);pan.connect(this.bus);
     lg.connect(fx);fx.connect(fxDelay);fx.connect(fxReverb);fx.connect(fxChorus);
     fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
-    this.lfo.connect(lm);
-    if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);
+    if(!this.dspBackend.workletReady){this.lfo.connect(lm);if(P.lfoDest==="cutoff")lm.connect(vf.frequency);else if(P.lfoDest==="amp")lm.connect(va.gain);}
     const v={env,vf,va,voiceDSP:null,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:vel,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const maxUnison=this.voices.size>24?4:8;
@@ -1007,7 +1006,7 @@ class SynthOslek{
     for(const w of[1,2])for(let i=0;i<n;i++){
       const o=this.dspBackend.createVoiceOscillator(c,P["osc"+w+"Wave"]),off=spreadShape(i),ng=G(norm);
       o.type=P["osc"+w+"Wave"];fq(o,freq);o.detune.setValueAtTime((Number(P["osc"+w+"Coarse"])||0)*100+(Number(P["osc"+w+"Detune"])||0)+off*(Number(P.spread)||0)+this.bend+(this.wheel||0)+(v.mpeBend||0),now);
-      o.connect(ng);ng.connect(v["g"+w]);if(P.lfoDest==="pitch")lm.connect(o.detune);
+      o.connect(ng);ng.connect(v["g"+w]);if(!this.dspBackend.workletReady&&P.lfoDest==="pitch")lm.connect(o.detune);
       o.start(now);v.oscs.push({o,w,off});v.all.push(o);
     }
     /* v15.3: native FM voice path. OSC2 remains audible while a dedicated
