@@ -958,7 +958,7 @@ void Promise.race([
     if(!this.started||!v)return;
     const wheel=Number(this.modWheel)||0,cacheKey=(v.params||this.params).__morphKey||"base";let P=this._morphCache.get(cacheKey+":"+wheel);
     if(!P){P=this._morphParams(v.params||this.params);this._morphCache.set(cacheKey+":"+wheel,P);if(this._morphCache.size>24){const first=this._morphCache.keys().next().value;this._morphCache.delete(first);}}
-    t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
+    const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
     const T=(a,x,tc=.015)=>{try{a.setTargetAtTime(x,t,tc);}catch(e){}};
     const rCut=this._routeValue("cutoff",0,v),rRes=this._routeValue("resonance",0,v),rO1=this._routeValue("osc1Level",0,v),rO2=this._routeValue("osc2Level",0,v),rSpread=this._routeValue("spread",0,v),rFm=this._routeValue("fmAmount",0,v),rLfo=this._routeValue("lfoDepth",0,v);
     const keyTrack=Number(P.filterKeyTrack)||0,routeCutoff=Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyTrack*(Number(v.midi??60)-60)*80+rCut*6000));
