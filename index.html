@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v15.5-modulation-expansion">
-<title>SynthOslek v15.5 — Modulation Expansion</title>
+<meta name="synthoslek-build" content="2026-10-07-v15.6-audioworklet-ready">
+<title>SynthOslek v15.6 — AudioWorklet Ready</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -761,7 +761,38 @@ class DSPBackend{
   dispose(){}
 }
 class NativeWebAudioBackend extends DSPBackend{
-  constructor(){super();this.name="native-web-audio";}
+  constructor(){
+    super();this.name="native-web-audio";
+    this.capabilities={native:true,audioWorklet:false,wasm:false};
+    this.workletReady=false;this.workletURL=null;
+  }
+  async init(runtime,synth){
+    await super.init(runtime,synth);
+    const c=runtime?.ctx;
+    if(c?.audioWorklet&&typeof AudioWorkletNode==="function"){
+      try{
+        const src=`
+          class SynthOslekDSPProcessor extends AudioWorkletProcessor{
+            process(inputs,outputs){
+              for(const out of outputs)for(const ch of out)ch.fill(0);
+              return true;
+            }
+          }
+          registerProcessor("synthoslek-dsp",SynthOslekDSPProcessor);
+        `;
+        const blob=new Blob([src],{type:"application/javascript"});
+        this.workletURL=URL.createObjectURL(blob);
+        await c.audioWorklet.addModule(this.workletURL);
+        this.workletReady=true;this.capabilities.audioWorklet=true;
+      }catch(e){
+        this.workletReady=false;this.capabilities.audioWorklet=false;
+      }
+    }
+    return this;
+  }
+  dispose(){
+    if(this.workletURL){try{URL.revokeObjectURL(this.workletURL);}catch(e){}this.workletURL=null;}
+  }
 }
 class AudioRuntime{
   constructor(){this.ctx=null;this._bound=false;}
@@ -2277,7 +2308,7 @@ syncSynthState(false);
   "use strict";
   if(window.__SO67)return; window.__SO67=true;
 
-  const SO={version:"15.5",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
+  const SO={version:"15.6",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
