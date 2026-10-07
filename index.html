@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.12-final-engine-parity-stability-fix">
-<title>SynthOslek v16.12 — Final Engine Parity & Stability Fix</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.23-timing-performance-foundation">
+<title>SynthOslek v16.23 — Timing & Performance Foundation</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -2377,15 +2377,29 @@ syncSynthState(false);
   "use strict";
   if(window.__SO67)return; window.__SO67=true;
 
-  const SO={version:"15.6",arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
+  const SO={version:"16.23",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
 
   const $=s=>document.querySelector(s), clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-  const rateSec=()=>({ "1/1":4,"1/2":2,"1/4":1,"1/8":.5,"1/16":.25,"1/32":.125 }[SO.arp.rate]||.5);
+  /* v16.23: shared musical clock. All tempo-aware modules use one source of truth. */
+  const SO_DIVISIONS={"1/1":4,"1/2":2,"1/4":1,"1/8":.5,"1/16":.25,"1/32":.125,
+    "1/1D":6,"1/2D":3,"1/4D":1.5,"1/8D":.75,"1/16D":.375,
+    "1/2T":4/3,"1/4T":2/3,"1/8T":1/3,"1/16T":1/6};
+  const rateSec=()=>SO_DIVISIONS[SO.arp.rate] ? 60/Math.max(20,SO.clock.bpm)*SO_DIVISIONS[SO.arp.rate] : .5;
   const audioNow=()=>synth?.ctx?.currentTime||0;
+  const tempoHz=()=>SO.clock.bpm/60;
+  SO.clock.divisionSeconds=(division)=>60/Math.max(20,SO.clock.bpm)*(SO_DIVISIONS[division]??.25);
+  SO.clock.setBpm=(value)=>{
+    const bpm=clamp(Number(value)||120,20,300);
+    SO.clock.bpm=bpm;SO.seq.bpm=bpm;
+    if(synth?.ctx)SO.clock.startedAt=synth.ctx.currentTime;
+    try{synth?.setTempoBpm?.(bpm);}catch(e){}
+    return bpm;
+  };
+  SO.clock.setBpm(SO.clock.bpm);
 
   /* ---------- compact performance controls ---------- */
   const host=document.createElement("div"); host.id="so67";
@@ -2468,7 +2482,7 @@ syncSynthState(false);
   let seqTimer=0,seqHeld=[];
   function seqStep(){
     if(!SO.seq.on)return;
-    const p=SO.seq.pattern[SO.seq.step%16], now=audioNow(), dur=60/SO.seq.bpm/4;
+    const p=SO.seq.pattern[SO.seq.step%16], now=audioNow(), dur=SO.clock.divisionSeconds("1/16");
     document.querySelectorAll(".so-step").forEach((e,i)=>e.classList.toggle("play",i===SO.seq.step%16));
     seqHeld.forEach(n=>{try{baseOff(n.midi,n.layer,now)}catch(e){}});seqHeld=[];
     if(p?.on){
@@ -2572,7 +2586,7 @@ syncSynthState(false);
   /* ---------- MIDI export: Standard MIDI File, format 0 ---------- */
   function vlq(n){let b=n&127,a=[];while(n>>=7){b<<=8;b|=((n&127)|128);}for(;;){a.push(b&255);if(b&128)b>>=8;else break;}return a;}
   function exportMidi(){
-    const ppq=480,tempo=Math.round(60000000/Math.max(20,SO.seq.bpm)),events=[];
+    const ppq=480,tempo=Math.round(60000000/Math.max(20,SO.clock.bpm)),events=[];
     SO.seq.pattern.forEach((p,i)=>{if(!p.on)return;const t=i*ppq/4,d=Math.max(1,Math.round(ppq/4*p.gate));events.push({t,data:[0x90,p.note,Math.round(p.vel*127)]},{t:t+d,data:[0x80,p.note,0]});});
     events.sort((a,b)=>a.t-b.t);let last=0,track=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255];
     events.forEach(e=>{track.push(...vlq(Math.max(0,e.t-last)),...e.data);last=e.t;});track.push(0,0xff,0x2f,0);
@@ -2629,7 +2643,48 @@ syncSynthState(false);
   };
 
   /* ---------- capability diagnostics / architecture markers ---------- */
-  window.SynthOslekRoadmap={version:"15.0",features:{
+  /* v16.23: tempo-aware audio controls. Kept API-first so UI remains frozen. */
+  synth.tempoBpm=SO.clock.bpm;
+  synth.delaySync="free";
+  synth.lfoSync="free";
+  synth.setTempoBpm=function(bpm){
+    this.tempoBpm=clamp(Number(bpm)||120,20,300);
+    if(this.delaySync!=="free")this.setDelaySync(this.delaySync);
+    if(this.lfoSync!=="free")this.setLfoSync(this.lfoSync);
+    return this.tempoBpm;
+  };
+  synth.setDelaySync=function(division){
+    this.delaySync=division||"free";
+    if(!this.started||!this.delay)return;
+    if(this.delaySync==="free"){
+      this.delay.delayTime.value=Math.max(.001,Math.min(1.5,Number(this.params.delayTime)||.25));
+      return;
+    }
+    const sec=SO.clock.divisionSeconds(this.delaySync);
+    this.delay.delayTime.setTargetAtTime(Math.max(.001,Math.min(1.5,sec)),audioNow(),.006);
+    this.params.delayTime=sec;
+  };
+  synth.setLfoSync=function(division){
+    this.lfoSync=division||"free";
+    if(!this.started||!this.lfo)return;
+    if(this.lfoSync==="free"){
+      this.lfo.frequency.setTargetAtTime(Math.max(.01,Number(this.params.lfoRate)||2),audioNow(),.006);
+      return;
+    }
+    const hz=1/Math.max(.001,SO.clock.divisionSeconds(this.lfoSync));
+    this.lfo.frequency.setTargetAtTime(hz,audioNow(),.006);
+    try{this.updateParam("lfoRate",hz,audioNow()+.01);}catch(e){}
+  };
+  SO.clock.setBpm(SO.clock.bpm);
+  window.SynthOslekTiming={
+    get bpm(){return SO.clock.bpm;},
+    setBpm:b=>SO.clock.setBpm(b),
+    setDelaySync:d=>synth.setDelaySync(d),
+    setLfoSync:d=>synth.setLfoSync(d),
+    divisionSeconds:d=>SO.clock.divisionSeconds(d)
+  };
+
+  window.SynthOslekRoadmap={version:"16.23",features:{tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceMonitor:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
