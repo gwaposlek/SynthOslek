@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.27-morph-engine">
-<title>SynthOslek v16.27 — Morph Engine</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.28-performance-hardening">
+<title>SynthOslek v16.28 — Performance Hardening</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -737,6 +737,15 @@ class VoicePool{
   }
 }
 
+class SynthOslekPerformanceMonitor{
+  constructor(synth){this.synth=synth;this.started=performance.now();this.last=0;this.lastVoices=0;}
+  snapshot(){
+    const s=this.synth,p=s.voicePool?.stats?.()||{max:48,active:s.voices?.size||0,tails:0,occupied:s.voices?.size||0,free:0};
+    const a=s.ctx?.baseLatency||0,o=s.ctx?.outputLatency||0;
+    return {uptimeMs:Math.round(performance.now()-this.started),activeVoices:p.active,tails:p.tails,occupied:p.occupied,free:p.free,maxVoices:p.max,baseLatencyMs:+(a*1000).toFixed(2),outputLatencyMs:+(o*1000).toFixed(2),audioState:s.ctx?.state||"uninitialized"};
+  }
+  pressure(){const x=this.snapshot();return Math.min(1,x.maxVoices?x.occupied/x.maxVoices:0);}
+}
 class ModulationMatrix{
   constructor(){
     this.routes=[];
@@ -1204,7 +1213,7 @@ Object.defineProperty(synth,"params",{
   get(){return this.layerProfiles[this.activeLayer]||this.layerProfiles[0];},
   set(v){if(v&&this.layerProfiles[this.activeLayer]!==v)this.layerProfiles[this.activeLayer]=v;}
 });
-synth.voicePool=new VoicePool(48);
+synth.voicePool=new VoicePool(48);synth.performanceMonitor=new SynthOslekPerformanceMonitor(synth);window.SynthOslekPerformance={snapshot:()=>synth.performanceMonitor.snapshot(),pressure:()=>synth.performanceMonitor.pressure()};
 synth.modMatrix=new ModulationMatrix();
 
 function syncSynthState(history=false){
@@ -1759,7 +1768,7 @@ resizeScope();
   const stop=()=>{if(raf){cancelAnimationFrame(raf);raf=0;}};
   const draw=ts=>{
     raf=0;if(document.hidden)return;
-    const interval=synth.voices.size?1000/30:1000/12;
+    const pressure=window.SynthOslekPerformance?.pressure?.()||0;const interval=pressure>.72?1000/18:(synth.voices.size?1000/30:1000/12);
     if(ts-lastDraw<interval){raf=requestAnimationFrame(draw);return;}
     lastDraw=ts;resizeScope();
     const w=scopeCanvas.width,h=scopeCanvas.height;
@@ -1779,7 +1788,7 @@ resizeScope();
     }
     raf=requestAnimationFrame(draw);
   };
-  const start=()=>{if(!document.hidden&&!raf)raf=requestAnimationFrame(draw);};
+  const start=()=>{if(document.hidden)return;if(!document.hidden&&!raf)raf=requestAnimationFrame(draw);};
   document.addEventListener("visibilitychange",()=>{if(document.hidden)stop();else{lastDraw=0;start();}});
   start();
 })();
@@ -2067,7 +2076,7 @@ class MidiManager{
           if(wanted&&(!this.input||this.input.id!==wanted.id))this.useInput(wanted.id);
           else if(!this.input&&inputs.length)this.refresh();
         }catch(e){}
-      },1200);
+      },2000);
       return true;
     }catch(err){
       this.setStatus("MIDI permission unavailable — tap Start, then reconnect MIDI");
@@ -2714,7 +2723,7 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.27",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.28",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
