@@ -43,7 +43,8 @@ jobs:
               welcomeHidden:document.getElementById("welcome")?.classList.contains("hidden"),
               started:!!window.synth?.started,
               audioState:window.synth?.audioRuntime?.state?.(),
-              button:document.getElementById("welcomeStart")?.textContent
+              button:document.getElementById("welcomeStart")?.textContent,
+              bootErrors:window.__bootErrors
             }));
             console.log(JSON.stringify({state,errors},null,2));
             if(errors.length || !state.welcomeHidden || !state.started) process.exitCode=1;
