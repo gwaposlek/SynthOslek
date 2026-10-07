@@ -584,6 +584,22 @@ header{display:none!important}
 <div class="footer">SynthOslek v14.69 · Core + Voice Pool + MIDI · MPE performance engine</div>
 
 <script>
+/* v16.18 startup diagnostics: capture script parse/runtime failures before the synth boot script runs. */
+(function(){
+  function show(msg){
+    var s=document.getElementById("errorScreen"),d=document.getElementById("errorDetail"),t=document.getElementById("errorText");
+    if(d)d.textContent=String(msg||"Unknown startup error");
+    if(t)t.textContent="SynthOslek startup script failed.";
+    if(s)s.style.display="block";
+  }
+  window.addEventListener("error",function(e){
+    if(e&&e.target&&e.target!==window)return;
+    show((e&&e.message?e.message:"JavaScript error")+(e&&e.lineno?" @ line "+e.lineno:""));
+  },true);
+  window.addEventListener("unhandledrejection",function(e){show("Unhandled startup promise: "+String(e&&e.reason&&e.reason.message||e&&e.reason||"unknown"));});
+})();
+</script>
+<script>
 const screenPitchCents=amt=>{amt=Math.max(-1,Math.min(1,Number(amt)||0));return amt<0?amt*1200:amt*200;};
 const pitchBendCents=norm=>screenPitchCents(Math.max(-1,Math.min(1,Number(norm)||0)));
 
@@ -1136,6 +1152,8 @@ Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});Object.assign(PRESE
 Object.assign(PRESETS.bass,{subLevel:.5});Object.assign(PRESETS.keys,{chorusMix:.35});
 const LAYER_COUNT=4;
 const synth=new SynthOslek();
+window.synth=synth;
+window.__synthOslekBooted=true;
 /* v14.29: mobile/background transitions can prevent a matching Note Off from
    reaching the page. Treat hidden as a transport boundary, but never
    auto-start audio when the page becomes visible again. */
