@@ -32,7 +32,8 @@ jobs:
           (async()=>{
             const browser=await chromium.launch({headless:true});
             const page=await browser.newPage();
-            const errors=[];\n            await page.addInitScript(()=>{ window.__bootErrors=[]; window.addEventListener("error",e=>window.__bootErrors.push({message:e.message,filename:e.filename,lineno:e.lineno,colno:e.colno}),true); });
+            const errors=[];
+            await page.addInitScript(()=>{ window.__bootErrors=[]; window.addEventListener("error",e=>window.__bootErrors.push({message:e.message,filename:e.filename,lineno:e.lineno,colno:e.colno}),true); });
             page.on("pageerror",e=>errors.push("PAGEERROR: "+e.message+"\nSTACK: "+(e.stack||"")));
             page.on("console",m=>{if(m.type()==="error")errors.push("CONSOLE: "+m.text());});
             await page.goto("http://127.0.0.1:4173/index.html");
