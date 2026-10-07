@@ -815,7 +815,8 @@ class AudioRuntime{
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC)throw new Error("Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.");
     this.ctx=new AC({latencyHint:"interactive"});
-    await this.resume();
+    /* v16.14: do not block context creation on resume() in mobile browsers. */
+    void this.resume().catch(()=>{});
     this.bindLifecycle();
     return this.ctx;
   }
@@ -872,8 +873,8 @@ class SynthOslek{
    Web Audio is already fully wired above, so audio must become available first.
    Worklet capability is detected in the background and native DSP remains the
    automatic fallback until it is ready. */
-await this.audioRuntime.resume();
 void Promise.race([
+      this.audioRuntime.resume().catch(()=>{}),
   this.dspBackend.init(this.audioRuntime,this),
   new Promise(resolve=>setTimeout(resolve,1500))
 ]).catch(()=>{});
