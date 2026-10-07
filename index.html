@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.25-vcf-lfo-refinement">
-<title>SynthOslek v16.25 — VCF & LFO Refinement</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.26-fx-voice-refinement">
+<title>SynthOslek v16.26 — FX & Voice Refinement</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -855,8 +855,8 @@ class AudioRuntime{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreqByLayer=Array.from({length:4},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
-    this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
+    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this.monoHeld=Array.from({length:4},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.lastFreqByLayer=Array.from({length:4},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
@@ -869,17 +869,17 @@ class SynthOslek{
     /* v14.22: give the master compressor a little more time to absorb stacked
        note transients instead of reacting to them as a low-frequency punch. */
     L.attack.value=.012;L.release.value=.18;
-    this.delay=c.createDelay(1.5);this.delay.delayTime.value=Math.max(.001,Math.min(1.5,Number(p.delayTime)||.25));
+    this.delay=c.createDelay(1.5);this.delay.delayTime.value=Math.max(.001,Math.min(1.5,Number(p.delayTime)||.25));this.delaySync=p.delaySync||"1/4";
     this.delayFeedback=G(Math.max(0,Math.min(.92,Number(p.delayFb)||0)));this.delayGain=G(1);
     this.delay.connect(this.delayFeedback);this.delayFeedback.connect(this.delay);this.delay.connect(this.delayGain);
     this.convolver=c.createConvolver();this.convolver.buffer=this._impulse(2.2,2.5);this.reverbGain=G(1);
     this.lfo=c.createOscillator();this.lfo.type=(p.lfoWave==="triangle"||p.lfoWave==="square"||p.lfoWave==="sawtooth")?p.lfoWave:"sine";this.lfo.frequency.value=p.lfoRate;this.lfo.start();
-    this.chorusGain=G(1);this.chorusInput=G(1);
+    this.chorusGain=G(1);this.chorusInput=G(1);this.flangerGain=G(1);this.flangerInput=G(1);this.flangerDelay=c.createDelay(.02);this.flangerDelay.delayTime.value=.004;this.flangerInput.connect(this.flangerDelay);this.flangerDelay.connect(this.flangerGain);this.flangerLfo=c.createOscillator();this.flangerLfo.frequency.value=Number(p.flangerRate)||.25;this.flangerDepth=G(Number(p.flangerDepth)||.002);this.flangerLfo.connect(this.flangerDepth);this.flangerDepth.connect(this.flangerDelay.delayTime);this.flangerLfo.start();
     [[.7,.0035,.018],[1.1,.004,.026]].forEach(([r,d,t])=>{const o=c.createOscillator(),m=G(d),dl=c.createDelay(.1);
       o.frequency.value=r;dl.delayTime.value=t;o.connect(m);m.connect(dl.delayTime);o.start();this.chorusInput.connect(dl);dl.connect(this.chorusGain);});
     const nb=c.createBuffer(1,c.sampleRate,c.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;this.noiseBuf=nb;
     this.bus.connect(this.analyser);this.convolver.connect(this.reverbGain);
-    for(const n of[this.delayGain,this.reverbGain,this.chorusGain])n.connect(this.analyser);
+    for(const n of[this.delayGain,this.reverbGain,this.chorusGain,this.flangerGain])n.connect(this.analyser);
     /* v14.18: DC blocking before the master compressor prevents subsonic/DC transients from becoming audible low-end thumps during rapid retriggering. */
     this.dcBlock=c.createBiquadFilter();this.dcBlock.type="highpass";this.dcBlock.frequency.value=18;this.dcBlock.Q.value=.707;
     this.analyser.connect(this.dcBlock);this.dcBlock.connect(L);L.connect(this.masterGain);this.masterGain.connect(c.destination);
@@ -1014,7 +1014,7 @@ void Promise.race([
   }
   _nativeNoteOn(midi,vel=.85,layer=this.activeLayer,when=null,stealFadeMs=6,mpeChannel=0,mpeBend=0){
     if(!this.started)return;
-    const key=layer+":"+midi;const hadHeldVoice=[...this.voices.values()].some(v=>v.layer===layer);if(this.voices.has(key))this._forceStop(key,stealFadeMs,when);
+    const key=layer+":"+midi;const hadHeldVoice=[...this.voices.values()].some(v=>v.layer===layer);const mono=this.params.voiceMode==="mono";const held=this.monoHeld[layer]||[];if(mono&&held.length){const oldMidi=held[held.length-1],oldKey=layer+":"+oldMidi,old=this.voices.get(oldKey);if(old&&oldMidi!==midi&&this.params.legato){const target=440*Math.pow(2,(midi-69)/12),t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime),gl=Math.max(0,Number((this.layerProfiles[layer]||this.params).glide)||0)/1000;for(const x of old.oscs){try{x.o.frequency.cancelScheduledValues(t);x.o.frequency.setValueAtTime(440*Math.pow(2,(oldMidi-69)/12),t);x.o.frequency.linearRampToValueAtTime(target,t+gl);}catch(e){}}old.midi=midi;this.voices.delete(oldKey);this.voices.set(key,old);this.monoHeld[layer]=[midi];return;}if(old&&!this.params.legato)this._forceStop(oldKey,stealFadeMs,when);}if(this.voices.has(key))this._forceStop(key,stealFadeMs,when);
     const c=this.ctx,rawP=this.layerProfiles[layer]||this.params,baseP={...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0},P=this._morphParams(baseP),G=v=>this._G(v),now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
     const prevFreq=Number(this.lastFreqByLayer[layer])||0;const fq=(o,f)=>{if(gl>.001&&hadHeldVoice&&prevFreq>0&&Math.abs(prevFreq-f)>0.001){o.frequency.setValueAtTime(prevFreq,now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
     const workletPath=!!this.dspBackend.workletReady;
@@ -1052,7 +1052,7 @@ void Promise.race([
        multiplying the three mix controls together. */
     lg.connect(fx);
     fx.connect(fxDelay);fx.connect(fxReverb);fx.connect(fxChorus);
-    fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);
+    fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);fx.connect(this.flangerInput);
     if(!workletPath){this.lfo.connect(lm);const lfoDelay=Math.max(0,Math.min(2,Number(P.lfoDelay)||0)),lfoAmt=this._lfoScale(P);lm.gain.setValueAtTime(0,now);lm.gain.linearRampToValueAtTime(lfoAmt,now+Math.max(.01,lfoDelay));if(P.lfoDest==="cutoff"){lm.connect(vf.frequency);if(vf2)lm.connect(vf2.frequency);}else if(P.lfoDest==="amp")lm.connect(va.gain);}
     const v={env,vf,vf2,va,voiceDSP:null,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,midi,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
@@ -1088,7 +1088,7 @@ void Promise.race([
     if((Number(P.noiseLevel)||0)>.0005){
       const ns=c.createBufferSource();ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.all.push(ns);
     }
-    this.lastFreqByLayer[layer]=freq;this.voices.set(key,v);
+    this.lastFreqByLayer[layer]=freq;this.voices.set(key,v);if(this.params.voiceMode==="mono")this.monoHeld[layer]=[midi];
   }
   _kill(v,t,key=null){
     v.all.forEach(o=>{try{o.stop(t);}catch(e){}});
@@ -1098,6 +1098,7 @@ void Promise.race([
     if(v.all[0])v.all[0].onended=()=>{if(key&&this.tailVoices.get(key)===v)this.tailVoices.delete(key);try{this.lfo.disconnect(v.lm);}catch(e){}try{v.lm.disconnect();}catch(e){}try{v.va.disconnect();}catch(e){}try{v.voiceDSP?.disconnect();}catch(e){}try{v.fmMod?.disconnect();}catch(e){}try{v.fmGain?.disconnect();}catch(e){}try{v.fx?.disconnect();}catch(e){}try{v.fxDelay?.disconnect();}catch(e){}try{v.fxReverb?.disconnect();}catch(e){}try{v.fxChorus?.disconnect();}catch(e){}try{v.layerGain?.disconnect();}catch(e){}try{v.pan?.disconnect();}catch(e){}};
   }
   _nativeNoteOff(midi,layer=null,when=null){
+    if(layer!=null&&this.params.voiceMode==="mono"){this.monoHeld[layer]=(this.monoHeld[layer]||[]).filter(n=>n!==midi);if(this.monoHeld[layer].length)return;}
     const matches=[...this.voices.entries()].filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer));
     if(this.sustain){matches.forEach(([k])=>this.sustained.add(k));return;}
     for(const [key,v] of matches){const t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime),P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
@@ -1120,7 +1121,9 @@ void Promise.race([
   }
   panic(){return this.dspBackend?.panic();}
   allNotesOff(){if(!this.started)return;for(const key of [...this.voices.keys()]){const [layer,midi]=key.split(":");this.noteOff(Number(midi),Number(layer));}this.sustained.clear();}
-  _nativePanic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
+  _nativePanic(){this.sustained.clear();this.monoHeld=Array.from({length:4},()=>[]);for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
+  _updateDelayTime(){const bpm=Math.max(20,Math.min(300,Number(window.SynthOslekTiming?.bpm)||120)),map={"1/1":4,"1/2":2,"1/4":1,"1/8":.5,"1/16":.25,"1/8d":.75,"1/8t":1/3};const sec=map[this.delaySync];if(sec&&this.delay)this.delay.delayTime.setTargetAtTime(Math.max(.01,Math.min(1.5,(60/bpm)*sec)),this.ctx.currentTime,.015);}
+  setTempoBpm(v){if(this.started)this._updateDelayTime();return v;}
   updateParam(k,x,at=null){
     this.params[k]=x;
     if(this.layerProfiles[this.activeLayer])this.layerProfiles[this.activeLayer][k]=x;
@@ -1130,7 +1133,10 @@ void Promise.race([
     const A={
       volume:()=>T(this.masterGain.gain,Math.min(.8,Math.max(.02,Number(x)||0)),.015),
       delayTime:()=>T(this.delay.delayTime,x,.02),
+      delaySync:()=>{this.delaySync=x;this._updateDelayTime();},
       delayFb:()=>T(this.delayFeedback.gain,x,.02),
+      flangerMix:()=>T(this.flangerGain.gain,x,.02),flangerRate:()=>T(this.flangerLfo.frequency,x,.02),flangerDepth:()=>T(this.flangerDepth.gain,x,.02),
+      voiceMode:()=>{},legato:()=>{},
       lfoRate:()=>T(this.lfo.frequency,x,.02),lfoWave:()=>{const w=x==="triangle"||x==="square"||x==="sawtooth"?x:"sine";try{this.lfo.type=w;}catch(e){}},lfoDelay:()=>{},filterKeyTrack:()=>{},filterEnvPolarity:()=>{}
     };
     if(A[k])return A[k]();
@@ -1318,13 +1324,13 @@ function buildLayerMixer(){
  d.querySelector('.solo').onclick=()=>{L.solo=!L.solo;d.querySelector('.solo').classList.toggle('on',L.solo);refreshLayerGains()};
  d.querySelector('.layer-enable').onclick=e=>{L.enabled=!L.enabled;e.currentTarget.textContent=L.enabled?'ON':'OFF';e.currentTarget.classList.toggle('on',L.enabled);d.classList.toggle('disabled',!L.enabled);refreshLayerGains()};root.appendChild(d);});
 };
-const S={osc1Wave:["Waveform",["sawtooth","square","triangle","sine"]],osc2Wave:["Waveform",["sawtooth","square","triangle","sine"]],
+const S={voiceMode:["Mode",["poly","mono"]],legato:["Legato",["false","true"]],delaySync:["Sync",["free","1/1","1/2","1/4","1/8","1/16","1/8d","1/8t"]],osc1Wave:["Waveform",["sawtooth","square","triangle","sine"]],osc2Wave:["Waveform",["sawtooth","square","triangle","sine"]],
 filterType:["Type",["lowpass","highpass","bandpass","notch","lowpass24","highpass24"]],lfoDest:["Destination",["cutoff","pitch","amp"]],lfoWave:["Wave",["sine","triangle","square","sawtooth","sample-hold"]],filterEnvPolarity:["Env Polarity",["positive","negative"]]};
 const PANELS=[
 ["Oscillator 1",["osc1Wave","osc1Detune","osc1Level"]],["Oscillator 2",["osc2Wave","osc2Detune","osc2Level"]],
 ["Filter",["filterType","cutoff","resonance","filterKeyTrack","filterEnvPolarity"]],["Amp Envelope",["attack","decay","sustain","release"]],
 ["Filter Envelope",["fEnvAmt","fAttack","fDecay","fSustain","fRelease"]],["LFO",["lfoDest","lfoWave","lfoRate","lfoDepth","lfoDelay"]],
-["Voice",["unison","spread","subLevel","noiseLevel","glide"]],["Effects",["delayTime","delayFb","delayMix","reverbMix","chorusMix"]]
+["Voice",["voiceMode","legato","unison","spread","subLevel","noiseLevel","glide"]],["Effects",["delayTime","delaySync","delayFb","delayMix","reverbMix","flangerMix","flangerRate","flangerDepth","chorusMix"]]
 ];
 const UI={};
 const $=id=>document.getElementById(id);
@@ -1336,7 +1342,7 @@ osc2Detune:["Detune",-100,100,1,"¢"],osc2Level:["Level",0,1,.01,""],
 cutoff:["Cutoff",40,12000,1,"Hz","log"],resonance:["Reso",.1,20,.1,""],filterKeyTrack:["Key Track",0,1,.01,""],lfoDelay:["Delay",0,2,.01,"s"],
 attack:["Attack",.001,2,.001,"s"],decay:["Decay",.01,2,.01,"s"],sustain:["Sustain",0,1,.01,""],release:["Release",.01,3,.01,"s"],
 fEnvAmt:["Amount",0,1,.01,""],fAttack:["Attack",.001,2,.001,"s"],fDecay:["Decay",.01,2,.01,"s"],fSustain:["Sustain",0,1,.01,""],fRelease:["Release",.01,3,.01,"s"],
-lfoRate:["Rate",.05,20,.05,"Hz"],lfoDepth:["Depth",0,1,.01,""],
+lfoRate:["Rate",.05,20,.05,"Hz"],lfoDepth:["Depth",0,1,.01,""],flangerMix:["Flanger",0,1,.01,""],flangerRate:["Flng Rate",.05,5,.05,"Hz"],flangerDepth:["Flng Depth",.0002,.008,.0001,"s"],
 delayTime:["Time",.01,1,.01,"s"],delayFb:["Feedback",0,.85,.01,""],delayMix:["Mix",0,1,.01,""],reverbMix:["Reverb",0,1,.01,""],
 unison:["Unison",1,7,1,""],spread:["Spread",0,50,1,"¢"],subLevel:["Sub",0,1,.01,""],noiseLevel:["Noise",0,1,.01,""],chorusMix:["Chorus",0,1,.01,""],volume:["Volume",0,1,.01,""],glide:["Glide",0,500,5,"ms"]
 };
@@ -2705,7 +2711,7 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.25",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.26",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
