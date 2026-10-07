@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.6-modulation-performance">
-<title>SynthOslek v16.6 — Modulation Performance Pass</title>
+<meta name="synthoslek-build" content="2026-10-07-v16.7-audioworklet-voice-optimization">
+<title>SynthOslek v16.7 — AudioWorklet Voice Path Optimization</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#050505;--border:#1a1a1a;--accent:#5b8cff;--accent2:#7c5cff;--text:#e8ecf4;--muted:#6b7280;--knob:#141414;--glow:rgba(91,140,255,.4);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -977,24 +977,24 @@ class SynthOslek{
     const key=layer+":"+midi;const hadHeldVoice=[...this.voices.values()].some(v=>v.layer===layer);if(this.voices.has(key))this._forceStop(key,stealFadeMs,when);
     const c=this.ctx,rawP=this.layerProfiles[layer]||this.params,baseP={...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0},P=this._morphParams(baseP),G=v=>this._G(v),now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
     const prevFreq=Number(this.lastFreqByLayer[layer])||0;const fq=(o,f)=>{if(gl>.001&&hadHeldVoice&&prevFreq>0&&Math.abs(prevFreq-f)>0.001){o.frequency.setValueAtTime(prevFreq,now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
-    const env=G(.00001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale(P));
+    const env=G(this.dspBackend.workletReady?1:.00001),vf=c.createBiquadFilter(),va=G(1),lm=G(this._lfoScale(P));
     vf.type=P.filterType;vf.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));
     
-    /* v14.18: never allow an effectively instantaneous amp attack. A short controlled ramp avoids waveform/envelope discontinuities that can sound like a sub thump when MIDI notes are retriggered quickly. */
+    /* v16.7: when AudioWorklet voice DSP is active, this gain is only the
+       oscillator/noise summing stage; the Worklet owns the amp envelope. */
     const atk=Math.max(.018,P.attack),dec=Math.max(.01,P.decay);
-    /* v14.22: the oscillator/filter must enter the audible path gently. The
-       previous 12 ms floor protected amplitude, but a fast filter sweep could
-       still create a sharp low-frequency transient on dense MIDI playing. */
-    /* v14.26: start from true silence with a short linear fade-in. */
-    env.gain.setValueAtTime(0,now);
-    env.gain.linearRampToValueAtTime(Math.max(.0001,vel),now+atk);
-    env.gain.exponentialRampToValueAtTime(Math.max(.001,P.sustain*vel),now+atk+dec);
+    if(!this.dspBackend.workletReady){
+      /* Native fallback keeps the established anti-click envelope path. */
+      env.gain.setValueAtTime(0,now);
+      env.gain.linearRampToValueAtTime(Math.max(.0001,vel),now+atk);
+      env.gain.exponentialRampToValueAtTime(Math.max(.001,P.sustain*vel),now+atk+dec);
+    }
     const envPol=Number(P.filterEnvPolarity??1)>=0?1:-1, keyTrack=Number(P.filterKeyTrack)||0;
     const keyOffset=keyTrack*(midi-60)*80, envAmt=Math.max(-12000,Math.min(12000,Number(P.fEnvAmt||0)*6000*(.4+.6*vel)*envPol)),amt=envAmt,fA=Math.max(.018,Number(P.fAttack)||0),fD=Math.max(.01,Number(P.fDecay)||0);
     vf.frequency.setValueAtTime(Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset)),now);
     vf.frequency.linearRampToValueAtTime(Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset+amt)),now+fA);
     vf.frequency.linearRampToValueAtTime(Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset+amt*Number(P.fSustain||0))),now+fA+fD);
-    if(this.dspBackend.workletReady){v.voiceDSP=this.dspBackend.createVoiceDSP(c,{attack:atk,decay:dec,sustain:P.sustain,release:P.release,cutoff:Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset)),resonance:P.resonance,filterType:P.filterType,fAttack:P.fAttack,fDecay:P.fDecay,fSustain:P.fSustain,fRelease:P.fRelease,fEnvAmt:Number(P.fEnvAmt||0)*6000});v.voiceDSP.start(now);v.voiceDSP.connect(va);}else{env.connect(vf);vf.connect(va);}
+    if(this.dspBackend.workletReady){v.voiceDSP=this.dspBackend.createVoiceDSP(c,{attack:atk,decay:dec,sustain:P.sustain,release:P.release,cutoff:Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset)),resonance:P.resonance,filterType:P.filterType,fAttack:P.fAttack,fDecay:P.fDecay,fSustain:P.fSustain,fRelease:P.fRelease,fEnvAmt:Number(P.fEnvAmt||0)*6000});env.connect(v.voiceDSP);v.voiceDSP.start(now);v.voiceDSP.connect(va);}else{env.connect(vf);vf.connect(va);}
     const LS=this.layerMix[layer]||{};const lg=G(LS.enabled===false||LS.mute?0:(LS.vol??.7));
     const pan=c.createStereoPanner();pan.pan.value=LS.pan??0;
     const fx=G(LS.fx??.2),fxDelay=G(P.delayMix??0),fxReverb=G(P.reverbMix??0),fxChorus=G(P.chorusMix??0);
