@@ -2129,6 +2129,7 @@ class MidiManager{
       const when=this.synth.started?midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs):null;
       if(this.synth.mpeEnabled)this.synth.setMPEPressure(ch,b/127,.012,when);
     }
+  }
   refresh(){
     if(!this.select)return;
     const inputs=[...(this.access?.inputs?.values?.()||[])],previous=this.select.value;
