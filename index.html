@@ -506,7 +506,7 @@ header{display:none!important}
     <h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
     <div class="welcome-tag">Performance Workstation</div>
     <p class="welcome-desc">A web-based <b>subtractive synth</b> with 4 layers, touch keys, WebMIDI, scenes, and a text sound designer — built for live play on desktop, tablet, and controllers like the SMK 37.</p>
-    <button class="btn" id="welcomeStart" type="button">Start</button>
+    <button class="btn" id="welcomeStart" type="button" onclick="window.startSynthOslekFromGesture&&window.startSynthOslekFromGesture()">Start</button>
     <div class="welcome-foot">Tap Start to unlock audio · Chrome / Edge / Safari recommended</div>
   </div>
 </div>
@@ -1657,29 +1657,41 @@ async function initializeControllersAfterAudio(){
     /* MIDI/BLE is optional; never allow controller failure to block audio startup. */
   }
 }
-welcomeStart?.addEventListener("click",async()=>{
-  if(startupBusy)return;
+async function startSynthOslekFromGesture(){
+  if(startupBusy)return false;
   startupBusy=true;
   const welcome=document.getElementById("welcome"),dot=document.getElementById("dot"),st=document.getElementById("stxt");
+  const button=document.getElementById("welcomeStart");
   try{
-    await synth.start();
+    if(st)st.textContent="Starting audio…";
+    if(button){button.disabled=true;button.textContent="Starting…";}
+    /* v16.31: keep the user-gesture path deterministic on iPad/Chrome/DeX. */
+    const boot=synth.start();
+    await Promise.race([boot,new Promise((_,reject)=>setTimeout(()=>reject(new Error("Audio startup timed out after 3000 ms")),3000))]);
+    if(!synth.started)throw new Error("Audio engine did not enter the running state");
     welcome?.classList.add("hidden");
     dot?.classList.add("on");
     if(st)st.textContent="Audio ready — play keys or MIDI";
-    /* Controller setup intentionally follows the audio unlock gesture. */
     void initializeControllersAfterAudio();
+    return true;
   }catch(err){
-    /* v16.15: reveal startup errors instead of leaving the welcome overlay above them. */
-    welcome?.classList.add("hidden");
-    if(st)st.textContent="Audio start failed — check the error details";
+    if(st)st.textContent="Audio start failed — tap Start again";
     const t=document.getElementById("errorText"),d=document.getElementById("errorDetail"),screen=document.getElementById("errorScreen");
     if(t)t.textContent="Audio could not start. Check browser audio permission, then try Start again.";
     if(d)d.textContent=String(err?.message||err);
     if(screen)screen.style.display="block";
+    return false;
   }finally{
     startupBusy=false;
+    if(button){button.disabled=false;button.textContent="Start";}
   }
-});
+}
+window.startSynthOslekFromGesture=startSynthOslekFromGesture;
+welcomeStart?.addEventListener("click",()=>{void startSynthOslekFromGesture();});
+welcomeStart?.addEventListener("pointerup",e=>{
+  /* iPad Chrome fallback: pointerup can reach the button even when click is suppressed. */
+  if(e.pointerType==="touch")void startSynthOslekFromGesture();
+},{passive:true});
 
 /* Randomize */
 function surprisePatch(){
