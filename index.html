@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.37-chord-pattern-dropdown">
-<title>SynthOslek v16.37 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.38-scale-first-chord-pattern">
+<title>SynthOslek v16.38 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -2447,7 +2447,7 @@ syncSynthState(false);
 
   const SO={version:"16.23",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,length:16,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
-    music:{root:0,scale:"major",chord:"off",chordMode:"diatonic"},
+    music:{root:0,scale:"major",chord:"off",chordMode:"fixed"},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
 
@@ -2572,50 +2572,25 @@ syncSynthState(false);
     return root+octave*12+best;
   };
 
-  /* v16.36: CHORD ON follows the selected SCALE and builds a diatonic
-     triad from the pressed scale degree. C Major therefore yields C, Dm, Em,
-     F, G, Am, and Bdim. */
-  const diatonicChordNotes=midi=>{
-    const scaleName=SO.music.scale||"off";
-    if(scaleName==="off")return [Number(midi)];
-    const intervals=SCALE_INTERVALS[scaleName]||SCALE_INTERVALS.off;
-    if(intervals.length<3)return [musicNote(midi)];
-    const quantized=musicNote(midi);
-    const root=((Number(SO.music.root)||0)%12+12)%12;
-    const rel=quantized-root;
-    const octave=Math.floor(rel/12);
-    const pc=((rel%12)+12)%12;
-    let degree=intervals.indexOf(pc);
-    if(degree<0){
-      let best=0,bestDist=Infinity;
-      intervals.forEach((iv,i)=>{const d=Math.abs(iv-pc);if(d<bestDist){bestDist=d;best=i;}});
-      degree=best;
-    }
-    const count=intervals.length,base=degree;
-    return [0,2,4].map(step=>{
-      const idx=base+step,wrap=Math.floor(idx/count),iv=intervals[idx%count];
-      return root+(octave+wrap)*12+iv;
-    });
-  };
-
+  /* v16.38: two-stage musical transform.
+     1) SCALE controls the effective root/key of the pressed note.
+     2) CHORD PATTERN is then applied to that effective root.
+     Example: C Major + MAJ7 => C->C E G B, D->D F# A C#, E->E G# B D#. */
   const chordNotes=midi=>{
     const chord=SO.music.chord||"off";
-    if(chord==="off")return [musicNote(midi)];
-    if(chord==="diatonic")return diatonicChordNotes(midi);
+    const effectiveRoot=SO.music.scale&&SO.music.scale!=="off"
+      ?musicNote(midi)
+      :Number(midi);
+    if(chord==="off")return [effectiveRoot];
     const ints=CHORD_INTERVALS[chord]||CHORD_INTERVALS.off;
-    return ints.map(iv=>Number(midi)+iv);
+    return ints.map(iv=>effectiveRoot+iv);
   };
 
   /* Final musical decision:
-     1) CHORD ON -> diatonic chord from the selected scale
-     2) otherwise selected SCALE -> scale quantization
-     3) otherwise -> original MIDI note */
+     SCALE is evaluated first; when CHORD is enabled the selected fixed
+     chord formula is applied to the scale-controlled root. */
   const transformNote=midi=>{
-    const out=(SO.music.chord&&SO.music.chord!=="off")
-      ?chordNotes(midi)
-      :(SO.music.scale&&SO.music.scale!=="off")
-        ?[musicNote(midi)]
-        :[Number(midi)];
+    const out=chordNotes(midi);
     return [...new Set(out.map(Number))].sort((a,b)=>a-b);
   };
 
