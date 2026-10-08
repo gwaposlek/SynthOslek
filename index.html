@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.47-two-layer-low-latency-core">
-<title>SynthOslek v16.47 — Two-Layer Low-Latency Core</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.48-dual-layer-default-surprise">
+<title>SynthOslek v16.48 — Dual-Layer Default + Surprise</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1245,7 +1245,7 @@ document.addEventListener("visibilitychange",()=>{
   else if(synth.started)void synth.audioRuntime.resume();
 },{passive:true});
 const initialProfiles=Array.from({length:LAYER_COUNT},()=>({...PRESETS.init}));
-const initialLayers=Array.from({length:LAYER_COUNT},(_,i)=>({vol:i===0?.8:.65,mute:false,solo:false,enabled:i===0,pan:0,fx:.2,preset:"init"}));
+const initialLayers=Array.from({length:LAYER_COUNT},(_,i)=>({vol:i===0?.8:.65,mute:false,solo:false,enabled:true,pan:0,fx:.2,preset:"init"}));
 
 /* v14.4 state owns layer/profile/scene data; Web Audio objects remain runtime-local. */
 const synthState=new SynthStateStore({
@@ -1771,19 +1771,33 @@ function surprisePatch(){
 }
 document.getElementById("rndBtn").addEventListener("click",()=>{
   const btn=document.getElementById("rndBtn");
-  /* v14.20: capture the actual master-volume knob value before applying any randomized patch. */
-  const lockedVolume=Number.isFinite(Number(UI.volume?.v))?Number(UI.volume.v):
-    (Number.isFinite(Number(synth.params.volume))?Number(synth.params.volume):PRESETS.init.volume);
-  const {patch,extreme}=surprisePatch();
-  patch.volume=lockedVolume;
-  applyParams(patch);
-  /* Hard-lock the UI and synth master volume after patch application as a second guard. */
-  if(UI.volume){UI.volume.set(lockedVolume,true);synth.updateParam("volume",lockedVolume);}
+  /* v16.48: Surprise Me is a dual-layer performance action.
+     Each layer receives its own independent randomized patch while
+     preserving that layer's current volume. */
+  const activeBefore=synth.activeLayer;
+  let anyExtreme=false;
+  const extremeLayers=[];
+  for(let layer=0;layer<LAYER_COUNT;layer++){
+    setActiveLayer(layer);
+    const lockedVolume=Number.isFinite(Number(synth.params.volume))?Number(synth.params.volume):PRESETS.init.volume;
+    const {patch,extreme}=surprisePatch();
+    patch.volume=lockedVolume;
+    applyParams(patch);
+    /* Hard-lock each layer's volume after randomization. */
+    if(UI.volume){UI.volume.set(lockedVolume,true);synth.updateParam("volume",lockedVolume);}
+    anyExtreme=anyExtreme||extreme;
+    if(extreme)extremeLayers.push(layer+1);
+    layerState[layer].preset="surprise";
+  }
+  setActiveLayer(activeBefore);
   document.getElementById("presetSelect").value="";
   btn.classList.remove("flash-green","flash-red");
   void btn.offsetWidth;
-  btn.classList.add(extreme?"flash-red":"flash-green",extreme?"red":"green");
-  const st=$("stxt");if(st)st.textContent=extreme?"Surprise Me! · EXTREME patch":"Surprise Me! · NEW patch";
+  btn.classList.add(anyExtreme?"flash-red":"flash-green",anyExtreme?"red":"green");
+  const st=$("stxt");
+  if(st)st.textContent=anyExtreme
+    ? "Surprise Me! · BOTH LAYERS · EXTREME L"+extremeLayers.join("+")
+    : "Surprise Me! · BOTH LAYERS · NEW PATCHES";
 });
 /* Help Panel */
 const helpBtn=document.getElementById("helpBtn"),helpPanel=document.getElementById("helpPanel"),helpClose=document.getElementById("helpClose");
@@ -2990,7 +3004,7 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.47",features:{twoLayerCore:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.48",features:{twoLayerCore:true,dualLayerDefault:true,dualLayerSurprise:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
