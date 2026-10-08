@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.48-dual-layer-default-surprise">
-<title>SynthOslek v16.48 — Dual-Layer Default + Surprise</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.49-dual-layer-xfade-stage1">
+<title>SynthOslek v16.49 — Dual-Layer XFade Stage 1</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1022,6 +1022,12 @@ void Promise.race([
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
     this.morphArpOct=this.modWheel>=.78?1:0;this.morphSeqOct=this.modWheel>=.9?1:0;
+    /* v16.49 Stage 1: when both layers are genuinely audible, MOD is a
+       musical equal-power crossfade. Single-layer operation retains the
+       existing Macro behavior. */
+    const dual=typeof layerState!=="undefined"&&layerState.length>=2&&
+      typeof layerAudible==="function"&&layerAudible(0)&&layerAudible(1);
+    if(dual){refreshLayerGains(at);return;}
     if(this.started){
       for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);
       this._det(.012,at);
@@ -1352,11 +1358,25 @@ synth.modMatrix.setRoute("modWheel","morph",1);
 
 function activeSolo(){return layerState.some(x=>x.enabled && x.solo)}
 function layerAudible(i){return !!layerState[i].enabled && !layerState[i].mute && (!activeSolo()||layerState[i].solo)}
+function morphGains(m){
+  m=Math.max(0,Math.min(1,Number(m)||0));
+  return [Math.cos(m*Math.PI*.5),Math.sin(m*Math.PI*.5)];
+}
 function refreshLayerGains(at=null){
-  synth.layerMix=layerState.map((x,i)=>({vol:x.vol,mute:!layerAudible(i),enabled:x.enabled,pan:x.pan,fx:x.fx}));
+  const bothOn=layerState.length>=2&&layerAudible(0)&&layerAudible(1);
+  const [m0,m1]=bothOn?morphGains(synth.modWheel):[1,1];
+  synth.layerMix=layerState.map((x,i)=>{
+    const morphGain=i===0?m0:i===1?m1:1;
+    return {vol:(x.vol??.7)*morphGain,mute:!layerAudible(i),enabled:x.enabled,pan:x.pan,fx:x.fx};
+  });
   if(!synth.started)return;
   const t=Math.max(synth.ctx.currentTime,Number.isFinite(at)?at:synth.ctx.currentTime);
-  for(const v of synth.voices.values()) if(v.layerGain){const L=synth.layerMix[v.layer];v.layerGain.gain.setTargetAtTime(layerAudible(v.layer)&&L.enabled!==false?L.vol:0,t,.01);if(v.pan)v.pan.pan.setTargetAtTime(L.pan||0,t,.01);if(v.fx)v.fx.gain.setTargetAtTime(L.fx||0,t,.01);}
+  for(const v of synth.voices.values()) if(v.layerGain){
+    const L=synth.layerMix[v.layer],enabled=layerAudible(v.layer)&&L?.enabled!==false;
+    v.layerGain.gain.setTargetAtTime(enabled?(L?.vol??0):0,t,.008);
+    if(v.pan)v.pan.pan.setTargetAtTime(L?.pan||0,t,.01);
+    if(v.fx)v.fx.gain.setTargetAtTime(L?.fx||0,t,.01);
+  }
 }
 function setActiveLayer(i){
   i=Math.max(0,Math.min(LAYER_COUNT-1,Number(i)||0));
@@ -3004,7 +3024,7 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.48",features:{twoLayerCore:true,dualLayerDefault:true,dualLayerSurprise:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.49",features:{twoLayerCore:true,dualLayerDefault:true,dualLayerSurprise:true,dualLayerXFade:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
