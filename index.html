@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.33-note-monitor-moved">
+<meta name="synthoslek-build" content="2026-10-08-v16.34-chord-scale-priority">
 <title>SynthOslek v16.30 — Voice Lifecycle Hardening</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -2540,12 +2540,74 @@ syncSynthState(false);
      the visual keyboard exactly when the engine receives it. */
   const monitoredBaseOn=(m,v,l,w)=>{noteMonitor.generatedOn(m);return rawBaseOn(m,v,l,w);};
   const monitoredBaseOff=(m,l,w)=>{noteMonitor.generatedOff(m);return rawBaseOff(m,l,w);};
+  /* v16.34 musical transform: CHORD has priority over SCALE.
+     ARP is only a playback layer; it never changes the musical transformation. */
   const SCALE_INTERVALS={off:[0,1,2,3,4,5,6,7,8,9,10,11],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],mixolydian:[0,2,4,5,7,9,10],pentatonic:[0,2,4,7,9],blues:[0,3,5,6,7,10]};
   const CHORD_INTERVALS={off:[0],major:[0,4,7],minor:[0,3,7],"7":[0,4,7,10],maj7:[0,4,7,11],min7:[0,3,7,10],sus2:[0,2,7],sus4:[0,5,7]};
-  const musicNote=midi=>{const root=SO.music.root%12,sc=SCALE_INTERVALS[SO.music.scale]||SCALE_INTERVALS.off;if(SO.music.scale==="off")return midi;const rel=midi-root,oct=Math.floor(rel/12),pc=((rel%12)+12)%12;let best=sc[0],dist=99;for(const iv of sc){const d=Math.abs(iv-pc);if(d<dist){dist=d;best=iv;}}return root+oct*12+best;};
-  const chordNotes=midi=>{const ints=CHORD_INTERVALS[SO.music.chord]||[0];if(SO.music.chord==="off")return [musicNote(midi)];const base=musicNote(midi);return ints.map(iv=>base+iv);};
-  const transformNote=midi=>chordNotes(midi).filter((v,i,a)=>i===0||v!==a[i-1]);
-  function arpCandidates(){const a=[...arpHeld.values()].sort((x,y)=>x.midi-y.midi);if(!a.length)return [];const out=[];for(let o=0;o<SO.arp.oct;o++)a.forEach(n=>transformNote(n.midi+12*o).forEach(midi=>out.push({...n,midi})));return out;}
+
+  /* Scale quantization is pitch-class based and octave-stable. It never
+     depends on the absolute octave of the incoming MIDI note. */
+  const musicNote=midi=>{
+    midi=Number(midi);
+    const root=((Number(SO.music.root)||0)%12+12)%12;
+    const scaleName=SO.music.scale||"off";
+    if(scaleName==="off")return midi;
+    const intervals=SCALE_INTERVALS[scaleName]||SCALE_INTERVALS.off;
+    const rel=midi-root;
+    const octave=Math.floor(rel/12);
+    const pc=((rel%12)+12)%12;
+
+    let best=intervals[0],bestDist=Infinity,bestAbs=Infinity;
+    for(const iv of intervals){
+      const d=Math.abs(iv-pc);
+      const abs=iv-pc;
+      /* Stable tie-break: prefer the lower scale tone, avoiding octave
+         jumps around the root boundary. */
+      if(d<bestDist||(d===bestDist&&abs<=bestAbs)){
+        best=iv;bestDist=d;bestAbs=abs;
+      }
+    }
+    return root+octave*12+best;
+  };
+
+  /* A selected chord is self-contained: SCALE IS NOT USED here.
+     The pressed MIDI note is the chord root, so A3 behaves exactly like
+     every other key and produces A-based chord tones when selected. */
+  const chordNotes=midi=>{
+    const chord=SO.music.chord||"off";
+    if(chord==="off")return [musicNote(midi)];
+    const ints=CHORD_INTERVALS[chord]||CHORD_INTERVALS.off;
+    return ints.map(iv=>Number(midi)+iv);
+  };
+
+  /* Final musical decision:
+     1) selected CHORD -> chord only, scale ignored
+     2) otherwise selected SCALE -> scale quantization
+     3) otherwise -> original MIDI note */
+  const transformNote=midi=>{
+    const out=(SO.music.chord&&SO.music.chord!=="off")
+      ?chordNotes(midi)
+      :(SO.music.scale&&SO.music.scale!=="off")
+        ?[musicNote(midi)]
+        :[Number(midi)];
+    return [...new Set(out.map(Number))].sort((a,b)=>a-b);
+  };
+
+  /* ARP consumes the exact transformed note set for each held input.
+     It never re-applies scale/chord logic to individual generated tones. */
+  function arpCandidates(){
+    const held=[...arpHeld.values()].sort((x,y)=>x.midi-y.midi);
+    if(!held.length)return [];
+    const out=[];
+    const octaves=Math.max(1,Number(SO.arp.oct)||1);
+    for(let o=0;o<octaves;o++){
+      for(const n of held){
+        const notes=transformNote(n.midi+12*o);
+        for(const midi of notes)out.push({...n,midi});
+      }
+    }
+    return out;
+  }
   function arpPick(){
     const a=arpCandidates();if(!a.length)return null;
     if(SO.arp.mode==="random")return a[Math.floor(Math.random()*a.length)];
