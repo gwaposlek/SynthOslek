@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.34-chord-scale-priority">
+<meta name="synthoslek-build" content="2026-10-08-v16.35-bluetooth-audio-stability">
 <title>SynthOslek v16.30 — Voice Lifecycle Hardening</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -862,7 +862,7 @@ class AudioRuntime{
     if(this.ctx)return this.ctx;
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC)throw new Error("Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.");
-    this.ctx=new AC({latencyHint:"interactive"});
+    this.ctx=new AC({latencyHint:(/Android/i.test(navigator.userAgent)||/Windows/i.test(navigator.userAgent)? "balanced":"interactive")});
     /* v16.14: do not block context creation on resume() in mobile browsers. */
     void this.resume().catch(()=>{});
     this.bindLifecycle();
@@ -1145,11 +1145,11 @@ void Promise.race([
     for(const [key,v] of matches){const t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime),P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
       try{if(v.voiceDSP){v.voiceDSP.release(t);}else{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.setValueAtTime(Math.max(.00001,g.value||.00001),t);g.exponentialRampToValueAtTime(.00001,t+rel);}
         const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}
-      const tailMs=Math.min(1200,(Math.max(rel,fr)+.08)*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
+      const tailMs=Math.min(1200,(Math.max(rel,fr)+.06)*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   }
   releaseSustain(){return this.dspBackend?.releaseSustain();}
   _nativeReleaseSustain(){if(!this.started)return;const keys=[...this.sustained];this.sustained.clear();for(const key of keys){const v=this.voices.get(key);if(!v)continue;const midi=Number(key.split(":").pop());this._releaseVoice(key,v,midi);}}
-  _releaseVoice(key,v,midi){const t=this.ctx.currentTime,P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);try{if(v.voiceDSP){v.voiceDSP.release(t);}else{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelAndHoldAtTime(t);g.exponentialRampToValueAtTime(.0001,t+rel);}const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}const tailMs=Math.min(1200,(Math.max(rel,fr)+.08)*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
+  _releaseVoice(key,v,midi){const t=this.ctx.currentTime,P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);try{if(v.voiceDSP){v.voiceDSP.release(t);}else{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelAndHoldAtTime(t);g.exponentialRampToValueAtTime(.0001,t+rel);}const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}const tailMs=Math.min(1200,(Math.max(rel,fr)+.06)*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   _forceStop(key,fadeMs=5,at=null){
     const v=this.voices.get(key)||this.tailVoices.get(key);if(!v)return;
     const now=this.ctx.currentTime,fade=Math.max(.002,Number(fadeMs)||5)/1000;
@@ -2621,7 +2621,7 @@ syncSynthState(false);
     const n=arpPick(), now=audioNow(), step=rateSec(), swing=(SO.arp.swing||0)*step*.5;
     /* Schedule note boundaries against AudioContext time, not setTimeout jitter.
        This keeps Bluetooth/MIDI input responsive while making the ARP itself stable. */
-    const when=Math.max(now+.008,arpNextAt||0);
+    const when=Math.max(now+.012,arpNextAt||0);
     if(arpLast)try{
       const releaseAt=Math.min(arpLast.off||when,Math.max(now,when-.001));
       noteMonitor.setArpPending(true);
@@ -2635,9 +2635,15 @@ syncSynthState(false);
       noteMonitor.setArpPending(false);
       arpLast={...n,off};
       arpIndex += arpDir; if(SO.arp.mode==="up/down")arpIndex=clamp(arpIndex,0,Math.max(0,arpCandidates().length-1));
-      setStatus("ARP "+midiToNote(n.midi)+" · "+SO.arp.rate);
+      /* v16.35: do not touch the DOM on every ARP tick; frequent status writes
+         can trigger layout/paint work on Android and Bluetooth playback. */
+      if((arpIndex&7)===0)setStatus("ARP "+midiToNote(n.midi)+" · "+SO.arp.rate);
       arpNextAt=when+Math.max(.01,step+(arpIndex%2?swing:-swing));
-      const delay=Math.max(10,(arpNextAt-audioNow())*1000-8);
+      /* v16.35: give Bluetooth/mobile output a wider scheduling runway. The
+         audio graph runs ahead while the UI timer only wakes to schedule the
+         next boundary; this greatly reduces main-thread jitter crackles. */
+      const lookAheadMs=(/Android|Windows/i.test(navigator.userAgent)?28:16);
+      const delay=Math.max(12,(arpNextAt-audioNow())*1000-lookAheadMs);
       arpTimer=setTimeout(arpTick,delay);
     }else{arpTimer=0;}
   }
