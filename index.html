@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.53-morph-core-hardening">
-<title>SynthOslek v16.53 — Morph Core Hardening</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.54-android-midi-zero-lookahead">
+<title>SynthOslek v16.54 — Android MIDI Zero-Lookahead</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -3093,7 +3093,7 @@ syncSynthState(false);
     mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
     webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
   },state:SO};
-  setStatus("v16.53 engine ready · Morph core hardened · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.54 engine ready · Android MIDI zero-lookahead · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
