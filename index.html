@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.41-low-latency-mobile-audio">
-<title>SynthOslek v16.41 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.42-low-latency-mobile-audio">
+<title>SynthOslek v16.42 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -838,8 +838,8 @@ class NativeWebAudioBackend extends DSPBackend{
     n._params=Object.create(null);for(const [name,p] of n.parameters)n._params[name]=p;
     n._lastParamValues=Object.create(null);
     const set=(name,v)=>{const p=n._params[name];if(p){const x=Number(v)||0;p.setValueAtTime(x,ctx.currentTime);n._lastParamValues[name]=x;}};
-    set("attack",Math.max(.018,opts.attack||.02));set("decay",Math.max(.01,opts.decay||.1));set("sustain",Math.max(0,Math.min(1,opts.sustain??.7)));set("release",Math.max(.02,opts.release||.3));
-    set("cutoff",Math.max(20,Math.min(18000,opts.cutoff||2000)));set("resonance",Math.max(.0001,Math.min(18,opts.resonance||0)));set("filterType",opts.filterType==="highpass"?1:opts.filterType==="bandpass"?2:opts.filterType==="notch"?3:opts.filterType==="lowpass24"?4:opts.filterType==="highpass24"?5:0);set("fAttack",Math.max(.018,opts.fAttack||.02));set("fDecay",Math.max(.01,opts.fDecay||.2));set("fSustain",Math.max(0,Math.min(1,opts.fSustain??.4)));set("fRelease",Math.max(.02,opts.fRelease||.3));set("fEnvAmt",Math.max(-12000,Math.min(12000,opts.fEnvAmt||0)));set("amp",1);set("velocity",Math.max(0,Math.min(1,opts.velocity??1)));set("pitchMod",0);set("cutoffMod",0);set("ampMod",0);set("lfoRate",Math.max(.01,Math.min(40,opts.lfoRate||2)));set("lfoWave",opts.lfoWave==="triangle"?1:opts.lfoWave==="square"?2:opts.lfoWave==="sawtooth"?3:opts.lfoWave==="sample-hold"?4:0);set("lfoDelay",Math.max(0,Math.min(2,opts.lfoDelay||0)));set("lfoCutoff",0);set("lfoAmp",0);
+    set("attack",Math.max(.008,opts.attack||.02));set("decay",Math.max(.01,opts.decay||.1));set("sustain",Math.max(0,Math.min(1,opts.sustain??.7)));set("release",Math.max(.02,opts.release||.3));
+    set("cutoff",Math.max(20,Math.min(18000,opts.cutoff||2000)));set("resonance",Math.max(.0001,Math.min(18,opts.resonance||0)));set("filterType",opts.filterType==="highpass"?1:opts.filterType==="bandpass"?2:opts.filterType==="notch"?3:opts.filterType==="lowpass24"?4:opts.filterType==="highpass24"?5:0);set("fAttack",Math.max(.008,opts.fAttack||.02));set("fDecay",Math.max(.01,opts.fDecay||.2));set("fSustain",Math.max(0,Math.min(1,opts.fSustain??.4)));set("fRelease",Math.max(.02,opts.fRelease||.3));set("fEnvAmt",Math.max(-12000,Math.min(12000,opts.fEnvAmt||0)));set("amp",1);set("velocity",Math.max(0,Math.min(1,opts.velocity??1)));set("pitchMod",0);set("cutoffMod",0);set("ampMod",0);set("lfoRate",Math.max(.01,Math.min(40,opts.lfoRate||2)));set("lfoWave",opts.lfoWave==="triangle"?1:opts.lfoWave==="square"?2:opts.lfoWave==="sawtooth"?3:opts.lfoWave==="sample-hold"?4:0);set("lfoDelay",Math.max(0,Math.min(2,opts.lfoDelay||0)));set("lfoCutoff",0);set("lfoAmp",0);
     n._started=false;n.start=(when=ctx.currentTime)=>{n.port.postMessage({type:"start",at:Math.max(ctx.currentTime,when)});n._started=true;};
     n.release=(when=ctx.currentTime)=>{const at=Number.isFinite(when)?Math.max(ctx.currentTime,when):ctx.currentTime;n.port.postMessage({type:"release",at});};
     n.stop=(when=ctx.currentTime)=>{const ms=Math.max(0,(when-ctx.currentTime)*1000);clearTimeout(n._stopTimer);n._stopTimer=setTimeout(()=>{try{n.port.postMessage({type:"stop"});}catch(e){}try{n.disconnect();}catch(e){}try{n.onended?.();}catch(e){}},ms);};
@@ -933,7 +933,7 @@ void Promise.race([
 ]).catch(()=>{});
   }
   _impulse(d,dec,channels=2){const r=this.ctx.sampleRate,l=Math.max(1,Math.floor(r*d)),b=this.ctx.createBuffer(channels,l,r);
-    for(let c=0;c<2;c++){const a=b.getChannelData(c);for(let i=0;i<l;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/l,dec);}return b;}
+    for(let c=0;c<channels;c++){const a=b.getChannelData(c);for(let i=0;i<l;i++)a[i]=(Math.random()*2-1)*Math.pow(1-i/l,dec);}return b;}
   _lfoScale(P=this.params){
     const dest=({cutoff:1800,pitch:50,amp:.35})[P?.lfoDest];
     return (Number.isFinite(dest)?dest:0)*(Number(P?.lfoDepth)||0);
@@ -1067,7 +1067,7 @@ void Promise.race([
     
     /* v16.7: when AudioWorklet voice DSP is active, this gain is only the
        oscillator/noise summing stage; the Worklet owns the amp envelope. */
-    const atk=Math.max(.018,P.attack),dec=Math.max(.01,P.decay);
+    const atk=Math.max(.008,P.attack),dec=Math.max(.01,P.decay);
     if(!this.dspBackend.workletReady){
       /* Native fallback keeps the established anti-click envelope path. */
       env.gain.setValueAtTime(0,now);
