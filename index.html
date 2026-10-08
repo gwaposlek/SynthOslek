@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.45-mobile-engine-hardening">
-<title>SynthOslek v16.45 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.46-morph-cache-hardening">
+<title>SynthOslek v16.46 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -996,8 +996,8 @@ void Promise.race([
   }
   _applyMorphToVoice(v,at=null){
     if(!this.started||!v)return;
-    const wheel=Number(this.modWheel)||0,cacheKey=(v.params||this.params).__morphKey||"base";let P=this._morphCache.get(cacheKey+":"+wheel);
-    if(!P){P=this._morphParams(v.params||this.params);this._morphCache.set(cacheKey+":"+wheel,P);if(this._morphCache.size>24){const first=this._morphCache.keys().next().value;this._morphCache.delete(first);}}
+    const wheel=Number(this.modWheel)||0,rev=this._layerParamRevision?.[v.layer]||0,cacheKey="L"+(v.layer??0)+":"+rev,letKey=cacheKey+":"+wheel;let P=this._morphCache.get(letKey);
+    if(!P){P=this._morphParams(v.params||this.params);this._morphCache.set(letKey,P);if(this._morphCache.size>24){const first=this._morphCache.keys().next().value;this._morphCache.delete(first);}}
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
     const T=(a,x,tc=.015)=>{try{a.setTargetAtTime(x,t,tc);}catch(e){}};
     const rCut=this._routeValue("cutoff",0,v),rRes=this._routeValue("resonance",0,v),rO1=this._routeValue("osc1Level",0,v),rO2=this._routeValue("osc2Level",0,v),rSpread=this._routeValue("spread",0,v),rFm=this._routeValue("fmAmount",0,v),rLfo=this._routeValue("lfoDepth",0,v);
