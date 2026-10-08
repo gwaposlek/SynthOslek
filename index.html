@@ -1135,7 +1135,7 @@ void Promise.race([
     for(const w of[1,2])for(let i=0;i<n;i++){
       const o=this.dspBackend.createVoiceOscillator(c,P["osc"+w+"Wave"]),off=spreadShape(i),ng=G(norm);
       o.type=P["osc"+w+"Wave"];fq(o,freq);o.detune.setValueAtTime((Number(P["osc"+w+"Coarse"])||0)*100+(Number(P["osc"+w+"Detune"])||0)+off*(Number(P.spread)||0)+this.bend+(this.wheel||0)+(v.mpeBend||0),now);
-      o.connect(ng);ng.connect(v["g"+w]);if(!this.dspBackend.workletReady&&P.lfoDest==="pitch")lm.connect(o.detune);
+      o.connect(ng);ng.connect(v["g"+w]);if(!workletPath&&P.lfoDest==="pitch")lm.connect(o.detune);
       o.start(now);v.oscs.push({o,w,off});v.all.push(o);
     }
     /* v15.3: native FM voice path. OSC2 remains audible while a dedicated
