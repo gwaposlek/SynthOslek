@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.54-android-midi-zero-lookahead">
-<title>SynthOslek v16.54 — Android MIDI Zero-Lookahead</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.55-android-native-voice-path">
+<title>SynthOslek v16.55 — Android Native Voice Path</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1086,14 +1086,14 @@ void Promise.race([
     const key=layer+":"+midi;const hadHeldVoice=[...this.voices.values()].some(v=>v.layer===layer);const mono=this.params.voiceMode==="mono";const held=this.monoHeld[layer]||[];if(mono&&held.length){const oldMidi=held[held.length-1],oldKey=layer+":"+oldMidi,old=this.voices.get(oldKey);if(old&&oldMidi!==midi&&this.params.legato){const target=440*Math.pow(2,(midi-69)/12),t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime),gl=Math.max(0,Number((this.layerProfiles[layer]||this.params).glide)||0)/1000;for(const x of old.oscs){try{x.o.frequency.cancelScheduledValues(t);x.o.frequency.setValueAtTime(440*Math.pow(2,(oldMidi-69)/12),t);x.o.frequency.linearRampToValueAtTime(target,t+gl);}catch(e){}}old.midi=midi;this.voices.delete(oldKey);this.voices.set(key,old);this.monoHeld[layer]=[midi];return;}if(old&&!this.params.legato)this._forceStop(oldKey,stealFadeMs,when);}if(this.voices.has(key))this._forceStop(key,stealFadeMs,when);
     const c=this.ctx,rawP=this.layerProfiles[layer]||this.params,baseP={...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0},P=this._morphParams(baseP),G=v=>this._G(v),now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
     const prevFreq=Number(this.lastFreqByLayer[layer])||0;const fq=(o,f)=>{if(gl>.001&&hadHeldVoice&&prevFreq>0&&Math.abs(prevFreq-f)>0.001){o.frequency.setValueAtTime(prevFreq,now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
-    const workletPath=!!this.dspBackend.workletReady;
+    const workletPath=!!this.dspBackend.workletReady&&!this.mobileAudio;
     const env=G(workletPath?1:.00001),vf=workletPath?null:c.createBiquadFilter(),vf2=workletPath?null:((P.filterType==="lowpass24"||P.filterType==="highpass24")?c.createBiquadFilter():null),va=G(1),lm=workletPath?null:G(this._lfoScale(P));
     const nativeFilterType=P.filterType==="lowpass24"||P.filterType==="lowpass"?"lowpass":P.filterType==="highpass24"||P.filterType==="highpass"?"highpass":P.filterType==="notch"?"notch":P.filterType==="bandpass"?"bandpass":"lowpass";
     if(vf){vf.type=nativeFilterType;vf.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
     if(vf2){vf2.type=nativeFilterType;vf2.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
     
-    /* v16.7: when AudioWorklet voice DSP is active, this gain is only the
-       oscillator/noise summing stage; the Worklet owns the amp envelope. */
+    /* v16.54: Android stays on the native voice path for the shortest practical
+       browser-side path. AudioWorklet remains available on desktop/iOS. */
     const atk=Math.max(.008,P.attack),dec=Math.max(.01,P.decay);
     if(!this.dspBackend.workletReady){
       /* Native fallback keeps the established anti-click envelope path. */
@@ -3093,7 +3093,7 @@ syncSynthState(false);
     mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
     webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
   },state:SO};
-  setStatus("v16.54 engine ready · Android MIDI zero-lookahead · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.55 engine ready · Android native voice path · MIDI zero-lookahead · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
