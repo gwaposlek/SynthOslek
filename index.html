@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.44-android-realtime-thread">
-<title>SynthOslek v16.44 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.45-mobile-engine-hardening">
+<title>SynthOslek v16.45 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -893,7 +893,7 @@ class AudioRuntime{
 class SynthOslek{
   constructor(){
     this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:4},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.mobileAudio=/Android/i.test(navigator.userAgent);this.lastFreqByLayer=Array.from({length:4},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
-    this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
+    this._layerParamRevision=Array.from({length:4},()=>0);this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
@@ -919,11 +919,13 @@ class SynthOslek{
        desktop/iOS, while the mobile path avoids analyser -> compressor -> FX
        processing during real-time playing. */
     if(this.mobileAudio){
+      /* v16.45: keep Android's real-time path tiny, but explicitly remove
+         subsonic/DC energy before the nonlinear safety stage. */
+      this.dcBlock=c.createBiquadFilter();this.dcBlock.type="highpass";this.dcBlock.frequency.value=24;this.dcBlock.Q.value=.707;
       const sh=c.createWaveShaper(),curve=new Float32Array(1024);
-      for(let i=0;i<curve.length;i++){const x=i*2/(curve.length-1)-1;curve[i]=x>=0?Math.min(1,Math.tanh(x*1.15)):Math.max(-1,Math.tanh(x*1.15));}
+      for(let i=0;i<curve.length;i++){const x=i*2/(curve.length-1)-1;curve[i]=Math.tanh(x*0.95);}
       sh.curve=curve;sh.oversample="none";this.mobileClip=sh;
-      this.bus.connect(sh);sh.connect(this.masterGain);this.masterGain.connect(c.destination);
-      this.dcBlock=null;
+      this.bus.connect(this.dcBlock);this.dcBlock.connect(sh);sh.connect(this.masterGain);this.masterGain.connect(c.destination);
     }else{
       this.bus.connect(this.analyser);this.convolver.connect(this.reverbGain);
       for(const n of[this.delayGain,this.reverbGain,this.chorusGain,this.flangerGain])n.connect(this.analyser);
@@ -1144,15 +1146,22 @@ void Promise.race([
     this.lastFreqByLayer[layer]=freq;this.voices.set(key,v);if(this.params.voiceMode==="mono")this.monoHeld[layer]=[midi];
   }
   _kill(v,t,key=null){
+    if(!v||v._cleanupScheduled)return;
+    v._cleanupScheduled=true;
     v.all.forEach(o=>{try{o.stop(t);}catch(e){}});
-    /* v15.1: release graph references promptly; scheduled tails remain audible
-       through Web Audio, but JS maps no longer retain the completed voice. */
     if(key)this.tailVoices.set(key,v);
-    const cleanup=()=>{if(key&&this.tailVoices.get(key)===v)this.tailVoices.delete(key);const nodes=[v.lm,v.va,v.voiceDSP,v.fmMod,v.fmGain,v.fx,v.fxDelay,v.fxReverb,v.fxChorus,v.layerGain,v.pan];for(const n of nodes){try{n?.disconnect();}catch(e){}}};
-    const oldTimer=key&&this._voiceCleanupTimers.get(key);if(oldTimer)clearTimeout(oldTimer);
-    const ms=80;
-    if(key)this._voiceCleanupTimers.set(key,setTimeout(()=>{this._voiceCleanupTimers.delete(key);cleanup();},ms));
-    const first=v.all?.[0];if(first)first.onended=()=>{if(key){const tm=this._voiceCleanupTimers.get(key);if(tm)clearTimeout(tm);this._voiceCleanupTimers.delete(key);}cleanup();};
+    const cleanup=()=>{
+      if(v._cleaned)return;
+      v._cleaned=true;
+      if(key&&this.tailVoices.get(key)===v)this.tailVoices.delete(key);
+      if(key&&this._voiceCleanupTimers.get(key)?.voice===v)this._voiceCleanupTimers.delete(key);
+      const nodes=[v.lm,v.va,v.voiceDSP,v.fmMod,v.fmGain,v.fx,v.fxDelay,v.fxReverb,v.fxChorus,v.layerGain,v.pan];
+      for(const n of nodes){try{n?.disconnect();}catch(e){}}
+    };
+    const fire=()=>{if(key){const rec=this._voiceCleanupTimers.get(key);if(rec?.voice===v)this._voiceCleanupTimers.delete(key);}cleanup();};
+    const ms=this.mobileAudio?45:80;
+    if(key)this._voiceCleanupTimers.set(key,{voice:v,timer:setTimeout(fire,ms)});
+    const first=v.all?.[0];if(first)first.onended=fire;
   }
   _nativeNoteOff(midi,layer=null,when=null){
     if(layer!=null&&this.params.voiceMode==="mono"){this.monoHeld[layer]=(this.monoHeld[layer]||[]).filter(n=>n!==midi);if(this.monoHeld[layer].length)return;}
@@ -1160,12 +1169,12 @@ void Promise.race([
     if(this.sustain){matches.forEach(([k])=>this.sustained.add(k));return;}
     for(const [key,v] of matches){const t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime),P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
       try{if(v.voiceDSP){v.voiceDSP.release(t);}else{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.setValueAtTime(Math.max(.00001,g.value||.00001),t);g.exponentialRampToValueAtTime(.00001,t+rel);}
-        const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}
+        if(v.vf?.frequency){const f=v.vf.frequency;if(f.cancelAndHoldAtTime)f.cancelAndHoldAtTime(t);else{f.cancelScheduledValues(t);f.setValueAtTime(f.value,t);}f.linearRampToValueAtTime(P.cutoff,t+fr);}}catch(e){}
       const tailMs=Math.min(this.mobileAudio?520:1200,(Math.max(rel,fr)+(this.mobileAudio?.045:.06))*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   }
   releaseSustain(){return this.dspBackend?.releaseSustain();}
   _nativeReleaseSustain(){if(!this.started)return;const keys=[...this.sustained];this.sustained.clear();for(const key of keys){const v=this.voices.get(key);if(!v)continue;const midi=Number(key.split(":").pop());this._releaseVoice(key,v,midi);}}
-  _releaseVoice(key,v,midi){const t=this.ctx.currentTime,P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);try{if(v.voiceDSP){v.voiceDSP.release(t);}else{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelAndHoldAtTime(t);g.exponentialRampToValueAtTime(.0001,t+rel);}const f=v.vf.frequency;f.cancelAndHoldAtTime?f.cancelAndHoldAtTime(t):f.cancelScheduledValues(t);f.linearRampToValueAtTime(P.cutoff,t+fr);}catch(e){}const tailMs=Math.min(this.mobileAudio?520:1200,(Math.max(rel,fr)+(this.mobileAudio?.045:.06))*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
+  _releaseVoice(key,v,midi){const t=this.ctx.currentTime,P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);try{if(v.voiceDSP){v.voiceDSP.release(t);}else{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelAndHoldAtTime(t);g.exponentialRampToValueAtTime(.0001,t+rel);}if(v.vf?.frequency){const f=v.vf.frequency;if(f.cancelAndHoldAtTime)f.cancelAndHoldAtTime(t);else{f.cancelScheduledValues(t);f.setValueAtTime(f.value,t);}f.linearRampToValueAtTime(P.cutoff,t+fr);}}catch(e){}const tailMs=Math.min(this.mobileAudio?520:1200,(Math.max(rel,fr)+(this.mobileAudio?.045:.06))*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   _forceStop(key,fadeMs=5,at=null){
     const v=this.voices.get(key)||this.tailVoices.get(key);if(!v)return;
     const now=this.ctx.currentTime,fade=Math.max(.002,Number(fadeMs)||5)/1000;
@@ -1182,7 +1191,7 @@ void Promise.race([
   _updateDelayTime(){const bpm=Math.max(20,Math.min(300,Number(window.SynthOslekTiming?.bpm)||120)),map={"1/1":4,"1/2":2,"1/4":1,"1/8":.5,"1/16":.25,"1/8d":.75,"1/8t":1/3};const sec=map[this.delaySync];if(sec&&this.delay)this.delay.delayTime.setTargetAtTime(Math.max(.01,Math.min(1.5,(60/bpm)*sec)),this.ctx.currentTime,.015);}
   setTempoBpm(v){if(this.started)this._updateDelayTime();return v;}
   updateParam(k,x,at=null){
-    const prev=this._paramCache.get(k);if(Object.is(prev,x)){this.params[k]=x;return;}this._paramCache.set(k,x);
+    const cacheKey=this.activeLayer+":"+k,prev=this._paramCache.get(cacheKey);if(Object.is(prev,x)){this.params[k]=x;return;}this._paramCache.set(cacheKey,x);this._layerParamRevision[this.activeLayer]=(this._layerParamRevision[this.activeLayer]||0)+1;
     this.params[k]=x;
     if(this.layerProfiles[this.activeLayer])this.layerProfiles[this.activeLayer][k]=x;
     if(!this.started)return;
@@ -1828,7 +1837,7 @@ resizeScope();
     raf=0;if(document.hidden)return;
     const pressure=window.SynthOslekPerformance?.pressure?.()||0;const interval=pressure>.72?1000/18:(synth.voices.size?1000/30:1000/12);
     if(ts-lastDraw<interval){raf=requestAnimationFrame(draw);return;}
-    lastDraw=ts;resizeScope();
+    lastDraw=ts;
     const w=scopeCanvas.width,h=scopeCanvas.height;
     if(!w||!h){raf=requestAnimationFrame(draw);return;}
     scopeCtx.fillStyle="#000";scopeCtx.fillRect(0,0,w,h);
@@ -1848,7 +1857,7 @@ resizeScope();
   };
   const start=()=>{if(document.hidden)return;if(!document.hidden&&!raf)raf=requestAnimationFrame(draw);};
   document.addEventListener("visibilitychange",()=>{if(document.hidden)stop();else{lastDraw=0;start();}});
-  start();
+  if(!/Android/i.test(navigator.userAgent))start();
 })();
 
 
@@ -2735,7 +2744,7 @@ syncSynthState(false);
     if(p?.on){
       const layer=synth.activeLayer,m=transformNote(p.note)[0]??p.note,v=p.vel;
       monitoredBaseOn(m,v,layer,now);seqHeld.push({midi:m,layer});
-      setTimeout(()=>{try{monitoredBaseOff(m,layer)}catch(e){}},Math.max(10,dur*p.gate*1000));
+      try{monitoredBaseOff(m,layer,now+Math.max(.01,dur*clamp(Number(p.gate)||.8,.05,1)));}catch(e){}
     }
     SO.seq.step=(SO.seq.step+1)%SO.seq.length;seqTimer=setTimeout(seqStep,Math.max(20,dur*1000));
   }
@@ -2802,18 +2811,22 @@ syncSynthState(false);
     return SO.seq.step/15*2-1;
   }
   function modLoop(){
-    if(SO.mod.amount){
-      const dest=SO.mod.dest,base=modBase[dest]?.(); if(Number.isFinite(base)){
-        const v=base+(dest==="cutoff"?SO.mod.amount*4000:SO.mod.amount*(Math.abs(base)||1));
-        try{synth.updateParam(dest,clamp(v,dest==="cutoff"?20:0,dest==="cutoff"?18000:1),audioNow()+.01)}catch(e){}
-      }
+    modRaf=0;
+    if(!SO.mod.amount)return;
+    const dest=SO.mod.dest,base=modBase[dest]?.(); if(Number.isFinite(base)){
+      const v=base+(dest==="cutoff"?SO.mod.amount*4000:SO.mod.amount*(Math.abs(base)||1));
+      try{synth.updateParam(dest,clamp(v,dest==="cutoff"?20:0,dest==="cutoff"?18000:1),audioNow()+.01)}catch(e){}
     }
     modRaf=requestAnimationFrame(modLoop);
   }
-  modLoop();
+  $("#so67ModAmt")?.addEventListener("input",e=>{
+    SO.mod.amount=+e.target.value;
+    if(SO.mod.amount&&!modRaf)modLoop();
+    else if(!SO.mod.amount&&modRaf){cancelAnimationFrame(modRaf);modRaf=0;}
+  });
   $("#so67ModSrc")?.addEventListener("change",e=>SO.mod.source=e.target.value);
   $("#so67ModDst")?.addEventListener("change",e=>SO.mod.dest=e.target.value);
-  $("#so67ModAmt")?.addEventListener("input",e=>SO.mod.amount=+e.target.value);
+
 
   /* velocity source follows the common note path */
   const _dispatch=midiManager?.dispatch?.bind(midiManager);
