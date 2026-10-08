@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.49-dual-layer-xfade-stage1">
-<title>SynthOslek v16.49 — Dual-Layer XFade Stage 1</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.50-surprise-pair">
+<title>SynthOslek v16.50 — Surprise Pair</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1789,35 +1789,80 @@ function surprisePatch(){
   const extreme=unison>=4||p.resonance>8||p.noiseLevel>.045||(p.filterType!=="lowpass"&&p.cutoff<700)||p.chorusMix>.48;
   return {patch:p,extreme};
 }
+function surprisePair(){
+  const a=surprisePatch(),b=surprisePatch(),A=a.patch,B=b.patch;
+  const pick=a=>a[Math.floor(Math.random()*a.length)];
+  const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+  /* v16.50: build a complementary pair rather than two unrelated rolls.
+     The patches remain independently randomized, but their macro differences
+     are biased so MOD XFade has useful material at both ends and in the middle. */
+  const aLow=Math.random()<.5;
+  const low=aLow?A:B,high=aLow?B:A;
+  low.cutoff=Math.round(clamp(Math.exp((Math.log(240)+Math.log(2200))/2),180,4200));
+  high.cutoff=Math.round(clamp(Math.exp((Math.log(4200)+Math.log(10500))/2),2600,12000));
+  low.filterType=pick(["lowpass","lowpass","lowpass","bandpass"]);
+  high.filterType=pick(["lowpass","bandpass","highpass"]);
+  if(low.filterType==="highpass")low.filterType="lowpass";
+  if(high.filterType==="lowpass"&&Math.random()<.45)high.filterType="bandpass";
+  const waveChoices=["sawtooth","square","triangle","sine"];
+  if(A.osc1Wave===B.osc1Wave){
+    const next=pick(waveChoices.filter(w=>w!==A.osc1Wave));
+    B.osc1Wave=next;
+  }
+  if(A.osc2Wave===B.osc2Wave){
+    const next=pick(waveChoices.filter(w=>w!==A.osc2Wave));
+    B.osc2Wave=next;
+  }
+  const attackA=Number(A.attack)||.02;
+  if(attackA<.12){B.attack=Math.max(.12,Math.min(.65,Number(B.attack)||.3));}
+  else{A.attack=Math.min(.1,Math.max(.003,Number(A.attack)||.03));}
+  if(aLow){
+    A.subLevel=clamp((Number(A.subLevel)||0)+.08,0,.5);
+    B.subLevel=clamp((Number(B.subLevel)||0)-.05,0,.45);
+  }else{
+    B.subLevel=clamp((Number(B.subLevel)||0)+.08,0,.5);
+    A.subLevel=clamp((Number(A.subLevel)||0)-.05,0,.45);
+  }
+  const fxBias=.12+Math.random()*.14;
+  if(aLow){
+    A.reverbMix=clamp((Number(A.reverbMix)||0)+fxBias,0,.65);
+    B.delayMix=clamp((Number(B.delayMix)||0)+fxBias,0,.65);
+  }else{
+    B.reverbMix=clamp((Number(B.reverbMix)||0)+fxBias,0,.65);
+    A.delayMix=clamp((Number(A.delayMix)||0)+fxBias,0,.65);
+  }
+  A.osc1Detune=clamp((Number(A.osc1Detune)||0)-(aLow?5:-5),-24,24);
+  B.osc1Detune=clamp((Number(B.osc1Detune)||0)+(aLow?5:-5),-24,24);
+  return {patches:[A,B],extreme:a.extreme||b.extreme};
+}
+
 document.getElementById("rndBtn").addEventListener("click",()=>{
   const btn=document.getElementById("rndBtn");
-  /* v16.48: Surprise Me is a dual-layer performance action.
-     Each layer receives its own independent randomized patch while
-     preserving that layer's current volume. */
+  /* v16.50: Surprise Me generates a complementary L1/L2 pair. */
   const activeBefore=synth.activeLayer;
-  let anyExtreme=false;
-  const extremeLayers=[];
+  const volumes=layerState.map(x=>Number.isFinite(Number(x.vol))?Number(x.vol):.7);
+  const pair=surprisePair();
   for(let layer=0;layer<LAYER_COUNT;layer++){
     setActiveLayer(layer);
     const lockedVolume=Number.isFinite(Number(synth.params.volume))?Number(synth.params.volume):PRESETS.init.volume;
-    const {patch,extreme}=surprisePatch();
-    patch.volume=lockedVolume;
+    const patch={...pair.patches[layer],volume:lockedVolume};
     applyParams(patch);
-    /* Hard-lock each layer's volume after randomization. */
     if(UI.volume){UI.volume.set(lockedVolume,true);synth.updateParam("volume",lockedVolume);}
-    anyExtreme=anyExtreme||extreme;
-    if(extreme)extremeLayers.push(layer+1);
+    layerState[layer].vol=volumes[layer];
     layerState[layer].preset="surprise";
   }
   setActiveLayer(activeBefore);
+  refreshLayerGains();
+  /* Start in the center of the pair so the generated result is immediately audible as a hybrid. */
+  if(typeof synth.setModWheel==="function")synth.setModWheel(.5);
   document.getElementById("presetSelect").value="";
   btn.classList.remove("flash-green","flash-red");
   void btn.offsetWidth;
-  btn.classList.add(anyExtreme?"flash-red":"flash-green",anyExtreme?"red":"green");
+  btn.classList.add(pair.extreme?"flash-red":"flash-green",pair.extreme?"red":"green");
   const st=$("stxt");
-  if(st)st.textContent=anyExtreme
-    ? "Surprise Me! · BOTH LAYERS · EXTREME L"+extremeLayers.join("+")
-    : "Surprise Me! · BOTH LAYERS · NEW PATCHES";
+  if(st)st.textContent=pair.extreme
+    ? "Surprise Me! · COMPLEMENTARY PAIR · EXTREME"
+    : "Surprise Me! · COMPLEMENTARY L1 + L2";
 });
 /* Help Panel */
 const helpBtn=document.getElementById("helpBtn"),helpPanel=document.getElementById("helpPanel"),helpClose=document.getElementById("helpClose");
@@ -3024,7 +3069,7 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.49",features:{twoLayerCore:true,dualLayerDefault:true,dualLayerSurprise:true,dualLayerXFade:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.50",features:{twoLayerCore:true,dualLayerDefault:true,dualLayerSurprise:true,dualLayerXFade:true,surprisePair:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
