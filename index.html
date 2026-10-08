@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.59-android-fast-lead-voice-budget">
-<title>SynthOslek v16.59 — Android Fast Lead Voice Budget</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.60-true-ab-morph-android-low-latency">
+<title>SynthOslek v16.60 — True A/B Morph + Android Low Latency</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -149,7 +149,7 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
 .layer-strip.disabled{opacity:.42}.layer-strip.disabled .layer-name{text-decoration:line-through}
 @media(orientation:portrait){.perf-bar{display:none}}
 
-.layer-mixer{background:var(--panel2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:.35rem .55rem}.lm-title{font-size:.58rem;color:var(--muted);letter-spacing:.12em;margin-bottom:.3rem}.lm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}.layer-strip{min-width:0;padding:.18rem;border:1px solid transparent;border-radius:6px}.layer-strip.selected{border-color:var(--accent);background:rgba(91,140,255,.07)}.layer-name{background:none;border:0;color:var(--text);font-size:.58rem;font-weight:700;cursor:pointer}.layer-preset{font-size:.55rem!important;min-height:24px!important;padding:.15rem!important;min-width:0!important}.layer-strip{min-width:0}.layer-head{display:flex;justify-content:space-between;align-items:center;font-size:.58rem;color:var(--muted)}.layer-strip input[type=range]{width:100%;accent-color:var(--accent);height:18px}.layer-buttons{display:flex;gap:2px}.layer-buttons button{font-size:.52rem;padding:.12rem .25rem;min-height:20px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:4px}.layer-buttons button.on{background:var(--accent);color:#fff}
+.layer-mixer{background:var(--panel2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:.35rem .55rem}.lm-title{font-size:.58rem;color:var(--muted);letter-spacing:.12em;margin-bottom:.3rem}.lm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}.layer-strip{min-width:0;padding:.18rem;border:1px solid transparent;border-radius:6px}.layer-strip.selected{border-color:var(--accent);background:rgba(91,140,255,.07)}.layer-name{background:none;border:0;color:var(--text);font-size:.58rem;font-weight:700;cursor:pointer}.layer-preset{font-size:.55rem!important;min-height:24px!important;padding:.15rem!important;min-width:0!important}.layer-strip{min-width:0}.layer-head{display:flex;justify-content:space-between;align-items:center;font-size:.58rem;color:var(--muted)}.layer-strip input[type=range]{width:100%;accent-color:var(--accent);height:18px}.layer-buttons{display:flex;gap:2px}.layer-buttons button{font-size:.52rem;padding:.12rem .25rem;min-height:20px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:4px}.layer-buttons button.on{background:var(--accent);color:#fff}.layer-buttons .layer-b{font-size:.52rem;padding:.12rem .32rem;min-height:20px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:4px;font-weight:700;letter-spacing:.04em;cursor:pointer}.layer-buttons .layer-b.on{background:var(--accent2);border-color:var(--accent2);color:#fff;box-shadow:0 0 8px rgba(124,92,255,.4)}@media(orientation:portrait){.layer-buttons .layer-b{min-height:32px;font-size:.62rem;flex:1}}
 @media (orientation:portrait){.layer-mixer{display:none}}
 
 /* v13.1 responsive layer + portrait fixes */
@@ -872,7 +872,7 @@ class AudioRuntime{
     if(this.ctx)return this.ctx;
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC)throw new Error("Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.");
-    this.ctx=new AC({latencyHint:/Android/i.test(navigator.userAgent)?0.005:"interactive"});
+    this.ctx=new AC({latencyHint:/Android/i.test(navigator.userAgent)?0.002:"interactive"});
     /* v16.14: do not block context creation on resume() in mobile browsers. */
     void this.resume().catch(()=>{});
     this.bindLifecycle();
@@ -897,7 +897,7 @@ class AudioRuntime{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._lastNoteWallMsByLayer=Array.from({length:LAYER_COUNT},()=>0);this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.mobileAudio=/Android/i.test(navigator.userAgent);this.lastFreqByLayer=Array.from({length:LAYER_COUNT},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:LAYER_COUNT},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._lastNoteWallMsByLayer=Array.from({length:LAYER_COUNT},()=>0);this.layerProfilesB=Array.from({length:LAYER_COUNT},()=>null);this._abSnapshotRevision=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.mobileAudio=/Android/i.test(navigator.userAgent);this.lastFreqByLayer=Array.from({length:LAYER_COUNT},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:LAYER_COUNT},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
     this._layerParamRevision=Array.from({length:LAYER_COUNT},()=>0);this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
@@ -975,41 +975,37 @@ void Promise.race([
     const x=Math.max(0,Math.min(1,Number(raw)||0));
     return x*x*(3-2*x);
   }
-  getMorphMode(){
+  getMorphMode(layer=this.activeLayer){
+    const i=Math.max(0,Math.min(LAYER_COUNT-1,Number(layer)||0));
+    if(this.layerProfilesB?.[i])return "ab";
     const dual=typeof layerState!=="undefined"&&layerState.length>=2&&
       typeof layerAudible==="function"&&layerAudible(0)&&layerAudible(1)&&
       Number(layerState[0]?.vol)>0.02&&Number(layerState[1]?.vol)>0.02;
     return dual?"xfade":"macro";
   }
-  _morphParams(P){
-    /* v16.53: dual-layer XFade is isolated from the legacy single-layer Macro. */
-    if(this.getMorphMode()==="xfade")return P;
-    const m=this._morphAmount();
+  _morphParams(P,layer=this.activeLayer){
+    const mode=this.getMorphMode(layer),m=this._morphAmount(),clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+    if(mode==="xfade")return P;
+    if(mode==="ab"){
+      const B=this.layerProfilesB?.[layer];
+      if(!B||m<=0)return P;
+      const out={...P};
+      const numeric=["osc1Detune","osc1Coarse","osc1Level","osc2Detune","osc2Coarse","osc2Level","cutoff","resonance","filterKeyTrack","attack","decay","sustain","release","fEnvAmt","fAttack","fDecay","fSustain","fRelease","lfoRate","lfoDepth","lfoDelay","delayTime","delayFb","delayMix","reverbMix","flangerMix","flangerRate","flangerDepth","chorusMix","unison","spread","subLevel","noiseLevel","glide","fmAmount","fmRatio","fmEnv"];
+      for(const k of numeric){
+        const a=Number(P[k]),b=Number(B[k]);
+        if(Number.isFinite(a)&&Number.isFinite(b))out[k]=a+(b-a)*m;
+      }
+      const discrete=["osc1Wave","osc2Wave","filterType","filterEnvPolarity","lfoDest","lfoWave","voiceMode","legato","delaySync"];
+      for(const k of discrete)if(B[k]!==undefined)out[k]=m<.5?P[k]:B[k];
+      return out;
+    }
     if(m<=0)return P;
-    const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
-    return {
-      ...P,
-      cutoff:Math.min(14000,P.cutoff+(14000-P.cutoff)*.72*m),
-      resonance:Math.min(20,P.resonance+3.5*m),
-      osc1Level:clamp(P.osc1Level*(1-.22*m)),
-      osc2Level:clamp(P.osc2Level*(1+.28*m)),
-      osc1Detune:clamp(P.osc1Detune+10*m,-100,100),
-      osc2Detune:clamp(P.osc2Detune-10*m,-100,100),
-      spread:Math.min(65,P.spread+28*m),
-      lfoDepth:clamp(P.lfoDepth+.22*m),
-      subLevel:clamp(P.subLevel+.06*m),
-      noiseLevel:clamp(P.noiseLevel+.025*m),
-      delayMix:clamp(P.delayMix+.18*m),
-      reverbMix:clamp(P.reverbMix+.25*m),
-      chorusMix:clamp(P.chorusMix+.14*m),
-      flangerMix:clamp((Number(P.flangerMix)||0)+.18*m),
-      fmAmount:Math.max(0,Math.min(3000,(Number(P.fmAmount)||0)+900*m))
-    };
+    return {...P,cutoff:Math.min(14000,P.cutoff+(14000-P.cutoff)*.72*m),resonance:Math.min(20,P.resonance+3.5*m),osc1Level:clamp(P.osc1Level*(1-.22*m)),osc2Level:clamp(P.osc2Level*(1+.28*m)),osc1Detune:clamp(P.osc1Detune+10*m,-100,100),osc2Detune:clamp(P.osc2Detune-10*m,-100,100),spread:Math.min(65,P.spread+28*m),lfoDepth:clamp(P.lfoDepth+.22*m),subLevel:clamp(P.subLevel+.06*m),noiseLevel:clamp(P.noiseLevel+.025*m),delayMix:clamp(P.delayMix+.18*m),reverbMix:clamp(P.reverbMix+.25*m),chorusMix:clamp(P.chorusMix+.14*m),flangerMix:clamp((Number(P.flangerMix)||0)+.18*m),fmAmount:Math.max(0,Math.min(3000,(Number(P.fmAmount)||0)+900*m))};
   }
   _applyMorphToVoice(v,at=null){
     if(!this.started||!v)return;
-    const wheel=Number(this.modWheel)||0,rev=this._layerParamRevision?.[v.layer]||0,cacheKey="L"+(v.layer??0)+":"+rev,letKey=cacheKey+":"+wheel;let P=this._morphCache.get(letKey);
-    if(!P){P=this._morphParams(v.params||this.params);this._morphCache.set(letKey,P);if(this._morphCache.size>24){const first=this._morphCache.keys().next().value;this._morphCache.delete(first);}}
+    const wheel=Number(this.modWheel)||0,rev=this._layerParamRevision?.[v.layer]||0,brev=this._abSnapshotRevision||0,cacheKey="L"+(v.layer??0)+":"+rev+":"+brev,letKey=cacheKey+":"+wheel+":"+this.getMorphMode(v.layer);let P=this._morphCache.get(letKey);
+    if(!P){P=this._morphParams(v.params||this.params,v.layer);this._morphCache.set(letKey,P);if(this._morphCache.size>24){const first=this._morphCache.keys().next().value;this._morphCache.delete(first);}}
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
     const T=(a,x,tc=.015)=>{try{a.setTargetAtTime(x,t,tc);}catch(e){}};
     const rCut=this._routeValue("cutoff",0,v),rRes=this._routeValue("resonance",0,v),rO1=this._routeValue("osc1Level",0,v),rO2=this._routeValue("osc2Level",0,v),rSpread=this._routeValue("spread",0,v),rFm=this._routeValue("fmAmount",0,v),rLfo=this._routeValue("lfoDepth",0,v);
@@ -1042,14 +1038,16 @@ void Promise.race([
     }
   }
   _det(tc=.01,at=null){
-    const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime),m=this._morphAmount();
+    const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
     for(const v of this.voices.values()){
-      const P=v.params||this.params;
-      const pitchRoute=this._routeValue("pitch",0,v),spreadRoute=this._routeValue("spread",0,v),effectiveSpread=Math.max(0,Math.min(100,Number(P.spread||0)+spreadRoute*50))+22*m;
+      const P=v.params||this.params,mode=this.getMorphMode(v.layer),m=mode==="macro"?this._morphAmount():0;
+      const pitchRoute=this._routeValue("pitch",0,v),spreadRoute=this._routeValue("spread",0,v);
+      const effectiveSpread=Math.max(0,Math.min(100,Number(P.spread||0)+spreadRoute*50)+(mode==="macro"?22*m:0));
       for(const x of v.oscs){
         const base=x.kind==="sub"?0:(Number(P["osc"+x.w+"Coarse"])||0)*100+(Number(P["osc"+x.w+"Detune"])||0)+(x.kind==="sub"?0:(x.w===1?10:-10)*m)+pitchRoute*1200;
         const spread=x.kind==="sub"?0:x.off*effectiveSpread;
-        const det=base+spread+this.bend+(this.wheel||0)+(v.mpeBend||0);if(!Number.isFinite(x.o._lastDetune)||Math.abs(x.o._lastDetune-det)>1e-4){x.o.detune.setTargetAtTime(det,t,tc);x.o._lastDetune=det;}
+        const det=base+spread+this.bend+(this.wheel||0)+(v.mpeBend||0);
+        if(!Number.isFinite(x.o._lastDetune)||Math.abs(x.o._lastDetune-det)>1e-4){x.o.detune.setTargetAtTime(det,t,tc);x.o._lastDetune=det;}
       }
     }
   }
@@ -1270,7 +1268,8 @@ const synthState=new SynthStateStore({
   layers:initialLayers,
   profiles:initialProfiles,
   performance:{octave:0,midiRouteMode:"all",sustain:false,bend:0,wheel:0},
-  scenes:[null,null,null,null]
+  scenes:[null,null,null,null],
+  abSnapshots:Array.from({length:LAYER_COUNT},()=>null)
 });
 synth.state=synthState;
 const layerState=synthState._state.layers;
@@ -1279,6 +1278,7 @@ const scenes=synthState._state.scenes;
 let oct=synthState._state.performance.octave;
 let midiRouteMode=synthState._state.performance.midiRouteMode;
 synth.layerProfiles=layerProfiles;
+synth.layerProfilesB=synthState._state.abSnapshots.map(x=>x?{...x}:null);
 Object.defineProperty(synth,"params",{
   configurable:true,
   get(){return this.layerProfiles[this.activeLayer]||this.layerProfiles[0];},
@@ -1296,6 +1296,7 @@ function syncSynthState(history=false){
     draft.performance.sustain=!!synth.sustain;
     draft.performance.bend=synth.bend||0;
     draft.performance.wheel=synth.wheel||0;
+    draft.abSnapshots=synth.layerProfilesB?.map(p=>p?{...p}:null)||[];
   },{history,emit:true});
 }
 
@@ -1373,7 +1374,8 @@ function morphGains(m){
   return [Math.cos(m*Math.PI*.5),Math.sin(m*Math.PI*.5)];
 }
 function refreshLayerGains(at=null){
-  const bothOn=layerState.length>=2&&layerAudible(0)&&layerAudible(1)&&
+  const activeHasB=!!synth.layerProfilesB?.[synth.activeLayer];
+  const bothOn=!activeHasB&&layerState.length>=2&&layerAudible(0)&&layerAudible(1)&&
     Number(layerState[0]?.vol)>0.02&&Number(layerState[1]?.vol)>0.02;
   const [m0,m1]=bothOn?morphGains(synth.modWheel):[1,1];
   /* Layer audible/mute/solo state changes the Morph mode, so cached macro
@@ -1415,18 +1417,38 @@ function makeLayerKnob(label,value,min,max,step,unit,onInput){
  el.addEventListener('pointermove',e=>{if(!el.hasPointerCapture(e.pointerId))return;const t=norm(sv)+(sy-e.clientY)/(e.shiftKey?500:180);set(min+Math.min(1,Math.max(0,t))*(max-min))});
  el.addEventListener('wheel',e=>{e.preventDefault();set(+el.dataset.value-Math.sign(e.deltaY)*step*2)},{passive:false});el.addEventListener('dblclick',()=>set(Math.abs(min)===Math.abs(max)?0:(min+max)/2));set(value);return el;
 }
+function captureLayerB(i){
+  if(!synth.layerProfilesB)return;
+  synth.layerProfilesB[i]={...(synth.layerProfiles?.[i]||PRESETS.init)};
+  synth._abSnapshotRevision=(synth._abSnapshotRevision||0)+1;synth._morphCache?.clear();
+  buildLayerMixer();queueSynthStateSync();
+  const st=$("stxt");if(st)st.textContent="L"+(i+1)+" · B snapshot captured";
+}
+function clearLayerB(i){
+  if(!synth.layerProfilesB)return;
+  synth.layerProfilesB[i]=null;
+  synth._abSnapshotRevision=(synth._abSnapshotRevision||0)+1;synth._morphCache?.clear();
+  buildLayerMixer();queueSynthStateSync();
+  const st=$("stxt");if(st)st.textContent="L"+(i+1)+" · B snapshot cleared";
+}
 function buildLayerMixer(){
- const root=document.querySelector('.lm-grid');if(!root)return;root.innerHTML='';
- layerState.forEach((L,i)=>{const d=document.createElement('div');d.className='layer-strip'+(i===synth.activeLayer?' selected':'')+(L.enabled?'':' disabled');
- d.innerHTML=`<div class="layer-head"><button class="layer-name">L${i+1}</button><span class="lmv">${Math.round(L.vol*100)}</span></div><select class="layer-preset"><option value="init">Init</option><option value="bass">Bass</option><option value="lead">Lead</option><option value="pad">Pad</option><option value="pluck">Pluck</option><option value="keys">Keys</option><option value="acid">Acid</option></select><div class="layer-meter"><i></i></div><div class="layer-buttons"><button class="mute ${L.mute?'on':''}">M</button><button class="solo ${L.solo?'on':''}">S</button><button class="layer-enable ${L.enabled?'on':''}">${L.enabled?'ON':'OFF'}</button></div><div class="layer-knobs"></div>`;
- const ps=d.querySelector('.layer-preset');ps.value=L.preset;const ks=d.querySelector('.layer-knobs');
- ks.appendChild(makeLayerKnob('VOL',L.vol,0,1,.01,'',v=>{L.vol=v;d.querySelector('.lmv').textContent=Math.round(v*100);refreshLayerGains()}));
- ks.appendChild(makeLayerKnob('PAN',L.pan,-1,1,.01,'',v=>{L.pan=v;refreshLayerGains()}));
- ks.appendChild(makeLayerKnob('FX',L.fx,0,1,.01,'',v=>{L.fx=v;refreshLayerGains()}));
- d.querySelector('.layer-name').onclick=()=>setActiveLayer(i);ps.onchange=()=>loadLayerPreset(i,ps.value);
- d.querySelector('.mute').onclick=()=>{L.mute=!L.mute;d.querySelector('.mute').classList.toggle('on',L.mute);refreshLayerGains()};
- d.querySelector('.solo').onclick=()=>{L.solo=!L.solo;d.querySelector('.solo').classList.toggle('on',L.solo);refreshLayerGains()};
- d.querySelector('.layer-enable').onclick=e=>{L.enabled=!L.enabled;e.currentTarget.textContent=L.enabled?'ON':'OFF';e.currentTarget.classList.toggle('on',L.enabled);d.classList.toggle('disabled',!L.enabled);refreshLayerGains()};root.appendChild(d);});
+  const root=document.querySelector('.lm-grid');if(!root)return;root.innerHTML='';
+  layerState.forEach((L,i)=>{const d=document.createElement('div');d.className='layer-strip'+(i===synth.activeLayer?' selected':'')+(L.enabled?'':' disabled');
+  const hasB=!!synth.layerProfilesB?.[i];
+  d.innerHTML=`<div class="layer-head"><button class="layer-name">L${i+1}</button><span class="lmv">${Math.round(L.vol*100)}</span></div><select class="layer-preset"><option value="init">Init</option><option value="bass">Bass</option><option value="lead">Lead</option><option value="pad">Pad</option><option value="pluck">Pluck</option><option value="keys">Keys</option><option value="acid">Acid</option></select><div class="layer-meter"><i></i></div><div class="layer-buttons"><button class="mute ${L.mute?'on':''}">M</button><button class="solo ${L.solo?'on':''}">S</button><button class="layer-enable ${L.enabled?'on':''}">${L.enabled?'ON':'OFF'}</button><button class="layer-b ${hasB?'on':''}" type="button" title="${hasB?'Long press to clear B':'Tap to capture B'}">${hasB?'B ✓':'B'}</button></div><div class="layer-knobs"></div>`;
+  const ps=d.querySelector('.layer-preset');ps.value=L.preset;const ks=d.querySelector('.layer-knobs');
+  ks.appendChild(makeLayerKnob('VOL',L.vol,0,1,.01,'',v=>{L.vol=v;d.querySelector('.lmv').textContent=Math.round(v*100);refreshLayerGains()}));
+  ks.appendChild(makeLayerKnob('PAN',L.pan,-1,1,.01,'',v=>{L.pan=v;refreshLayerGains()}));
+  ks.appendChild(makeLayerKnob('FX',L.fx,0,1,.01,'',v=>{L.fx=v;refreshLayerGains()}));
+  d.querySelector('.layer-name').onclick=()=>setActiveLayer(i);ps.onchange=()=>loadLayerPreset(i,ps.value);
+  d.querySelector('.mute').onclick=()=>{L.mute=!L.mute;d.querySelector('.mute').classList.toggle('on',L.mute);refreshLayerGains()};
+  d.querySelector('.solo').onclick=()=>{L.solo=!L.solo;d.querySelector('.solo').classList.toggle('on',L.solo);refreshLayerGains()};
+  d.querySelector('.layer-enable').onclick=e=>{L.enabled=!L.enabled;e.currentTarget.textContent=L.enabled?'ON':'OFF';e.currentTarget.classList.toggle('on',L.enabled);d.classList.toggle('disabled',!L.enabled);refreshLayerGains()};
+  const b=d.querySelector('.layer-b');let bTimer=0,bLong=false;
+  const endB=e=>{if(bTimer){clearTimeout(bTimer);bTimer=0;}if(!bLong)captureLayerB(i);bLong=false;try{b.releasePointerCapture?.(e.pointerId);}catch(err){}};
+  b.addEventListener('pointerdown',e=>{e.preventDefault();bLong=false;try{b.setPointerCapture?.(e.pointerId);}catch(err){};bTimer=setTimeout(()=>{bLong=true;clearLayerB(i);},650);},{passive:false});
+  b.addEventListener('pointerup',endB,{passive:false});b.addEventListener('pointercancel',e=>{if(bTimer){clearTimeout(bTimer);bTimer=0;}bLong=false;try{b.releasePointerCapture?.(e.pointerId);}catch(err){}},{passive:false});
+  root.appendChild(d);});
 };
 const S={voiceMode:["Mode",["poly","mono"]],legato:["Legato",["false","true"]],delaySync:["Sync",["free","1/1","1/2","1/4","1/8","1/16","1/8d","1/8t"]],osc1Wave:["Waveform",["sawtooth","square","triangle","sine"]],osc2Wave:["Waveform",["sawtooth","square","triangle","sine"]],
 filterType:["Type",["lowpass","highpass","bandpass","notch","lowpass24","highpass24"]],lfoDest:["Destination",["cutoff","pitch","amp"]],lfoWave:["Wave",["sine","triangle","square","sawtooth","sample-hold"]],filterEnvPolarity:["Env Polarity",["positive","negative"]]};
@@ -1869,6 +1891,7 @@ document.getElementById("rndBtn").addEventListener("click",()=>{
     layerState[layer].preset="surprise";
   }
   setActiveLayer(activeBefore);
+  if(synth.layerProfilesB){synth.layerProfilesB=Array.from({length:LAYER_COUNT},()=>null);synth._abSnapshotRevision=(synth._abSnapshotRevision||0)+1;synth._morphCache?.clear();}
   refreshLayerGains();
   /* Start in the center of the pair so the generated result is immediately audible as a hybrid. */
   if(typeof synth.setModWheel==="function")synth.setModWheel(.5);
@@ -2508,12 +2531,13 @@ function saveScenes(){
   synthState.patch(draft=>{draft.scenes=scenes;},{history:false,emit:false});
 }
 function captureScene(){
-  return {profiles:synth.layerProfiles.map(x=>({...x})),layers:layerState.map(x=>({...x})),activeLayer:synth.activeLayer};
+  return {profiles:synth.layerProfiles.map(x=>({...x})),layers:layerState.map(x=>({...x})),abSnapshots:synth.layerProfilesB?.map(x=>x?{...x}:null)||[],activeLayer:synth.activeLayer};
 }
 function recallScene(i){
   const sc=scenes[i];if(!sc)return;
   sc.profiles.forEach((p,n)=>{synth.layerProfiles[n]={...p};});
   sc.layers.forEach((x,n)=>{if(layerState[n])Object.assign(layerState[n],x);});
+  if(synth.layerProfilesB){synth.layerProfilesB=Array.from({length:LAYER_COUNT},(_,n)=>sc.abSnapshots?.[n]?{...sc.abSnapshots[n]}:null);synth._abSnapshotRevision=(synth._abSnapshotRevision||0)+1;synth._morphCache?.clear();}
   setActiveLayer(Math.max(0,Math.min(3,sc.activeLayer||0)));
   buildLayerMixer();refreshLayerGains();applyParams(synth.layerProfiles[synth.activeLayer]);
   selectedScene=i;refreshSceneButtons();syncSynthState(false);
@@ -3087,14 +3111,14 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.53",features:{morphCoreHardening:true,twoLayerCore:true,dualLayerDefault:true,dualLayerSurprise:true,dualLayerXFade:true,surprisePair:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.60",features:{morphCoreHardening:true,twoLayerCore:true,dualLayerDefault:true,dualLayerSurprise:true,dualLayerXFade:true,surprisePair:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,trueAbSnapshotMorph:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
     mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
     webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
   },state:SO};
-  setStatus("v16.59 engine ready · Android 1x voice budget · Adaptive fast-retrigger cleanup · 5ms audio target · 2-layer core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.60 engine ready · True A/B Morph · Android 1x voice budget · 2ms audio target · 2-layer core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
