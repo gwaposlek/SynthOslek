@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.38-scale-first-chord-pattern">
-<title>SynthOslek v16.38 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.39-scale-harmonized-chord-mode">
+<title>SynthOslek v16.39 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -2447,7 +2447,7 @@ syncSynthState(false);
 
   const SO={version:"16.23",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,length:16,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
-    music:{root:0,scale:"major",chord:"off",chordMode:"fixed"},
+    music:{root:0,scale:"off",chord:"off",chordMode:"fixed"},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
 
@@ -2479,8 +2479,8 @@ syncSynthState(false);
     '<span class="so-label">RATE</span><select id="so67Rate"><option>1/1</option><option>1/2</option><option>1/4</option><option selected>1/8</option><option>1/16</option><option>1/32</option></select>'+
     '<span class="so-label">OCT</span><select id="so67Oct"><option>1</option><option>2</option><option>3</option><option>4</option></select>'+
     '<span class="so-label">GATE</span><input id="so67Gate" type="range" min=".15" max="1" step=".01" value=".82"></span>'+
-    '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button><span class="so-status" id="so67Status">v16.36 ready</span></div>'+
-    '<div class="so-music-row"><span class="so-music-title">MUSIC</span><span class="so-label">SCALE</span><select id="so67Scale"><option value="off">OFF</option><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><button id="so67Chord">CHORD OFF</button><select id="so67ChordType" aria-label="Chord pattern"><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="7">7TH</option><option value="maj7">MAJ7</option><option value="min7">MIN7</option><option value="sus2">SUS2</option><option value="sus4">SUS4</option></select><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></div>';
+    '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button><span class="so-status" id="so67Status">v16.39 ready</span></div>'+
+    '<div class="so-music-row"><span class="so-music-title">MUSIC</span><span class="so-label">SCALE</span><button id="so67ScaleToggle">SCALE OFF</button><select id="so67Scale"><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><button id="so67Chord">CHORD OFF</button><select id="so67ChordType" aria-label="Chord pattern"><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="7">7TH</option><option value="maj7">MAJ7</option><option value="min7">MIN7</option><option value="sus2">SUS2</option><option value="sus4">SUS4</option></select><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></div>';
   const panel=document.createElement("div"); panel.id="so67Panel";
   panel.innerHTML=
     '<div class="so-grid">'+
@@ -2572,23 +2572,56 @@ syncSynthState(false);
     return root+octave*12+best;
   };
 
-  /* v16.38: two-stage musical transform.
-     1) SCALE controls the effective root/key of the pressed note.
-     2) CHORD PATTERN is then applied to that effective root.
-     Example: C Major + MAJ7 => C->C E G B, D->D F# A C#, E->E G# B D#. */
+  /* v16.39: SCALE and CHORD are now two explicit performance stages.
+     SCALE OFF + CHORD ON = literal/fixed chord formula.
+     SCALE ON + CHORD ON = harmonized chord from the selected scale degree.
+     Example: C Major + Major triad => C=C E G, D=D F A, E=E G B. */
+  const scaleChordNotes=(midi,chord)=>{
+    const scaleName=SO.music.scale||"off";
+    if(scaleName==="off")return [Number(midi)];
+    const intervals=SCALE_INTERVALS[scaleName]||SCALE_INTERVALS.off;
+    if(intervals.length<3)return [musicNote(midi)];
+
+    const root=((Number(SO.music.root)||0)%12+12)%12;
+    const quantized=musicNote(midi);
+    const rel=quantized-root;
+    const octave=Math.floor(rel/12);
+    const pc=((rel%12)+12)%12;
+
+    let degree=intervals.indexOf(pc);
+    if(degree<0){
+      let best=0,bestDist=Infinity;
+      intervals.forEach((iv,i)=>{const d=Math.abs(iv-pc);if(d<bestDist){bestDist=d;best=i;}});
+      degree=best;
+    }
+
+    /* The selected Chord Pattern determines the harmonic size:
+       triad patterns = 1,3,5; seventh patterns = 1,3,5,7.
+       In Scale ON mode, actual qualities are supplied by the scale. */
+    const count=intervals.length;
+    const voices=/^(7|maj7|min7)$/.test(chord)?4:3;
+    const steps=Array.from({length:voices},(_,i)=>i*2);
+    return steps.map(step=>{
+      const idx=degree+step,wrap=Math.floor(idx/count),iv=intervals[idx%count];
+      return root+(octave+wrap)*12+iv;
+    });
+  };
+
   const chordNotes=midi=>{
     const chord=SO.music.chord||"off";
-    const effectiveRoot=SO.music.scale&&SO.music.scale!=="off"
-      ?musicNote(midi)
-      :Number(midi);
+    const scaleOn=SO.music.scale&&SO.music.scale!=="off";
+    const effectiveRoot=scaleOn?musicNote(midi):Number(midi);
     if(chord==="off")return [effectiveRoot];
+    if(scaleOn)return scaleChordNotes(midi,chord);
     const ints=CHORD_INTERVALS[chord]||CHORD_INTERVALS.off;
     return ints.map(iv=>effectiveRoot+iv);
   };
 
   /* Final musical decision:
-     SCALE is evaluated first; when CHORD is enabled the selected fixed
-     chord formula is applied to the scale-controlled root. */
+     1) SCALE ON + CHORD ON = scale-harmonized chord.
+     2) SCALE ON + CHORD OFF = scale-only note.
+     3) SCALE OFF + CHORD ON = fixed chord pattern.
+     4) both OFF = original note. */
   const transformNote=midi=>{
     const out=chordNotes(midi);
     return [...new Set(out.map(Number))].sort((a,b)=>a-b);
@@ -2689,7 +2722,25 @@ syncSynthState(false);
   }
   $("#so67Seq")?.addEventListener("click",()=>{SO.seq.on=!SO.seq.on;clearTimeout(seqTimer);updateBtn("#so67Seq",SO.seq.on,"SEQ ON","SEQ OFF");if(SO.seq.on)seqStep();else seqHeld.forEach(n=>{try{monitoredBaseOff(n.midi,n.layer)}catch(e){}});});
   $("#so67Clear")?.addEventListener("click",()=>{SO.seq.pattern.forEach(x=>x.on=false);document.querySelectorAll(".so-step").forEach(e=>e.classList.remove("on"));});
-  $("#so67Scale")?.addEventListener("change",e=>{SO.music.scale=e.target.value;setStatus("Scale "+e.target.value.toUpperCase());});
+  $("#so67ScaleToggle")?.addEventListener("click",()=>{
+    const wasOn=SO.music.scale!=="off";
+    if(wasOn){
+      SO.music.scale="off";
+      updateBtn("#so67ScaleToggle",false,"SCALE ON","SCALE OFF");
+      setStatus("Scale OFF");
+    }else{
+      const type=$("#so67Scale")?.value||"major";
+      SO.music.scale=type;
+      updateBtn("#so67ScaleToggle",true,"SCALE ON","SCALE OFF");
+      setStatus("Scale ON · "+type.toUpperCase());
+    }
+  });
+  $("#so67Scale")?.addEventListener("change",e=>{
+    if(SO.music.scale!=="off"){
+      SO.music.scale=e.target.value;
+      setStatus("Scale ON · "+e.target.options[e.target.selectedIndex].text.toUpperCase());
+    }
+  });
   $("#so67Root")?.addEventListener("change",e=>{SO.music.root=+e.target.value;setStatus("Root "+e.target.options[e.target.selectedIndex].text);});
   $("#so67Chord")?.addEventListener("click",()=>{
     const wasOn=SO.music.chord!=="off";
