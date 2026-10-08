@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.36-clean-performance-ui">
-<title>SynthOslek v16.36 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.37-chord-pattern-dropdown">
+<title>SynthOslek v16.37 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -2480,7 +2480,7 @@ syncSynthState(false);
     '<span class="so-label">OCT</span><select id="so67Oct"><option>1</option><option>2</option><option>3</option><option>4</option></select>'+
     '<span class="so-label">GATE</span><input id="so67Gate" type="range" min=".15" max="1" step=".01" value=".82"></span>'+
     '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button><span class="so-status" id="so67Status">v16.36 ready</span></div>'+
-    '<div class="so-music-row"><span class="so-music-title">MUSIC</span><span class="so-label">SCALE</span><select id="so67Scale"><option value="off">OFF</option><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><button id="so67Chord">CHORD OFF</button><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></div>';
+    '<div class="so-music-row"><span class="so-music-title">MUSIC</span><span class="so-label">SCALE</span><select id="so67Scale"><option value="off">OFF</option><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><button id="so67Chord">CHORD OFF</button><select id="so67ChordType" aria-label="Chord pattern"><option value="diatonic" selected>FOLLOW SCALE</option><option value="major">MAJOR</option><option value="minor">MINOR</option><option value="7">7TH</option><option value="maj7">MAJ7</option><option value="min7">MIN7</option><option value="sus2">SUS2</option><option value="sus4">SUS4</option></select><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></div>';
   const panel=document.createElement("div"); panel.id="so67Panel";
   panel.innerHTML=
     '<div class="so-grid">'+
@@ -2716,7 +2716,19 @@ syncSynthState(false);
   $("#so67Clear")?.addEventListener("click",()=>{SO.seq.pattern.forEach(x=>x.on=false);document.querySelectorAll(".so-step").forEach(e=>e.classList.remove("on"));});
   $("#so67Scale")?.addEventListener("change",e=>{SO.music.scale=e.target.value;setStatus("Scale "+e.target.value.toUpperCase());});
   $("#so67Root")?.addEventListener("change",e=>{SO.music.root=+e.target.value;setStatus("Root "+e.target.options[e.target.selectedIndex].text);});
-  $("#so67Chord")?.addEventListener("click",()=>{const on=SO.music.chord!=="off";SO.music.chord=on?"off":"diatonic";updateBtn("#so67Chord",!on,"CHORD ON","CHORD OFF");setStatus(!on?"Chord ON · FOLLOW SCALE":"Chord OFF");});
+  $("#so67Chord")?.addEventListener("click",()=>{
+    const wasOn=SO.music.chord!=="off";
+    if(wasOn){SO.music.chord="off";updateBtn("#so67Chord",false,"CHORD ON","CHORD OFF");setStatus("Chord OFF");}
+    else{
+      const type=$("#so67ChordType")?.value||"diatonic";
+      SO.music.chord=type;updateBtn("#so67Chord",true,"CHORD ON","CHORD OFF");
+      setStatus("Chord ON · "+($("#so67ChordType option:checked")?.textContent||type).toUpperCase());
+    }
+  });
+  $("#so67ChordType")?.addEventListener("change",e=>{
+    SO.music.chord=e.target.value==="off"?"off":(SO.music.chord==="off"?"off":e.target.value);
+    if(SO.music.chord!=="off")setStatus("Chord ON · "+e.target.options[e.target.selectedIndex].text.toUpperCase());
+  });
   $("#so67SeqLen")?.addEventListener("change",e=>{SO.seq.length=+e.target.value;SO.seq.step%=SO.seq.length;document.querySelectorAll(".so-step").forEach((el,i)=>el.style.opacity=i<SO.seq.length?"1":".28");setStatus(SO.seq.length+"-step sequence");});
 
   /* ---------- routing / split ---------- */
