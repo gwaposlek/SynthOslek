@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-07-v16.30-voice-lifecycle-hardening">
+<meta name="synthoslek-build" content="2026-10-08-v16.33-note-monitor-moved">
 <title>SynthOslek v16.30 — Voice Lifecycle Hardening</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -102,8 +102,8 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
 @keyframes sp{from{transform:scale(.8) rotate(0)}to{transform:scale(1.2) rotate(45deg)}}
 
 
-/* v16.32 temporary generated-note monitor */
-.so-note-monitor{position:absolute;left:.6rem;right:.6rem;bottom:.45rem;z-index:8;display:none;background:rgba(0,0,0,.88);border:1px solid #202020;border-radius:7px;padding:.38rem .5rem;font-size:.58rem;line-height:1.35;color:var(--muted);pointer-events:none;backdrop-filter:blur(4px)}
+/* v16.33 temporary generated-note monitor — moved out of the keyboard area */
+.so-note-monitor{position:fixed;left:50%;bottom:.6rem;transform:translateX(-50%);width:min(92vw,900px);z-index:9999;display:none;background:rgba(0,0,0,.92);border:1px solid #202020;border-radius:7px;padding:.38rem .5rem;font-size:.58rem;line-height:1.35;color:var(--muted);pointer-events:none;backdrop-filter:blur(4px)}
 .so-note-monitor.on{display:block}
 .so-note-monitor .nm-row{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap}
 .so-note-monitor .nm-label{color:var(--accent);font-weight:800;letter-spacing:.08em}
@@ -113,7 +113,7 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
 .key.black.so-generated{box-shadow:inset 0 0 0 2px #ffd166,0 0 18px rgba(255,122,0,.72)!important}
 .key.so-arp-active{color:#fff!important;box-shadow:inset 0 -8px 0 #ffd166,inset 0 0 0 2px #fff,0 0 20px rgba(255,209,102,.85)!important;filter:brightness(1.35)}
 .key.black.so-arp-active{box-shadow:inset 0 -8px 0 #ffd166,inset 0 0 0 2px #fff,0 0 22px rgba(255,209,102,.95)!important}
-@media(orientation:portrait){.so-note-monitor{position:relative;left:auto;right:auto;bottom:auto;margin:.35rem .45rem 0;display:block}.so-note-monitor:not(.on){display:none}}
+@media(orientation:portrait){.so-note-monitor{position:fixed;left:50%;right:auto;bottom:.5rem;transform:translateX(-50%);width:min(94vw,900px);margin:0}.so-note-monitor:not(.on){display:none}}
 
 /* v6 landscape-first performance layout */
 @media (orientation:landscape) and (max-width:1000px){
