@@ -2458,7 +2458,7 @@ syncSynthState(false);
   SO.seq.pattern.forEach((_,i)=>{const e=document.createElement("button");e.className="so-step";e.textContent=i+1;e.dataset.i=i; e.onclick=()=>{SO.seq.pattern[i].on=!SO.seq.pattern[i].on;e.classList.toggle("on",SO.seq.pattern[i].on);};$("#so67Steps")?.appendChild(e);});
 
   /* ---------- ARP ---------- */
-  const arpHeld=new Map(); let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null;
+  const arpHeld=new Map(); let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null,arpNextAt=0;
   const baseOn=synth.noteOn.bind(synth), baseOff=synth.noteOff.bind(synth);
   const basePanic=synth.panic.bind(synth), baseAllOff=synth.allNotesOff?.bind(synth);
   const SCALE_INTERVALS={off:[0,1,2,3,4,5,6,7,8,9,10,11],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],mixolydian:[0,2,4,5,7,9,10],pentatonic:[0,2,4,7,9],blues:[0,3,5,6,7,10]};
@@ -2476,20 +2476,27 @@ syncSynthState(false);
     return a[arpIndex%a.length];
   }
   function arpTick(){
-    if(!SO.arp.on||!arpHeld.size)return;
+    if(!SO.arp.on||!arpHeld.size){arpTimer=0;return;}
     const n=arpPick(), now=audioNow(), step=rateSec(), swing=(SO.arp.swing||0)*step*.5;
-    if(arpLast)try{baseOff(arpLast.midi,arpLast.layer,Math.max(now,arpLast.off||now));}catch(e){}
+    /* Schedule note boundaries against AudioContext time, not setTimeout jitter.
+       This keeps Bluetooth/MIDI input responsive while making the ARP itself stable. */
+    const when=Math.max(now+.008,arpNextAt||0);
+    if(arpLast)try{
+      const releaseAt=Math.min(arpLast.off||when,Math.max(now,when-.001));
+      baseOff(arpLast.midi,arpLast.layer,releaseAt);
+    }catch(e){}
     if(n){
-      const when=Math.max(now+.005,now), off=when+step*SO.arp.gate;
+      const off=when+step*clamp(Number(SO.arp.gate)||.82,.05,1);
       baseOn(n.midi,n.vel,n.layer,when); arpLast={...n,off};
       arpIndex += arpDir; if(SO.arp.mode==="up/down")arpIndex=clamp(arpIndex,0,Math.max(0,arpCandidates().length-1));
       setStatus("ARP "+midiToNote(n.midi)+" · "+SO.arp.rate);
-      const delay=Math.max(25,(step+(arpIndex%2?swing:-swing))*1000);
+      arpNextAt=when+Math.max(.01,step+(arpIndex%2?swing:-swing));
+      const delay=Math.max(10,(arpNextAt-audioNow())*1000-8);
       arpTimer=setTimeout(arpTick,delay);
-    }
+    }else{arpTimer=0;}
   }
-  function startArp(){clearTimeout(arpTimer);arpIndex=0;arpDir=1;arpTick();}
-  function stopArp(){clearTimeout(arpTimer);arpTimer=0;if(arpLast){try{baseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}arpHeld.clear();}
+  function startArp(){clearTimeout(arpTimer);arpTimer=0;arpIndex=0;arpDir=1;arpNextAt=audioNow()+.01;arpTick();}
+  function stopArp(){clearTimeout(arpTimer);arpTimer=0;arpNextAt=0;if(arpLast){try{baseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}arpHeld.clear();}
   synth.noteOn=function(midi,vel=.85,layer=synth.activeLayer,when=null){
     if(!SO.arp.on)return baseOn(midi,vel,layer,when);
     const key=layer+":"+midi;arpHeld.set(key,{midi,vel,layer});if(!arpTimer)startArp();
