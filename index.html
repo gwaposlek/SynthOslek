@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.39-scale-harmonized-chord-mode">
-<title>SynthOslek v16.39 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.40-expanded-chord-library">
+<title>SynthOslek v16.40 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -2480,7 +2480,7 @@ syncSynthState(false);
     '<span class="so-label">OCT</span><select id="so67Oct"><option>1</option><option>2</option><option>3</option><option>4</option></select>'+
     '<span class="so-label">GATE</span><input id="so67Gate" type="range" min=".15" max="1" step=".01" value=".82"></span>'+
     '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button><span class="so-status" id="so67Status">v16.39 ready</span></div>'+
-    '<div class="so-music-row"><span class="so-music-title">MUSIC</span><span class="so-label">SCALE</span><button id="so67ScaleToggle">SCALE OFF</button><select id="so67Scale"><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><button id="so67Chord">CHORD OFF</button><select id="so67ChordType" aria-label="Chord pattern"><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="7">7TH</option><option value="maj7">MAJ7</option><option value="min7">MIN7</option><option value="sus2">SUS2</option><option value="sus4">SUS4</option></select><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></div>';
+    '<div class="so-music-row"><span class="so-music-title">MUSIC</span><span class="so-label">SCALE</span><button id="so67ScaleToggle">SCALE OFF</button><select id="so67Scale"><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><button id="so67Chord">CHORD OFF</button><select id="so67ChordType" aria-label="Chord pattern"><optgroup label="TRIADS"><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="diminished">DIMINISHED</option><option value="augmented">AUGMENTED</option><option value="sus2">SUS2</option><option value="sus4">SUS4</option></optgroup><optgroup label="6TH"><option value="6">6TH</option><option value="min6">MIN6</option></optgroup><optgroup label="7TH"><option value="7">7TH</option><option value="maj7">MAJ7</option><option value="min7">MIN7</option><option value="7sus4">7SUS4</option><option value="dim7">DIM7</option><option value="m7b5">M7♭5</option></optgroup><optgroup label="9TH"><option value="add9">ADD9</option><option value="9">9TH</option><option value="maj9">MAJ9</option><option value="min9">MIN9</option><option value="9sus4">9SUS4</option></optgroup><optgroup label="11TH"><option value="11">11TH</option><option value="maj11">MAJ11</option><option value="min11">MIN11</option></optgroup><optgroup label="13TH"><option value="13">13TH</option><option value="maj13">MAJ13</option><option value="min13">MIN13</option></optgroup></select><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></div>';
   const panel=document.createElement("div"); panel.id="so67Panel";
   panel.innerHTML=
     '<div class="so-grid">'+
@@ -2545,7 +2545,8 @@ syncSynthState(false);
   /* v16.34 musical transform: CHORD has priority over SCALE.
      ARP is only a playback layer; it never changes the musical transformation. */
   const SCALE_INTERVALS={off:[0,1,2,3,4,5,6,7,8,9,10,11],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],mixolydian:[0,2,4,5,7,9,10],pentatonic:[0,2,4,7,9],blues:[0,3,5,6,7,10]};
-  const CHORD_INTERVALS={off:[0],major:[0,4,7],minor:[0,3,7],"7":[0,4,7,10],maj7:[0,4,7,11],min7:[0,3,7,10],sus2:[0,2,7],sus4:[0,5,7]};
+  const CHORD_INTERVALS={off:[0],major:[0,4,7],minor:[0,3,7],diminished:[0,3,6],augmented:[0,4,8],sus2:[0,2,7],sus4:[0,5,7],"6":[0,4,7,9],min6:[0,3,7,9],"7":[0,4,7,10],maj7:[0,4,7,11],min7:[0,3,7,10],"7sus4":[0,5,7,10],dim7:[0,3,6,9],"m7b5":[0,3,6,10],add9:[0,4,7,14],"9":[0,4,7,10,14],maj9:[0,4,7,11,14],min9:[0,3,7,10,14],"9sus4":[0,5,7,10,14],"11":[0,4,7,10,14,17],maj11:[0,4,7,11,14,17],min11:[0,3,7,10,14,17],"13":[0,4,7,10,14,17,21],maj13:[0,4,7,11,14,17,21],min13:[0,3,7,10,14,17,21]};
+  const CHORD_STEPS={off:[0],major:[0,2,4],minor:[0,2,4],diminished:[0,2,4],augmented:[0,2,4],sus2:[0,1,4],sus4:[0,3,4],"6":[0,2,4,5],min6:[0,2,4,5],"7":[0,2,4,6],maj7:[0,2,4,6],min7:[0,2,4,6],"7sus4":[0,3,4,6],dim7:[0,2,4,6],"m7b5":[0,2,4,6],add9:[0,2,4,8],"9":[0,2,4,6,8],maj9:[0,2,4,6,8],min9:[0,2,4,6,8],"9sus4":[0,3,4,6,8],"11":[0,2,4,6,8,10],maj11:[0,2,4,6,8,10],min11:[0,2,4,6,8,10],"13":[0,2,4,6,8,10,12],maj13:[0,2,4,6,8,10,12],min13:[0,2,4,6,8,10,12]};
 
   /* Scale quantization is pitch-class based and octave-stable. It never
      depends on the absolute octave of the incoming MIDI note. */
@@ -2595,12 +2596,10 @@ syncSynthState(false);
       degree=best;
     }
 
-    /* The selected Chord Pattern determines the harmonic size:
-       triad patterns = 1,3,5; seventh patterns = 1,3,5,7.
-       In Scale ON mode, actual qualities are supplied by the scale. */
+    /* Scale ON owns the actual harmony. The Chord Pattern selects the
+       structural shape: triad, sus, 6th, 7th, 9th, 11th, or 13th. */
     const count=intervals.length;
-    const voices=/^(7|maj7|min7)$/.test(chord)?4:3;
-    const steps=Array.from({length:voices},(_,i)=>i*2);
+    const steps=CHORD_STEPS[chord]||CHORD_STEPS.major;
     return steps.map(step=>{
       const idx=degree+step,wrap=Math.floor(idx/count),iv=intervals[idx%count];
       return root+(octave+wrap)*12+iv;
