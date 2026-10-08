@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.46-morph-cache-hardening">
-<title>SynthOslek v16.46 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.47-two-layer-low-latency-core">
+<title>SynthOslek v16.47 — Two-Layer Low-Latency Core</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -149,7 +149,7 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
 .layer-strip.disabled{opacity:.42}.layer-strip.disabled .layer-name{text-decoration:line-through}
 @media(orientation:portrait){.perf-bar{display:none}}
 
-.layer-mixer{background:var(--panel2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:.35rem .55rem}.lm-title{font-size:.58rem;color:var(--muted);letter-spacing:.12em;margin-bottom:.3rem}.lm-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:.35rem}.layer-strip{min-width:0;padding:.18rem;border:1px solid transparent;border-radius:6px}.layer-strip.selected{border-color:var(--accent);background:rgba(91,140,255,.07)}.layer-name{background:none;border:0;color:var(--text);font-size:.58rem;font-weight:700;cursor:pointer}.layer-preset{font-size:.55rem!important;min-height:24px!important;padding:.15rem!important;min-width:0!important}.layer-strip{min-width:0}.layer-head{display:flex;justify-content:space-between;align-items:center;font-size:.58rem;color:var(--muted)}.layer-strip input[type=range]{width:100%;accent-color:var(--accent);height:18px}.layer-buttons{display:flex;gap:2px}.layer-buttons button{font-size:.52rem;padding:.12rem .25rem;min-height:20px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:4px}.layer-buttons button.on{background:var(--accent);color:#fff}
+.layer-mixer{background:var(--panel2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:.35rem .55rem}.lm-title{font-size:.58rem;color:var(--muted);letter-spacing:.12em;margin-bottom:.3rem}.lm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}.layer-strip{min-width:0;padding:.18rem;border:1px solid transparent;border-radius:6px}.layer-strip.selected{border-color:var(--accent);background:rgba(91,140,255,.07)}.layer-name{background:none;border:0;color:var(--text);font-size:.58rem;font-weight:700;cursor:pointer}.layer-preset{font-size:.55rem!important;min-height:24px!important;padding:.15rem!important;min-width:0!important}.layer-strip{min-width:0}.layer-head{display:flex;justify-content:space-between;align-items:center;font-size:.58rem;color:var(--muted)}.layer-strip input[type=range]{width:100%;accent-color:var(--accent);height:18px}.layer-buttons{display:flex;gap:2px}.layer-buttons button{font-size:.52rem;padding:.12rem .25rem;min-height:20px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:4px}.layer-buttons button.on{background:var(--accent);color:#fff}
 @media (orientation:portrait){.layer-mixer{display:none}}
 
 /* v13.1 responsive layer + portrait fixes */
@@ -172,7 +172,7 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
  .knob{width:68px;min-height:74px}.knob svg{width:48px;height:48px}.sel{min-width:120px}.sel select{min-height:40px}.footer{display:none}
 }
 @media (orientation:portrait) and (min-width:600px){.lm-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media (orientation:landscape) and (max-width:1000px){.layer-mixer{display:block}.lm-grid{grid-template-columns:repeat(8,minmax(82px,1fr));overflow-x:auto}.layer-strip{min-width:82px}}
+@media (orientation:landscape) and (max-width:1000px){.layer-mixer{display:block}.lm-grid{grid-template-columns:repeat(2,minmax(82px,1fr));overflow-x:auto}.layer-strip{min-width:82px}}
 @media (orientation:landscape) and (min-width:1001px){.layer-knobs{display:grid;grid-template-columns:repeat(3,1fr);gap:0}.layer-knob{width:100%;display:flex;flex-direction:column;align-items:center;touch-action:none;user-select:none}.layer-knob svg{width:34px;height:34px}.layer-knob .lk-v{font-size:.54rem;color:var(--text);font-variant-numeric:tabular-nums}.layer-knob .lk-n{font-size:.42rem;color:var(--muted)}}
 
 
@@ -373,7 +373,7 @@ header{display:none!important}
   .synth .layer-knob .lk-n{font-size:.52rem;line-height:1.1;color:var(--muted)}
 }
 @media (orientation:landscape) and (max-width:1000px){
-  .synth .layer-mixer{display:block}.synth .lm-grid{grid-template-columns:repeat(8,minmax(82px,1fr));overflow-x:auto}.synth .layer-strip{min-width:82px}
+  .synth .layer-mixer{display:block}.synth .lm-grid{grid-template-columns:repeat(2,minmax(82px,1fr));overflow-x:auto}.synth .layer-strip{min-width:82px}
 }
 @media (orientation:portrait){
   .synth{width:100%;max-width:none;overflow:visible}
@@ -892,8 +892,8 @@ class AudioRuntime{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:4},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.mobileAudio=/Android/i.test(navigator.userAgent);this.lastFreqByLayer=Array.from({length:4},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:4},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
-    this._layerParamRevision=Array.from({length:4},()=>0);this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
+    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.mobileAudio=/Android/i.test(navigator.userAgent);this.lastFreqByLayer=Array.from({length:LAYER_COUNT},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:LAYER_COUNT},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this._layerParamRevision=Array.from({length:LAYER_COUNT},()=>0);this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   async start(){
@@ -901,11 +901,11 @@ class SynthOslek{
     const c=this.ctx=this.audioRuntime.create(),p=this.params,G=v=>this._G(v);
     /* v15.0: explicit headroom before dynamics keeps stacked polyphony clean instead of relying on the compressor to repair clipping. */
     this.bus=G(this.mobileAudio?.62:.72);this.masterGain=G(Math.min(.8,Math.max(.05,Number(p.volume)||.6)));
-    this.analyser=c.createAnalyser();this.analyser.fftSize=this.mobileAudio?512:1024;this.analyser.smoothingTimeConstant=.65;
-    const L=this.limiter=c.createDynamicsCompressor();L.threshold.value=-7;L.knee.value=12;L.ratio.value=3;
+    this.analyser=this.mobileAudio?null:c.createAnalyser();if(this.analyser){this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;}
+    const L=this.limiter=this.mobileAudio?null:c.createDynamicsCompressor();if(L){L.threshold.value=-7;L.knee.value=12;L.ratio.value=3;}
     /* v14.22: give the master compressor a little more time to absorb stacked
        note transients instead of reacting to them as a low-frequency punch. */
-    L.attack.value=.012;L.release.value=.18;
+    if(L){L.attack.value=.012;L.release.value=.18;}
     this.delay=c.createDelay(1.5);this.delay.delayTime.value=Math.max(.001,Math.min(1.5,Number(p.delayTime)||.25));this.delaySync=p.delaySync||"1/4";
     this.delayFeedback=G(this.mobileAudio?0:Math.max(0,Math.min(.92,Number(p.delayFb)||0)));this.delayGain=G(1);
     this.delay.connect(this.delayFeedback);this.delayFeedback.connect(this.delay);this.delay.connect(this.delayGain);
@@ -1072,7 +1072,7 @@ void Promise.race([
     const c=this.ctx,rawP=this.layerProfiles[layer]||this.params,baseP={...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0},P=this._morphParams(baseP),G=v=>this._G(v),now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime),freq=440*Math.pow(2,(midi-69)/12),gl=P.glide/1000;
     const prevFreq=Number(this.lastFreqByLayer[layer])||0;const fq=(o,f)=>{if(gl>.001&&hadHeldVoice&&prevFreq>0&&Math.abs(prevFreq-f)>0.001){o.frequency.setValueAtTime(prevFreq,now);o.frequency.linearRampToValueAtTime(f,now+gl);}else o.frequency.setValueAtTime(f,now);};
     const workletPath=!!this.dspBackend.workletReady;
-    const env=G(workletPath?1:.00001),vf=workletPath?null:c.createBiquadFilter(),vf2=workletPath?null:((P.filterType==="lowpass24"||P.filterType==="highpass24")?c.createBiquadFilter():null),va=G(1),lm=workletPath?null:G(this._lfoScale(P));
+    const env=G(workletPath?1:.00001),vf=workletPath?null:c.createBiquadFilter(),vf2=workletPath?null:((P.filterType==="lowpass24"||P.filterType==="highpass24")?c.createBiquadFilter():null),va=G(1),lm=(workletPath||this.mobileAudio)?null:G(this._lfoScale(P));
     const nativeFilterType=P.filterType==="lowpass24"||P.filterType==="lowpass"?"lowpass":P.filterType==="highpass24"||P.filterType==="highpass"?"highpass":P.filterType==="notch"?"notch":P.filterType==="bandpass"?"bandpass":"lowpass";
     if(vf){vf.type=nativeFilterType;vf.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
     if(vf2){vf2.type=nativeFilterType;vf2.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
@@ -1096,7 +1096,7 @@ void Promise.race([
     if(workletPath){v.voiceDSP=this.dspBackend.createVoiceDSP(c,{attack:atk,decay:dec,sustain:P.sustain,release:P.release,cutoff:Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset)),resonance:P.resonance,filterType:P.filterType,fAttack:P.fAttack,fDecay:P.fDecay,fSustain:P.fSustain,fRelease:P.fRelease,fEnvAmt:Math.max(-12000,Math.min(12000,Number(P.fEnvAmt||0)*6000*(.4+.6*Math.max(0,Math.min(1,Number(vel)||0))*(Number(P.filterEnvPolarity??1)>=0?1:-1))))});env.connect(v.voiceDSP);v.voiceDSP.start(now);v.voiceDSP.connect(va);}else{env.connect(vf);if(vf2){vf.connect(vf2);vf2.connect(va);}else vf.connect(va);}
     const LS=this.layerMix[layer]||{};const lg=G(LS.enabled===false||LS.mute?0:(LS.vol??.7));
     const pan=c.createStereoPanner();pan.pan.value=LS.pan??0;
-    const fx=G(LS.fx??.2),fxDelay=G(P.delayMix??0),fxReverb=G(P.reverbMix??0),fxChorus=G(P.chorusMix??0);
+    const fx=this.mobileAudio?null:G(LS.fx??.2),fxDelay=this.mobileAudio?null:G(P.delayMix??0),fxReverb=this.mobileAudio?null:G(P.reverbMix??0),fxChorus=this.mobileAudio?null:G(P.chorusMix??0);
     /* v15.1: shared FX sends are fed through one per-voice send gain only; the
        effect processors themselves remain global, avoiding per-voice effect graphs. */
     va.connect(lg);lg.connect(pan);pan.connect(this.bus);
@@ -1108,10 +1108,10 @@ void Promise.race([
       fx.connect(fxDelay);fx.connect(fxReverb);fx.connect(fxChorus);
       fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);fx.connect(this.flangerInput);
     }
-    if(!workletPath){this.lfo.connect(lm);const lfoDelay=Math.max(0,Math.min(2,Number(P.lfoDelay)||0)),lfoAmt=this._lfoScale(P);lm.gain.setValueAtTime(0,now);lm.gain.linearRampToValueAtTime(lfoAmt,now+Math.max(.01,lfoDelay));if(P.lfoDest==="cutoff"){lm.connect(vf.frequency);if(vf2)lm.connect(vf2.frequency);}else if(P.lfoDest==="amp")lm.connect(va.gain);}
+    if(!workletPath&&!this.mobileAudio&&lm){this.lfo.connect(lm);const lfoDelay=Math.max(0,Math.min(2,Number(P.lfoDelay)||0)),lfoAmt=this._lfoScale(P);lm.gain.setValueAtTime(0,now);lm.gain.linearRampToValueAtTime(lfoAmt,now+Math.max(.01,lfoDelay));if(P.lfoDest==="cutoff"){lm.connect(vf.frequency);if(vf2)lm.connect(vf2.frequency);}else if(P.lfoDest==="amp")lm.connect(va.gain);}
     const v={env,vf,vf2,va,voiceDSP:null,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,midi,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
-    const maxUnison=this.mobileAudio?(this.voices.size>8?2:4):(this.voices.size>24?4:8);
+    const maxUnison=this.mobileAudio?(this.voices.size>6?1:2):(this.voices.size>24?4:8);
     const n=Math.max(1,Math.min(maxUnison,Math.round(Number(P.unison)||1))),
       /* Equal-power-ish spread: center voices stay centered while outer voices
          are slightly compressed toward the middle, avoiding an exaggerated edge pair. */
@@ -1187,7 +1187,7 @@ void Promise.race([
   }
   panic(){return this.dspBackend?.panic();}
   allNotesOff(){if(!this.started)return;for(const key of [...this.voices.keys()]){const [layer,midi]=key.split(":");this.noteOff(Number(midi),Number(layer));}this.sustained.clear();}
-  _nativePanic(){this.sustained.clear();this.monoHeld=Array.from({length:4},()=>[]);for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
+  _nativePanic(){this.sustained.clear();this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
   _updateDelayTime(){const bpm=Math.max(20,Math.min(300,Number(window.SynthOslekTiming?.bpm)||120)),map={"1/1":4,"1/2":2,"1/4":1,"1/8":.5,"1/16":.25,"1/8d":.75,"1/8t":1/3};const sec=map[this.delaySync];if(sec&&this.delay)this.delay.delayTime.setTargetAtTime(Math.max(.01,Math.min(1.5,(60/bpm)*sec)),this.ctx.currentTime,.015);}
   setTempoBpm(v){if(this.started)this._updateDelayTime();return v;}
   updateParam(k,x,at=null){
@@ -1233,7 +1233,7 @@ acid:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.9,osc2Wave:"square",osc2Detune
 Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0});
 Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});Object.assign(PRESETS.lead,{unison:3,spread:10,chorusMix:.15});
 Object.assign(PRESETS.bass,{subLevel:.5});Object.assign(PRESETS.keys,{chorusMix:.35});
-const LAYER_COUNT=4;
+const LAYER_COUNT=2;
 const synth=new SynthOslek();
 window.synth=synth;
 window.__synthOslekBooted=true;
@@ -2512,7 +2512,7 @@ syncSynthState(false);
   panel.innerHTML=
     '<div class="so-grid">'+
     '<div><div class="so-row"><b>16-STEP</b></div><div class="so-steps" id="so67Steps"></div><div class="so-row"><button id="so67ExportMidi">EXPORT MIDI</button><button id="so67Clear">CLEAR</button></div></div>'+
-    '<div><div class="so-row"><b>ROUTING / SPLIT</b></div><label>Mode <select id="so67Split"><option value="stack">STACK</option><option value="split">SPLIT</option><option value="layer1">LAYER 1</option><option value="layer2">LAYER 2</option><option value="layer3">LAYER 3</option><option value="layer4">LAYER 4</option></select></label><label>Split point <input id="so67Point" type="range" min="36" max="84" value="60"></label></div>'+
+    '<div><div class="so-row"><b>ROUTING / SPLIT</b></div><label>Mode <select id="so67Split"><option value="stack">STACK</option><option value="split">SPLIT</option><option value="layer1">LAYER 1</option><option value="layer2">LAYER 2</option></select></label><label>Split point <input id="so67Point" type="range" min="36" max="84" value="60"></label></div>'+
     '<div><div class="so-row"><b>MOD MATRIX</b></div><label>Source <select id="so67ModSrc"><option>modWheel</option><option>pitchBend</option><option>velocity</option><option>aftertouch</option><option>lfo</option><option>random</option><option>step</option></select></label><label>Destination <select id="so67ModDst"><option>cutoff</option><option>resonance</option><option>volume</option><option>osc1Level</option><option>osc2Level</option><option>lfoDepth</option></select></label><label>Amount <input id="so67ModAmt" type="range" min="-1" max="1" step=".01" value="0"></label></div>'+
     '<div><div class="so-row"><b>ADVANCED ENGINE</b></div><div class="so-row"><button id="so67FM">FM</button><button id="so67Sample">SAMPLE/GRANULAR</button><input id="so67File" type="file" accept="audio/*"></div><label>FM depth <input id="so67FMDepth" type="range" min="0" max="800" value="0"></label></div>'+
     '<div><div class="so-row"><b>MPE</b></div><label><button id="so67Mpe">MPE OFF</button><span>per-channel pitch / pressure ready</span></label><label>Pitch range <input id="so67MpeRange" type="range" min="12" max="96" value="48"></label></div>'+
@@ -2905,7 +2905,7 @@ syncSynthState(false);
     midiManager.noteOn=function(m,v,ch,timestampMs=null,leadMs=.75){
       if(SO.split.mode!=="split"&&SO.split.mode.indexOf("layer")!==0)return _soMidiNoteOn(m,v,ch,timestampMs,leadMs);
       const vel=Math.max(.001,Math.min(1,(v??100)/127)), low=m<SO.split.point;
-      const raw=SO.split.mode==="split"?(low?[0,1]:[2,3]):[+SO.split.mode.replace("layer","")-1];
+      const raw=SO.split.mode==="split"?(low?[0]:[1]):[+SO.split.mode.replace("layer","")-1];
       const layers=raw.filter(i=>i>=0&&i<LAYER_COUNT&&layerAudible(i));
       this.queueStatus("MIDI NOTE: "+midiToNote(m)+" · "+(low?"LOW":"HIGH")+" · "+Math.round(vel*127));
       this.queueMidiVisual(m,true);
@@ -2919,7 +2919,7 @@ syncSynthState(false);
       if(SO.split.mode!=="split"&&SO.split.mode.indexOf("layer")!==0)return _soMidiNoteOff(m,ch,timestampMs,leadMs);
       this.queueMidiVisual(m,false);
       if(!this.synth.started)return;
-      const low=m<SO.split.point,raw=SO.split.mode==="split"?(low?[0,1]:[2,3]):[+SO.split.mode.replace("layer","")-1];
+      const low=m<SO.split.point,raw=SO.split.mode==="split"?(low?[0]:[1]):[+SO.split.mode.replace("layer","")-1];
       const layers=raw.filter(i=>i>=0&&i<LAYER_COUNT);
       const when=midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs);
       for(const layer of layers)this.synth.noteOff(m,layer,when);
@@ -2990,14 +2990,14 @@ syncSynthState(false);
     })
   };
 
-  window.SynthOslekRoadmap={version:"16.31",features:{scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
+  window.SynthOslekRoadmap={version:"16.47",features:{twoLayerCore:true,scaleMode:true,chordMode:true,adaptiveSequencer:true,vcfRefinement:true,lfoRefinement:true,fxRefinement:true,tempoDelay:true,monoLegato:true,flanger:true,morphEngine:true,morphZones:true,performanceHardening:true,adaptiveVisualizer:true,stressOptimized:true,voiceLifecycleHardening:true,tempoClock:true,tempoSyncedDelay:true,tempoSyncedLfo:true,performanceDiagnostics:true,
     voiceLifecycle:true,midiTiming:true,audioGraphAudit:true,performancePass:true,
     arp:true,stepSequencer:true,modMatrix:true,splitStack:true,
     fmLayer:true,sampleGranularLayer:true,recordingExport:true,presetSharing:true,
     mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
     webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
   },state:SO};
-  setStatus("v16.25 engine ready · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.47 engine ready · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
