@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.43-realtime-mobile-core">
-<title>SynthOslek v16.43 — Clean Performance UI</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.44-android-realtime-thread">
+<title>SynthOslek v16.44 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -910,10 +910,10 @@ class SynthOslek{
     this.delayFeedback=G(this.mobileAudio?0:Math.max(0,Math.min(.92,Number(p.delayFb)||0)));this.delayGain=G(1);
     this.delay.connect(this.delayFeedback);this.delayFeedback.connect(this.delay);this.delay.connect(this.delayGain);
     this.convolver=c.createConvolver();if(!this.mobileAudio)this.convolver.buffer=this._impulse(2.2,2.5,2);this.reverbGain=G(this.mobileAudio?0:1);
-    this.lfo=c.createOscillator();this.lfo.type=(p.lfoWave==="triangle"||p.lfoWave==="square"||p.lfoWave==="sawtooth")?p.lfoWave:"sine";this.lfo.frequency.value=p.lfoRate;this.lfo.start();
-    this.chorusGain=G(this.mobileAudio?0:1);this.chorusInput=G(this.mobileAudio?0:1);this.flangerGain=G(this.mobileAudio?0:1);this.flangerInput=G(this.mobileAudio?0:1);this.flangerDelay=c.createDelay(.02);this.flangerDelay.delayTime.value=.004;this.flangerInput.connect(this.flangerDelay);this.flangerDelay.connect(this.flangerGain);this.flangerLfo=c.createOscillator();this.flangerLfo.frequency.value=Number(p.flangerRate)||.25;this.flangerDepth=G(Number(p.flangerDepth)||.002);this.flangerLfo.connect(this.flangerDepth);this.flangerDepth.connect(this.flangerDelay.delayTime);this.flangerLfo.start();
+    this.lfo=c.createOscillator();this.lfo.type=(p.lfoWave==="triangle"||p.lfoWave==="square"||p.lfoWave==="sawtooth")?p.lfoWave:"sine";this.lfo.frequency.value=p.lfoRate;if(!this.mobileAudio)this.lfo.start();
+    this.chorusGain=G(this.mobileAudio?0:1);this.chorusInput=G(this.mobileAudio?0:1);this.flangerGain=G(this.mobileAudio?0:1);this.flangerInput=G(this.mobileAudio?0:1);this.flangerDelay=c.createDelay(.02);this.flangerDelay.delayTime.value=.004;this.flangerInput.connect(this.flangerDelay);this.flangerDelay.connect(this.flangerGain);this.flangerLfo=c.createOscillator();this.flangerLfo.frequency.value=Number(p.flangerRate)||.25;this.flangerDepth=G(Number(p.flangerDepth)||.002);if(!this.mobileAudio){this.flangerLfo.connect(this.flangerDepth);this.flangerDepth.connect(this.flangerDelay.delayTime);this.flangerLfo.start();}
     (this.mobileAudio?[[.82,.0035,.018]]:[[.7,.0035,.018],[1.1,.004,.026]]).forEach(([r,d,t])=>{const o=c.createOscillator(),m=G(d),dl=c.createDelay(.1);
-      o.frequency.value=r;dl.delayTime.value=t;o.connect(m);m.connect(dl.delayTime);o.start();this.chorusInput.connect(dl);dl.connect(this.chorusGain);});
+      o.frequency.value=r;dl.delayTime.value=t;if(!this.mobileAudio){o.connect(m);m.connect(dl.delayTime);o.start();this.chorusInput.connect(dl);dl.connect(this.chorusGain);}});
     const nb=c.createBuffer(1,c.sampleRate,c.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;this.noiseBuf=nb;
     /* v16.43: Android gets a minimal dry path. The full graph remains on
        desktop/iOS, while the mobile path avoids analyser -> compressor -> FX
@@ -2143,6 +2143,8 @@ class MidiManager{
   }
   setStatus(msg){const st=$("stxt");if(st)st.textContent=msg;}
   queueStatus(msg){
+    /* v16.44: MIDI note traffic must never drive UI work on Android. */
+    if(/Android/i.test(navigator.userAgent))return;
     this._pendingStatus=msg;
     if(this._statusRaf)return;
     this._statusRaf=requestAnimationFrame(()=>{
@@ -2169,6 +2171,8 @@ class MidiManager{
     if(this._midiVisualActive.size||this._midiVisualPulse.size)this._midiVisualRaf=requestAnimationFrame(()=>this._flushMidiVisuals());
   }
   queueMidiVisual(note,on=true){
+    /* v16.44: remove per-note animation work from Android real-time MIDI. */
+    if(/Android/i.test(navigator.userAgent))return;
     const m=Number(note);
     if(!Number.isFinite(m))return;
     if(on){this._midiVisualActive.add(m);this._midiVisualPulse.set(m,performance.now()+75);}
@@ -2521,6 +2525,7 @@ syncSynthState(false);
      raw synth, including chord tones and each ARP step. */
   const noteMonitor=(()=>{
     const state={input:new Map(),generated:new Map(),arp:new Map(),arpPending:false,root:null};
+    const visualEnabled=!/Android/i.test(navigator.userAgent);
     const names=NOTES;
     const label=m=>midiToNote(m);
     const findKeys=m=>document.querySelectorAll('.key[data-base-midi="'+Number(m)+'"]');
@@ -2530,6 +2535,7 @@ syncSynthState(false);
     const kbHost=document.querySelector('.kb-sec');if(kbHost)kbHost.appendChild(monitor);
     const el=(q)=>monitor.querySelector(q);
     const refresh=()=>{
+      if(!visualEnabled)return;
       const input=[...state.input.keys()].sort((a,b)=>a-b);
       const generated=[...state.generated.keys()].sort((a,b)=>a-b);
       const arp=[...state.arp.keys()].sort((a,b)=>a-b);
@@ -2541,7 +2547,7 @@ syncSynthState(false);
       const on=input.length||generated.length||arp.length;
       monitor.classList.toggle('on',!!on);
     };
-    const paint=(m,cls,on)=>findKeys(m).forEach(k=>k.classList.toggle(cls,on));
+    const paint=(m,cls,on)=>{if(!visualEnabled)return;findKeys(m).forEach(k=>k.classList.toggle(cls,on));};
     const inputOn=m=>{inc(state.input,m);state.root=Number(m);paint(m,'so-input-active',true);refresh();};
     const inputOff=m=>{if(!dec(state.input,m))paint(m,'so-input-active',false);if(!state.input.size)state.root=null;refresh();};
     const generatedOn=m=>{inc(state.generated,m);paint(m,'so-generated',true);if(state.arpPending){inc(state.arp,m);paint(m,'so-arp-active',true);}refresh();};
