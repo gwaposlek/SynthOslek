@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.60-true-ab-morph-android-low-latency">
-<title>SynthOslek v16.60 — True A/B Morph + Android Low Latency</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.61-android-crackle-guard">
+<title>SynthOslek v16.61 — Android Crackle Guard</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -905,8 +905,8 @@ class SynthOslek{
     if(this.started){if(this.ctx.state==="suspended")await this.ctx.resume();return;}
     const c=this.ctx=this.audioRuntime.create(),p=this.params,G=v=>this._G(v);
     /* v15.0: explicit headroom before dynamics keeps stacked polyphony clean instead of relying on the compressor to repair clipping. */
-    /* v16.56: Android keeps extra headroom and avoids nonlinear bus DSP;
-       Bluetooth codecs can exaggerate short full-scale transients. */
+    /* v16.61: Android crackle guard limits simultaneous voice/node pressure below
+       the previous 24-slot budget. Preserve one-voice unison and the linear dry path. */
     this.bus=G(this.mobileAudio?.44:.72);this.masterGain=G(this.mobileAudio?.55:Math.min(.8,Math.max(.05,Number(p.volume)||.6)));
     this.analyser=this.mobileAudio?null:c.createAnalyser();if(this.analyser){this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;}
     const L=this.limiter=this.mobileAudio?null:c.createDynamicsCompressor();if(L){L.threshold.value=-7;L.knee.value=12;L.ratio.value=3;}
@@ -1284,7 +1284,7 @@ Object.defineProperty(synth,"params",{
   get(){return this.layerProfiles[this.activeLayer]||this.layerProfiles[0];},
   set(v){if(v&&this.layerProfiles[this.activeLayer]!==v)this.layerProfiles[this.activeLayer]=v;}
 });
-synth.voicePool=new VoicePool(/Android/i.test(navigator.userAgent)?24:48);synth.performanceMonitor=new SynthOslekPerformanceMonitor(synth);window.SynthOslekPerformance={snapshot:()=>synth.performanceMonitor.snapshot(),pressure:()=>synth.performanceMonitor.pressure()};
+synth.voicePool=new VoicePool(/Android/i.test(navigator.userAgent)?16:48);synth.performanceMonitor=new SynthOslekPerformanceMonitor(synth);window.SynthOslekPerformance={snapshot:()=>synth.performanceMonitor.snapshot(),pressure:()=>synth.performanceMonitor.pressure()};
 synth.modMatrix=new ModulationMatrix();
 
 function syncSynthState(history=false){
