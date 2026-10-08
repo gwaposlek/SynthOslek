@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.35-bluetooth-audio-stability">
-<title>SynthOslek v16.30 — Voice Lifecycle Hardening</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.36-clean-performance-ui">
+<title>SynthOslek v16.36 — Clean Performance UI</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -516,6 +516,8 @@ header{display:none!important}
 #so67File{display:none}
 @media(orientation:portrait){#so67{overflow:visible}.so-steps{flex:none}#so67Panel{font-size:.6rem}#so67 .so-main-row{width:100%}#so67 .so-music-row{width:100%;display:grid;grid-template-columns:auto auto 1fr auto 1fr auto 1fr;align-items:center}#so67 .so-music-row .so-label{white-space:nowrap}#so67 .so-music-row select{width:100%;min-width:0}}
 
+/* v16.36 clean performance UI: temporarily hide the deep synth controls and text sound designer. */
+#panels{display:none!important}
 </style>
 </head>
 <body>
@@ -2445,7 +2447,7 @@ syncSynthState(false);
 
   const SO={version:"16.23",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.82,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,length:16,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
-    music:{root:0,scale:"major",chord:"off"},
+    music:{root:0,scale:"major",chord:"off",chordMode:"diatonic"},
     split:{mode:"stack",point:60},mpe:{on:false,range:48,bends:new Map()},
     mod:{source:"modWheel",dest:"cutoff",amount:0},recording:null,sample:null,sampleName:""};
 
@@ -2477,8 +2479,8 @@ syncSynthState(false);
     '<span class="so-label">RATE</span><select id="so67Rate"><option>1/1</option><option>1/2</option><option>1/4</option><option selected>1/8</option><option>1/16</option><option>1/32</option></select>'+
     '<span class="so-label">OCT</span><select id="so67Oct"><option>1</option><option>2</option><option>3</option><option>4</option></select>'+
     '<span class="so-label">GATE</span><input id="so67Gate" type="range" min=".15" max="1" step=".01" value=".82"></span>'+
-    '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button><span class="so-status" id="so67Status">v16.31 ready</span></div>'+
-    '<div class="so-music-row"><span class="so-music-title">MUSIC</span><span class="so-label">SCALE</span><select id="so67Scale"><option value="off">OFF</option><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><select id="so67Chord"><option value="off" selected>OFF</option><option value="major">MAJOR</option><option value="minor">MINOR</option><option value="7">7TH</option><option value="maj7">MAJ7</option><option value="min7">MIN7</option><option value="sus2">SUS2</option><option value="sus4">SUS4</option></select><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></div>';
+    '<button id="so67Seq">SEQ OFF</button><button id="so67PanelBtn">MORE</button><span class="so-status" id="so67Status">v16.36 ready</span></div>'+
+    '<div class="so-music-row"><span class="so-music-title">MUSIC</span><span class="so-label">SCALE</span><select id="so67Scale"><option value="off">OFF</option><option value="major" selected>MAJOR</option><option value="minor">MINOR</option><option value="dorian">DORIAN</option><option value="mixolydian">MIXOLYDIAN</option><option value="pentatonic">PENTATONIC</option><option value="blues">BLUES</option></select><span class="so-label">ROOT</span><select id="so67Root"><option value="0">C</option><option value="1">C#</option><option value="2">D</option><option value="3">D#</option><option value="4">E</option><option value="5">F</option><option value="6">F#</option><option value="7">G</option><option value="8">G#</option><option value="9">A</option><option value="10">A#</option><option value="11">B</option></select><span class="so-label">CHORD</span><button id="so67Chord">CHORD OFF</button><span class="so-label">STEPS</span><select id="so67SeqLen"><option value="8">8</option><option value="16" selected>16</option></select></div>';
   const panel=document.createElement("div"); panel.id="so67Panel";
   panel.innerHTML=
     '<div class="so-grid">'+
@@ -2570,18 +2572,42 @@ syncSynthState(false);
     return root+octave*12+best;
   };
 
-  /* A selected chord is self-contained: SCALE IS NOT USED here.
-     The pressed MIDI note is the chord root, so A3 behaves exactly like
-     every other key and produces A-based chord tones when selected. */
+  /* v16.36: CHORD ON follows the selected SCALE and builds a diatonic
+     triad from the pressed scale degree. C Major therefore yields C, Dm, Em,
+     F, G, Am, and Bdim. */
+  const diatonicChordNotes=midi=>{
+    const scaleName=SO.music.scale||"off";
+    if(scaleName==="off")return [Number(midi)];
+    const intervals=SCALE_INTERVALS[scaleName]||SCALE_INTERVALS.off;
+    if(intervals.length<3)return [musicNote(midi)];
+    const quantized=musicNote(midi);
+    const root=((Number(SO.music.root)||0)%12+12)%12;
+    const rel=quantized-root;
+    const octave=Math.floor(rel/12);
+    const pc=((rel%12)+12)%12;
+    let degree=intervals.indexOf(pc);
+    if(degree<0){
+      let best=0,bestDist=Infinity;
+      intervals.forEach((iv,i)=>{const d=Math.abs(iv-pc);if(d<bestDist){bestDist=d;best=i;}});
+      degree=best;
+    }
+    const count=intervals.length,base=degree;
+    return [0,2,4].map(step=>{
+      const idx=base+step,wrap=Math.floor(idx/count),iv=intervals[idx%count];
+      return root+(octave+wrap)*12+iv;
+    });
+  };
+
   const chordNotes=midi=>{
     const chord=SO.music.chord||"off";
     if(chord==="off")return [musicNote(midi)];
+    if(chord==="diatonic")return diatonicChordNotes(midi);
     const ints=CHORD_INTERVALS[chord]||CHORD_INTERVALS.off;
     return ints.map(iv=>Number(midi)+iv);
   };
 
   /* Final musical decision:
-     1) selected CHORD -> chord only, scale ignored
+     1) CHORD ON -> diatonic chord from the selected scale
      2) otherwise selected SCALE -> scale quantization
      3) otherwise -> original MIDI note */
   const transformNote=midi=>{
@@ -2690,7 +2716,7 @@ syncSynthState(false);
   $("#so67Clear")?.addEventListener("click",()=>{SO.seq.pattern.forEach(x=>x.on=false);document.querySelectorAll(".so-step").forEach(e=>e.classList.remove("on"));});
   $("#so67Scale")?.addEventListener("change",e=>{SO.music.scale=e.target.value;setStatus("Scale "+e.target.value.toUpperCase());});
   $("#so67Root")?.addEventListener("change",e=>{SO.music.root=+e.target.value;setStatus("Root "+e.target.options[e.target.selectedIndex].text);});
-  $("#so67Chord")?.addEventListener("change",e=>{SO.music.chord=e.target.value;setStatus("Chord "+e.target.options[e.target.selectedIndex].text);});
+  $("#so67Chord")?.addEventListener("click",()=>{const on=SO.music.chord!=="off";SO.music.chord=on?"off":"diatonic";updateBtn("#so67Chord",!on,"CHORD ON","CHORD OFF");setStatus(!on?"Chord ON · FOLLOW SCALE":"Chord OFF");});
   $("#so67SeqLen")?.addEventListener("change",e=>{SO.seq.length=+e.target.value;SO.seq.step%=SO.seq.length;document.querySelectorAll(".so-step").forEach((el,i)=>el.style.opacity=i<SO.seq.length?"1":".28");setStatus(SO.seq.length+"-step sequence");});
 
   /* ---------- routing / split ---------- */
