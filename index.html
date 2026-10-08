@@ -2517,10 +2517,11 @@ syncSynthState(false);
       const input=[...state.input.keys()].sort((a,b)=>a-b);
       const generated=[...state.generated.keys()].sort((a,b)=>a-b);
       const arp=[...state.arp.keys()].sort((a,b)=>a-b);
-      const chord=generated.length?generated:input;
+      let chord=[];
+      if(state.root!=null){try{chord=[...new Set(transformNote(state.root))].sort((a,b)=>a-b);}catch(e){chord=[state.root];}}
       el('[data-nm="input"]').textContent='INPUT '+(input.length?input.map(label).join(' · '):'—');
       el('[data-nm="chord"]').textContent='CHORD '+(chord.length?chord.map(label).join(' · '):'—');
-      el('[data-nm="arp"]').textContent='ARP '+(arp.length?arp.map(label).join(' · '):'—');
+      el('[data-nm="arp"]').textContent='PLAY '+(arp.length?arp.map(label).join(' · '):(generated.length?generated.map(label).join(' · '):'—');
       const on=input.length||generated.length||arp.length;
       monitor.classList.toggle('on',!!on);
     };
