@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.58-adaptive-fast-retrigger-smoothing">
-<title>SynthOslek v16.58 — Adaptive Fast Retrigger Smoothing</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.59-android-fast-lead-voice-budget">
+<title>SynthOslek v16.59 — Android Fast Lead Voice Budget</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1125,9 +1125,9 @@ void Promise.race([
       fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);fx.connect(this.flangerInput);
     }
     if(!workletPath&&lm){this.lfo.connect(lm);const lfoDelay=Math.max(0,Math.min(2,Number(P.lfoDelay)||0)),lfoAmt=this._lfoScale(P);lm.gain.setValueAtTime(0,now);lm.gain.linearRampToValueAtTime(lfoAmt,now+Math.max(.01,lfoDelay));if(P.lfoDest==="cutoff"){lm.connect(vf.frequency);if(vf2)lm.connect(vf2.frequency);}else if(P.lfoDest==="amp")lm.connect(va.gain);}
-    const v={env,vf,vf2,va,voiceDSP:null,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,midi,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,vf2,va,voiceDSP:null,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,midi,fastRetrigger:!!rapidRetrigger,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,fmBaseFreq:freq,mpeChannel:Number(mpeChannel)||0,mpeBend:Number(mpeBend)||0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
-    const maxUnison=this.mobileAudio?(this.voices.size>6?1:2):(this.voices.size>24?4:8);
+    const maxUnison=this.mobileAudio?1:(this.voices.size>24?4:8);
     const n=Math.max(1,Math.min(maxUnison,Math.round(Number(P.unison)||1))),
       /* Equal-power-ish spread: center voices stay centered while outer voices
          are slightly compressed toward the middle, avoiding an exaggerated edge pair. */
@@ -1186,7 +1186,7 @@ void Promise.race([
     for(const [key,v] of matches){const t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime),P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
       try{if(v.voiceDSP){v.voiceDSP.release(t);}else{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.setValueAtTime(Math.max(.00001,g.value||.00001),t);g.exponentialRampToValueAtTime(.00001,t+rel);}
         if(v.vf?.frequency){const f=v.vf.frequency;if(f.cancelAndHoldAtTime)f.cancelAndHoldAtTime(t);else{f.cancelScheduledValues(t);f.setValueAtTime(f.value,t);}f.linearRampToValueAtTime(P.cutoff,t+fr);}}catch(e){}
-      const tailMs=Math.min(this.mobileAudio?240:1200,(Math.max(this.mobileAudio?Math.min(rel,.18):rel,fr)+(this.mobileAudio?.045:.06))*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
+      const fastRel=this.mobileAudio&&v.fastRetrigger?Math.min(rel,.12):rel;const fastFr=this.mobileAudio&&v.fastRetrigger?Math.min(fr,.12):fr;const tailMs=Math.min(this.mobileAudio?(v.fastRetrigger?170:240):1200,(Math.max(fastRel,fastFr)+(this.mobileAudio?.045:.06))*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   }
   releaseSustain(){return this.dspBackend?.releaseSustain();}
   _nativeReleaseSustain(){if(!this.started)return;const keys=[...this.sustained];this.sustained.clear();for(const key of keys){const v=this.voices.get(key);if(!v)continue;const midi=Number(key.split(":").pop());this._releaseVoice(key,v,midi);}}
@@ -1318,9 +1318,9 @@ const _noteOn0=synth.noteOn.bind(synth);
 synth.noteOn=function(midi,vel=.85,layer=this.activeLayer,when=null,stealFadeMs=6,mpeChannel=0,mpeBend=0){
   if(!this.started)return false;
   const key=layer+":"+midi;
-  if(this.voicePool.active.has(key))this._forceStop(key,6,when);
+  if(this.voicePool.active.has(key))this._forceStop(key,/Android/i.test(navigator.userAgent)?8:6,when);
   const allocation=this.voicePool.acquire(key,vel);
-  if(allocation.stolenKey)this._forceStop(allocation.stolenKey,6,when);
+  if(allocation.stolenKey)this._forceStop(allocation.stolenKey,/Android/i.test(navigator.userAgent)?8:6,when);
   _noteOn0(midi,vel,layer,when,stealFadeMs,mpeChannel,mpeBend);
   if(!this.voices.has(key))this.voicePool.release(key);
   return this.voices.has(key);
@@ -3094,7 +3094,7 @@ syncSynthState(false);
     mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
     webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
   },state:SO};
-  setStatus("v16.58 engine ready · Adaptive fast-retrigger smoothing · Android 5ms audio target · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.59 engine ready · Android 1x voice budget · Adaptive fast-retrigger cleanup · 5ms audio target · 2-layer core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
