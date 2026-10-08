@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.55-android-native-voice-path">
-<title>SynthOslek v16.55 — Android Native Voice Path</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.56-android-clean-transient-path">
+<title>SynthOslek v16.56 — Android Clean Transient Path</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -905,7 +905,9 @@ class SynthOslek{
     if(this.started){if(this.ctx.state==="suspended")await this.ctx.resume();return;}
     const c=this.ctx=this.audioRuntime.create(),p=this.params,G=v=>this._G(v);
     /* v15.0: explicit headroom before dynamics keeps stacked polyphony clean instead of relying on the compressor to repair clipping. */
-    this.bus=G(this.mobileAudio?.62:.72);this.masterGain=G(Math.min(.8,Math.max(.05,Number(p.volume)||.6)));
+    /* v16.56: Android keeps extra headroom and avoids nonlinear bus DSP;
+       Bluetooth codecs can exaggerate short full-scale transients. */
+    this.bus=G(this.mobileAudio?.44:.72);this.masterGain=G(this.mobileAudio?.55:Math.min(.8,Math.max(.05,Number(p.volume)||.6)));
     this.analyser=this.mobileAudio?null:c.createAnalyser();if(this.analyser){this.analyser.fftSize=1024;this.analyser.smoothingTimeConstant=.65;}
     const L=this.limiter=this.mobileAudio?null:c.createDynamicsCompressor();if(L){L.threshold.value=-7;L.knee.value=12;L.ratio.value=3;}
     /* v14.22: give the master compressor a little more time to absorb stacked
@@ -924,13 +926,10 @@ class SynthOslek{
        desktop/iOS, while the mobile path avoids analyser -> compressor -> FX
        processing during real-time playing. */
     if(this.mobileAudio){
-      /* v16.45: keep Android's real-time path tiny, but explicitly remove
-         subsonic/DC energy before the nonlinear safety stage. */
-      this.dcBlock=c.createBiquadFilter();this.dcBlock.type="highpass";this.dcBlock.frequency.value=24;this.dcBlock.Q.value=.707;
-      const sh=c.createWaveShaper(),curve=new Float32Array(1024);
-      for(let i=0;i<curve.length;i++){const x=i*2/(curve.length-1)-1;curve[i]=Math.tanh(x*0.95);}
-      sh.curve=curve;sh.oversample="none";this.mobileClip=sh;
-      this.bus.connect(this.dcBlock);this.dcBlock.connect(sh);sh.connect(this.masterGain);this.masterGain.connect(c.destination);
+      /* v16.56: Android dry path is now strictly linear:
+         high-pass -> master -> destination. No Waveshaper on the real-time bus. */
+      this.dcBlock=c.createBiquadFilter();this.dcBlock.type="highpass";this.dcBlock.frequency.value=28;this.dcBlock.Q.value=.707;
+      this.bus.connect(this.dcBlock);this.dcBlock.connect(this.masterGain);this.masterGain.connect(c.destination);
     }else{
       this.bus.connect(this.analyser);this.convolver.connect(this.reverbGain);
       for(const n of[this.delayGain,this.reverbGain,this.chorusGain,this.flangerGain])n.connect(this.analyser);
@@ -1094,7 +1093,7 @@ void Promise.race([
     
     /* v16.54: Android stays on the native voice path for the shortest practical
        browser-side path. AudioWorklet remains available on desktop/iOS. */
-    const atk=Math.max(.008,P.attack),dec=Math.max(.01,P.decay);
+    const atk=Math.max(this.mobileAudio?.015:.008,P.attack),dec=Math.max(.01,P.decay);
     if(!this.dspBackend.workletReady){
       /* Native fallback keeps the established anti-click envelope path. */
       env.gain.setValueAtTime(0,now);
@@ -1185,7 +1184,7 @@ void Promise.race([
     for(const [key,v] of matches){const t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime),P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
       try{if(v.voiceDSP){v.voiceDSP.release(t);}else{const g=v.env.gain;g.cancelAndHoldAtTime?g.cancelAndHoldAtTime(t):g.cancelScheduledValues(t);g.setValueAtTime(Math.max(.00001,g.value||.00001),t);g.exponentialRampToValueAtTime(.00001,t+rel);}
         if(v.vf?.frequency){const f=v.vf.frequency;if(f.cancelAndHoldAtTime)f.cancelAndHoldAtTime(t);else{f.cancelScheduledValues(t);f.setValueAtTime(f.value,t);}f.linearRampToValueAtTime(P.cutoff,t+fr);}}catch(e){}
-      const tailMs=Math.min(this.mobileAudio?520:1200,(Math.max(rel,fr)+(this.mobileAudio?.045:.06))*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
+      const tailMs=Math.min(this.mobileAudio?240:1200,(Math.max(this.mobileAudio?Math.min(rel,.18):rel,fr)+(this.mobileAudio?.045:.06))*1000);this._kill(v,t+tailMs/1000,key);this.voicePool?.release(key,tailMs);this.voices.delete(key);}
   }
   releaseSustain(){return this.dspBackend?.releaseSustain();}
   _nativeReleaseSustain(){if(!this.started)return;const keys=[...this.sustained];this.sustained.clear();for(const key of keys){const v=this.voices.get(key);if(!v)continue;const midi=Number(key.split(":").pop());this._releaseVoice(key,v,midi);}}
@@ -3093,7 +3092,7 @@ syncSynthState(false);
     mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
     webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
   },state:SO};
-  setStatus("v16.55 engine ready · Android native voice path · MIDI zero-lookahead · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.56 engine ready · Android clean transient path · MIDI zero-lookahead · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
