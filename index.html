@@ -637,8 +637,13 @@ const normalizeMidiPerformanceTime=stamp=>{
 };
 const midiPerformanceToAudioTime=(ctx,stamp,leadMs=.75)=>{
   if(!ctx)return null;
+  /* v16.54: Android low-latency MIDI uses immediate arrival-time playback.
+     WebMIDI/BLE timestamps can represent a host/device clock domain that is
+     slightly ahead on mobile Chromium; the old 0–40 ms look-ahead could become
+     an audible delay before a Bluetooth note reached the AudioContext. */
+  if(/Android/i.test(navigator.userAgent))return ctx.currentTime;
   const t=normalizeMidiPerformanceTime(stamp);
-  if(t==null)return null;
+  if(t==null)return ctx.currentTime;
   const deltaMs=t-performance.now()+leadMs;
   return ctx.currentTime+Math.max(0,Math.min(40,deltaMs))/1000;
 };
