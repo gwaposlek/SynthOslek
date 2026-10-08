@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.57-android-5ms-audio-target">
-<title>SynthOslek v16.57 — Android 5ms Audio Target</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.58-adaptive-fast-retrigger-smoothing">
+<title>SynthOslek v16.58 — Adaptive Fast Retrigger Smoothing</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -897,7 +897,7 @@ class AudioRuntime{
 
 class SynthOslek{
   constructor(){
-    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.mobileAudio=/Android/i.test(navigator.userAgent);this.lastFreqByLayer=Array.from({length:LAYER_COUNT},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:LAYER_COUNT},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
+    this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();this._startPromise=null;this.modWheel=0;this._lastNoteWallMsByLayer=Array.from({length:LAYER_COUNT},()=>0);this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._morphCache=new Map();this._lastMorphWheel=-1;this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);this.voices=new Map();this.tailVoices=new Map();this.sustained=new Set();this.sustain=false;this.started=false;this.mobileAudio=/Android/i.test(navigator.userAgent);this.lastFreqByLayer=Array.from({length:LAYER_COUNT},()=>0);this.bend=0;this.activeLayer=0;this.layerProfiles=[];this._profileKeys=[];this.layerMix=Array.from({length:LAYER_COUNT},()=>({vol:.7,mute:false,solo:false,pan:0,fx:.2,enabled:true}));
     this._layerParamRevision=Array.from({length:LAYER_COUNT},()=>0);this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
   }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
@@ -1093,7 +1093,9 @@ void Promise.race([
     
     /* v16.54: Android stays on the native voice path for the shortest practical
        browser-side path. AudioWorklet remains available on desktop/iOS. */
-    const atk=Math.max(this.mobileAudio?.005:.008,P.attack),dec=Math.max(.01,P.decay);
+    const rapidRetrigger=this.mobileAudio&&hadHeldVoice&&performance.now()-(this._lastNoteWallMsByLayer?.[layer]||0)<45;
+    const atk=Math.max(this.mobileAudio?(rapidRetrigger?.009:.005):.008,P.attack),dec=Math.max(.01,P.decay);
+    if(this.mobileAudio){this._lastNoteWallMsByLayer=this._lastNoteWallMsByLayer||Array.from({length:LAYER_COUNT},()=>0);this._lastNoteWallMsByLayer[layer]=performance.now();}
     if(!this.dspBackend.workletReady){
       /* Native fallback keeps the established anti-click envelope path. */
       env.gain.setValueAtTime(0,now);
@@ -3092,7 +3094,7 @@ syncSynthState(false);
     mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
     webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
   },state:SO};
-  setStatus("v16.57 engine ready · Android 5ms audio target · clean transient path · MIDI zero-lookahead · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.58 engine ready · Adaptive fast-retrigger smoothing · Android 5ms audio target · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
