@@ -101,6 +101,20 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
 .spark::after{transform:rotate(90deg)}
 @keyframes sp{from{transform:scale(.8) rotate(0)}to{transform:scale(1.2) rotate(45deg)}}
 
+
+/* v16.32 temporary generated-note monitor */
+.so-note-monitor{position:absolute;left:.6rem;right:.6rem;bottom:.45rem;z-index:8;display:none;background:rgba(0,0,0,.88);border:1px solid #202020;border-radius:7px;padding:.38rem .5rem;font-size:.58rem;line-height:1.35;color:var(--muted);pointer-events:none;backdrop-filter:blur(4px)}
+.so-note-monitor.on{display:block}
+.so-note-monitor .nm-row{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap}
+.so-note-monitor .nm-label{color:var(--accent);font-weight:800;letter-spacing:.08em}
+.so-note-monitor .nm-notes{color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.so-note-monitor .nm-arp{color:#ffd166}
+.key.so-generated{color:#fff!important;box-shadow:inset 0 0 0 2px rgba(124,92,255,.95),0 0 16px rgba(124,92,255,.48)!important;filter:brightness(1.25)}
+.key.black.so-generated{box-shadow:inset 0 0 0 2px #ffd166,0 0 18px rgba(255,122,0,.72)!important}
+.key.so-arp-active{color:#fff!important;box-shadow:inset 0 -8px 0 #ffd166,inset 0 0 0 2px #fff,0 0 20px rgba(255,209,102,.85)!important;filter:brightness(1.35)}
+.key.black.so-arp-active{box-shadow:inset 0 -8px 0 #ffd166,inset 0 0 0 2px #fff,0 0 22px rgba(255,209,102,.95)!important}
+@media(orientation:portrait){.so-note-monitor{position:relative;left:auto;right:auto;bottom:auto;margin:.35rem .45rem 0;display:block}.so-note-monitor:not(.on){display:none}}
+
 /* v6 landscape-first performance layout */
 @media (orientation:landscape) and (max-width:1000px){
  body{padding:.25rem;overflow:hidden}
@@ -2485,7 +2499,46 @@ syncSynthState(false);
   /* ---------- ARP ---------- */
   const arpHeld=new Map(); let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null,arpNextAt=0;
   const baseOn=synth.noteOn.bind(synth), baseOff=synth.noteOff.bind(synth);
+
+  /* v16.32 temporary visual note monitor: one source of truth at the actual
+     generated-note boundary. It observes the exact MIDI notes passed to the
+     raw synth, including chord tones and each ARP step. */
+  const noteMonitor=(()=>{
+    const state={input:new Map(),generated:new Map(),arp:new Map(),arpPending:false,root:null};
+    const names=NOTES;
+    const label=m=>midiToNote(m);
+    const findKeys=m=>document.querySelectorAll('.key[data-base-midi="'+Number(m)+'"]');
+    const inc=(map,m)=>{m=Number(m);map.set(m,(map.get(m)||0)+1);return map.get(m);};
+    const dec=(map,m)=>{m=Number(m);const n=(map.get(m)||0)-1;if(n>0){map.set(m,n);return n;}map.delete(m);return 0;};
+    const monitor=document.createElement('div');monitor.className='so-note-monitor';monitor.innerHTML='<div class="nm-row"><span class="nm-label">LIVE NOTES</span><span class="nm-notes" data-nm="input">INPUT —</span><span class="nm-notes" data-nm="chord">CHORD —</span><span class="nm-arp" data-nm="arp">ARP —</span></div>';
+    const kbHost=document.querySelector('.kb-sec');if(kbHost)kbHost.appendChild(monitor);
+    const el=(q)=>monitor.querySelector(q);
+    const refresh=()=>{
+      const input=[...state.input.keys()].sort((a,b)=>a-b);
+      const generated=[...state.generated.keys()].sort((a,b)=>a-b);
+      const arp=[...state.arp.keys()].sort((a,b)=>a-b);
+      const chord=generated.length?generated:input;
+      el('[data-nm="input"]').textContent='INPUT '+(input.length?input.map(label).join(' · '):'—');
+      el('[data-nm="chord"]').textContent='CHORD '+(chord.length?chord.map(label).join(' · '):'—');
+      el('[data-nm="arp"]').textContent='ARP '+(arp.length?arp.map(label).join(' · '):'—');
+      const on=input.length||generated.length||arp.length;
+      monitor.classList.toggle('on',!!on);
+    };
+    const paint=(m,cls,on)=>findKeys(m).forEach(k=>k.classList.toggle(cls,on));
+    const inputOn=m=>{inc(state.input,m);state.root=Number(m);paint(m,'so-input-active',true);refresh();};
+    const inputOff=m=>{if(!dec(state.input,m))paint(m,'so-input-active',false);if(!state.input.size)state.root=null;refresh();};
+    const generatedOn=m=>{inc(state.generated,m);paint(m,'so-generated',true);if(state.arpPending){inc(state.arp,m);paint(m,'so-arp-active',true);}refresh();};
+    const generatedOff=m=>{if(!dec(state.generated,m))paint(m,'so-generated',false);if(!dec(state.arp,m))paint(m,'so-arp-active',false);refresh();};
+    const clear=()=>{for(const map of [state.input,state.generated,state.arp])map.clear();monitor.classList.remove('on');document.querySelectorAll('.so-input-active,.so-generated,.so-arp-active').forEach(k=>k.classList.remove('so-input-active','so-generated','so-arp-active'));};
+    return {state,monitor,inputOn,inputOff,generatedOn,generatedOff,clear,setArpPending:v=>{state.arpPending=!!v;}};
+  })();
+  window.SynthOslekNoteMonitor=noteMonitor;
   const basePanic=synth.panic.bind(synth), baseAllOff=synth.allNotesOff?.bind(synth);
+  const rawBaseOn=baseOn,rawBaseOff=baseOff;
+  /* Wrap the raw audio boundary so every chord/scale/ARP note is reflected by
+     the visual keyboard exactly when the engine receives it. */
+  const monitoredBaseOn=(m,v,l,w)=>{noteMonitor.generatedOn(m);return rawBaseOn(m,v,l,w);};
+  const monitoredBaseOff=(m,l,w)=>{noteMonitor.generatedOff(m);return rawBaseOff(m,l,w);};
   const SCALE_INTERVALS={off:[0,1,2,3,4,5,6,7,8,9,10,11],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],mixolydian:[0,2,4,5,7,9,10],pentatonic:[0,2,4,7,9],blues:[0,3,5,6,7,10]};
   const CHORD_INTERVALS={off:[0],major:[0,4,7],minor:[0,3,7],"7":[0,4,7,10],maj7:[0,4,7,11],min7:[0,3,7,10],sus2:[0,2,7],sus4:[0,5,7]};
   const musicNote=midi=>{const root=SO.music.root%12,sc=SCALE_INTERVALS[SO.music.scale]||SCALE_INTERVALS.off;if(SO.music.scale==="off")return midi;const rel=midi-root,oct=Math.floor(rel/12),pc=((rel%12)+12)%12;let best=sc[0],dist=99;for(const iv of sc){const d=Math.abs(iv-pc);if(d<dist){dist=d;best=iv;}}return root+oct*12+best;};
@@ -2508,11 +2561,16 @@ syncSynthState(false);
     const when=Math.max(now+.008,arpNextAt||0);
     if(arpLast)try{
       const releaseAt=Math.min(arpLast.off||when,Math.max(now,when-.001));
-      baseOff(arpLast.midi,arpLast.layer,releaseAt);
+      noteMonitor.setArpPending(true);
+      monitoredBaseOff(arpLast.midi,arpLast.layer,releaseAt);
+      noteMonitor.setArpPending(false);
     }catch(e){}
     if(n){
       const off=when+step*clamp(Number(SO.arp.gate)||.82,.05,1);
-      baseOn(n.midi,n.vel,n.layer,when); arpLast={...n,off};
+      noteMonitor.setArpPending(true);
+      monitoredBaseOn(n.midi,n.vel,n.layer,when);
+      noteMonitor.setArpPending(false);
+      arpLast={...n,off};
       arpIndex += arpDir; if(SO.arp.mode==="up/down")arpIndex=clamp(arpIndex,0,Math.max(0,arpCandidates().length-1));
       setStatus("ARP "+midiToNote(n.midi)+" · "+SO.arp.rate);
       arpNextAt=when+Math.max(.01,step+(arpIndex%2?swing:-swing));
@@ -2521,20 +2579,22 @@ syncSynthState(false);
     }else{arpTimer=0;}
   }
   function startArp(){clearTimeout(arpTimer);arpTimer=0;arpIndex=0;arpDir=1;arpNextAt=audioNow()+.01;arpTick();}
-  function stopArp(){clearTimeout(arpTimer);arpTimer=0;arpNextAt=0;if(arpLast){try{baseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}arpHeld.clear();}
+  function stopArp(){clearTimeout(arpTimer);arpTimer=0;arpNextAt=0;if(arpLast){try{monitoredBaseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}arpHeld.clear();}
   const musicHeld=new Map();
   synth.noteOn=function(midi,vel=.85,layer=synth.activeLayer,when=null){
+    noteMonitor.inputOn(midi);
     if(SO.arp.on){const key=layer+":"+midi;arpHeld.set(key,{midi,vel,layer});if(!arpTimer)startArp();return;}
     const notes=transformNote(midi);
     const key=layer+":"+midi;
     musicHeld.set(key,{midi,layer,notes});
-    for(const n of notes)baseOn(n,vel,layer,when);
+    for(const n of notes)monitoredBaseOn(n,vel,layer,when);
   };
   synth.noteOff=function(midi,layer=null,when=null){
+    noteMonitor.inputOff(midi);
     if(SO.arp.on){[...arpHeld].forEach(([k,n])=>{if(n.midi===midi&&(layer==null||n.layer===layer))arpHeld.delete(k);});if(!arpHeld.size)stopArp();return;}
-    [...musicHeld].forEach(([k,n])=>{if(n.midi===midi&&(layer==null||n.layer===layer)){for(const out of n.notes)try{baseOff(out,n.layer,when)}catch(e){}musicHeld.delete(k);}});
+    [...musicHeld].forEach(([k,n])=>{if(n.midi===midi&&(layer==null||n.layer===layer)){for(const out of n.notes)try{monitoredBaseOff(out,n.layer,when)}catch(e){}musicHeld.delete(k);}});
   };
-  synth.panic=function(){stopArp();musicHeld.clear();return basePanic();};
+  synth.panic=function(){stopArp();musicHeld.clear();noteMonitor.clear();return basePanic();};
   if(baseAllOff)synth.allNotesOff=function(){stopArp();musicHeld.clear();return baseAllOff();};
 
   $("#so67Arp")?.addEventListener("click",()=>{SO.arp.on=!SO.arp.on;if(!SO.arp.on)stopArp();updateBtn("#so67Arp",SO.arp.on,"ARP ON","ARP OFF");setStatus(SO.arp.on?"ARP armed":"ARP bypassed");});
@@ -2549,15 +2609,15 @@ syncSynthState(false);
     if(!SO.seq.on)return;
     const p=SO.seq.pattern[SO.seq.step%SO.seq.length], now=audioNow(), dur=SO.clock.divisionSeconds("1/16");
     document.querySelectorAll(".so-step").forEach((e,i)=>e.classList.toggle("play",i===SO.seq.step%16));
-    seqHeld.forEach(n=>{try{baseOff(n.midi,n.layer,now)}catch(e){}});seqHeld=[];
+    seqHeld.forEach(n=>{try{monitoredBaseOff(n.midi,n.layer,now)}catch(e){}});seqHeld=[];
     if(p?.on){
       const layer=synth.activeLayer,m=transformNote(p.note)[0]??p.note,v=p.vel;
-      baseOn(m,v,layer,now);seqHeld.push({midi:m,layer});
-      setTimeout(()=>{try{baseOff(m,layer)}catch(e){}},Math.max(10,dur*p.gate*1000));
+      monitoredBaseOn(m,v,layer,now);seqHeld.push({midi:m,layer});
+      setTimeout(()=>{try{monitoredBaseOff(m,layer)}catch(e){}},Math.max(10,dur*p.gate*1000));
     }
     SO.seq.step=(SO.seq.step+1)%SO.seq.length;seqTimer=setTimeout(seqStep,Math.max(20,dur*1000));
   }
-  $("#so67Seq")?.addEventListener("click",()=>{SO.seq.on=!SO.seq.on;clearTimeout(seqTimer);updateBtn("#so67Seq",SO.seq.on,"SEQ ON","SEQ OFF");if(SO.seq.on)seqStep();else seqHeld.forEach(n=>{try{baseOff(n.midi,n.layer)}catch(e){}});});
+  $("#so67Seq")?.addEventListener("click",()=>{SO.seq.on=!SO.seq.on;clearTimeout(seqTimer);updateBtn("#so67Seq",SO.seq.on,"SEQ ON","SEQ OFF");if(SO.seq.on)seqStep();else seqHeld.forEach(n=>{try{monitoredBaseOff(n.midi,n.layer)}catch(e){}});});
   $("#so67Clear")?.addEventListener("click",()=>{SO.seq.pattern.forEach(x=>x.on=false);document.querySelectorAll(".so-step").forEach(e=>e.classList.remove("on"));});
   $("#so67Scale")?.addEventListener("change",e=>{SO.music.scale=e.target.value;setStatus("Scale "+e.target.value.toUpperCase());});
   $("#so67Root")?.addEventListener("change",e=>{SO.music.root=+e.target.value;setStatus("Root "+e.target.options[e.target.selectedIndex].text);});
