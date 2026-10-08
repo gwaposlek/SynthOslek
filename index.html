@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-08-v16.56-android-clean-transient-path">
-<title>SynthOslek v16.56 — Android Clean Transient Path</title>
+<meta name="synthoslek-build" content="2026-10-08-v16.57-android-5ms-audio-target">
+<title>SynthOslek v16.57 — Android 5ms Audio Target</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -872,7 +872,7 @@ class AudioRuntime{
     if(this.ctx)return this.ctx;
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC)throw new Error("Web Audio API is unavailable in this browser. Use current Chrome, Edge, Samsung Internet, or Safari.");
-    this.ctx=new AC({latencyHint:"interactive"});
+    this.ctx=new AC({latencyHint:/Android/i.test(navigator.userAgent)?0.005:"interactive"});
     /* v16.14: do not block context creation on resume() in mobile browsers. */
     void this.resume().catch(()=>{});
     this.bindLifecycle();
@@ -1093,7 +1093,7 @@ void Promise.race([
     
     /* v16.54: Android stays on the native voice path for the shortest practical
        browser-side path. AudioWorklet remains available on desktop/iOS. */
-    const atk=Math.max(this.mobileAudio?.015:.008,P.attack),dec=Math.max(.01,P.decay);
+    const atk=Math.max(this.mobileAudio?.005:.008,P.attack),dec=Math.max(.01,P.decay);
     if(!this.dspBackend.workletReady){
       /* Native fallback keeps the established anti-click envelope path. */
       env.gain.setValueAtTime(0,now);
@@ -3092,7 +3092,7 @@ syncSynthState(false);
     mpeChannelTracking:true,offscreenCanvas:"supported" in HTMLCanvasElement.prototype.transferControlToOffscreen,
     webgpu:!!navigator.gpu,webAssembly:typeof WebAssembly!=="undefined",audioWorklet:!!synth.ctx?.audioWorklet
   },state:SO};
-  setStatus("v16.56 engine ready · Android clean transient path · MIDI zero-lookahead · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.57 engine ready · Android 5ms audio target · clean transient path · MIDI zero-lookahead · 2-layer low-latency core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 </script>
