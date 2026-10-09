@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.70-arp-state-cleanup">
-<title>SynthOslek v16.70 — ARP State Cleanup</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.71-stop-arp-safe-cleanup">
+<title>SynthOslek v16.71 — Stop ARP Safe Cleanup</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -2837,7 +2837,15 @@ syncSynthState(false);
     }else{arpTimer=0;}
   }
   function startArp(){clearTimeout(arpTimer);arpTimer=0;arpIndex=0;arpDir=1;arpNextAt=audioNow()+.01;arpTick();}
-  function stopArp(){clearTimeout(arpTimer);arpTimer=0;arpNextAt=0;if(arpLast){try{monitoredBaseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}arpHeld.clear();}
+  function stopArp(){
+    clearTimeout(arpTimer);arpTimer=0;arpNextAt=0;
+    const last=arpLast;arpLast=null;arpHeld.clear();
+    if(last){
+      noteMonitor.setArpPending(true);
+      try{monitoredBaseOff(last.midi,last.layer);}catch(e){}
+      finally{noteMonitor.setArpPending(false);}
+    }
+  }
   const musicHeld=new Map();
   synth.noteOn=function(midi,vel=.85,layer=synth.activeLayer,when=null){
     noteMonitor.inputOn(midi);
