@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.62-phase1-audio-stability">
-<title>SynthOslek v16.62 — Phase 1 Audio Stability</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.63-mpe-panic-stability">
+<title>SynthOslek v16.63 — MPE & Panic Stability</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1054,17 +1054,17 @@ void Promise.race([
   setBend(c,tc=.01,at=null){this.bend=Number.isFinite(c)?c:0;this.modMatrix?.setSource("pitchBend",Math.max(-1,Math.min(1,this.bend/200)));if(this.started){for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);this._det(tc,at);}}
   setMPEChannelBend(channel,cents,tc=.006,at=null){
     const ch=Math.max(1,Math.min(16,Number(channel)||1)),bend=Number(cents)||0;
-    this.modMatrix?.setSource("pitchBend",Math.max(-1,Math.min(1,bend/200)));
+    /* MPE pitch bend is per-voice; do not overwrite the global pitch-bend source. */
     if(this.started){for(const v of this.voices.values())if(v.mpeChannel===ch){v.mpeBend=bend;this._applyMorphToVoice(v,at);}this._det(tc,at);}
   }
   setMPEPressure(channel,value,tc=.012,at=null){
     const ch=Math.max(1,Math.min(16,Number(channel)||1)),p=Math.max(0,Math.min(1,Number(value)||0));
-    this.modMatrix?.setSource("aftertouch",p);
+    /* MPE pressure is read from each matching voice by _routeValue(). */
     if(this.started)for(const v of this.voices.values())if(v.mpeChannel===ch){v.mpePressure=p;this._applyMorphToVoice(v,at);}
   }
   setMPETimbre(channel,value,tc=.02,at=null){
     const ch=Math.max(1,Math.min(16,Number(channel)||1)),x=Math.max(0,Math.min(1,Number(value)||0)),t=Math.max(this.ctx?.currentTime||0,Number.isFinite(at)?at:(this.ctx?.currentTime||0));
-    this.modMatrix?.setSource("mpeTimbre",x);
+    /* MPE timbre is per-voice; keep it out of the global modulation source bus. */
     if(this.started)for(const v of this.voices.values())if(v.mpeChannel===ch){
       v.mpeTimbre=x;this._applyMorphToVoice(v,t);
       const base=Number(v.params.cutoff)||2000,cut=Math.max(80,Math.min(16000,base*Math.pow(4,x-.5)));
@@ -1201,7 +1201,7 @@ void Promise.race([
   }
   panic(){return this.dspBackend?.panic();}
   allNotesOff(){if(!this.started)return;for(const key of [...this.voices.keys()]){const [layer,midi]=key.split(":");this.noteOff(Number(midi),Number(layer));}this.sustained.clear();}
-  _nativePanic(){this.sustained.clear();this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
+  _nativePanic(){this.sustained.clear();this.sustain=false;this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);const keys=new Set([...this.voices.keys(),...this.tailVoices.keys()]);for(const key of keys)this._forceStop(key);this.lastFreqByLayer.fill(0);this.modMatrix?.setSource("aftertouch",0);this.modMatrix?.setSource("mpeTimbre",0);}
   _updateDelayTime(){const bpm=Math.max(20,Math.min(300,Number(window.SynthOslekTiming?.bpm)||120)),map={"1/1":4,"1/2":2,"1/4":1,"1/8":.5,"1/16":.25,"1/8d":.75,"1/8t":1/3};const sec=map[this.delaySync];if(sec&&this.delay)this.delay.delayTime.setTargetAtTime(Math.max(.01,Math.min(1.5,(60/bpm)*sec)),this.ctx.currentTime,.015);}
   setTempoBpm(v){if(this.started)this._updateDelayTime();return v;}
   updateParam(k,x,at=null){
@@ -2334,7 +2334,7 @@ class MidiManager{
       const bend=((b<<7)|a)-8192,norm=bend/8192,when=this.synth.started?midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs):null;
       if(this.synth.mpeEnabled){const mpeCents=norm*this.mpeRangeCents;this.synth.mpeChannelBends.set(ch,mpeCents);this.synth.setMPEChannelBend(ch,mpeCents,.003,when);}
       else this.synth.setBend(pitchBendCents(norm),.003,when);
-      this.synth.modMatrix.setSource("pitchBend",norm);
+      if(!this.synth.mpeEnabled)this.synth.modMatrix.setSource("pitchBend",norm);
       setWheelVisual($("pitchWheel"),norm,true);
     } else if(cmd===0xD0){
       const when=this.synth.started?midiPerformanceToAudioTime(this.synth.ctx,timestampMs,leadMs):null;
