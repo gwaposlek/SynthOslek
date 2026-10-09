@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.74-welcome-copy-live-audio-smoke">
-<title>SynthOslek v16.74 — Welcome Refresh & Live Audio Tests</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.75-welcome-audio-continuity-tests">
+<title>SynthOslek v16.75 — Welcome Refresh & Audio Continuity Tests</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -518,6 +518,15 @@ header{display:none!important}
 
 /* v16.36 clean performance UI: temporarily hide the deep synth controls and text sound designer. */
 #panels{display:none!important}
+
+/* v16.75: modern welcome copy and feature chips; no fixed layer-count claims */
+.welcome-card{max-width:500px;padding:clamp(1.5rem,5vh,2.6rem) clamp(1.2rem,5vw,2rem) 1.7rem}
+.welcome-tag{line-height:1.5;letter-spacing:.12em}
+.welcome-desc{max-width:390px;margin:0 auto 1.1rem;line-height:1.7;color:#d0d8e7;font-size:clamp(.88rem,2.5vw,1rem)}
+.welcome-features{display:flex;justify-content:center;flex-wrap:wrap;gap:.5rem;margin:0 auto 1.35rem}
+.welcome-features span{border:1px solid #214456;background:linear-gradient(135deg,rgba(0,229,255,.09),rgba(91,140,255,.06));border-radius:999px;padding:.35rem .72rem;color:#9feaff;font-size:.65rem;letter-spacing:.16em;font-weight:700}
+@media(max-width:420px){.welcome{padding:14px}.welcome-card{padding:1.5rem 1rem 1.25rem}.welcome-desc{line-height:1.55}.welcome-tag{font-size:.68rem}}
+
 </style>
 </head>
 <body>
@@ -529,8 +538,9 @@ header{display:none!important}
 <div class="welcome" id="welcome">
   <div class="welcome-card">
     <h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
-    <div class="welcome-tag">Performance Workstation</div>
-    <p class="welcome-desc">A real-time browser synth for shaping expressive sounds, exploring modulation, and performing live. Play the on-screen keyboard or connect a MIDI controller, morph your tone, and describe a sound to build a starting patch — on desktop, tablet, or phone.</p>
+    <div class="welcome-tag">Sound design · MIDI · Live performance</div>
+    <p class="welcome-desc">Shape a sound. Make it yours. SynthOslek is an expressive browser instrument for building tones, moving between textures, and playing in real time. Start from a preset or describe the sound in your head, then sculpt it with oscillators, filters, modulation, and performance controls. Play on the screen or connect your MIDI controller.</p>
+    <div class="welcome-features" aria-label="SynthOslek features"><span>DESIGN</span><span>MORPH</span><span>PERFORM</span></div>
     <button class="btn" id="welcomeStart" type="button" onclick="this.textContent='Checking…';this.disabled=true;if(typeof window.startSynthOslekFromGesture==='function'){window.startSynthOslekFromGesture().finally(()=>{this.disabled=false;this.textContent='Start';});}else{this.disabled=false;this.textContent='SCRIPT ERROR';var e=document.getElementById('errorScreen'),t=document.getElementById('errorText'),d=document.getElementById('errorDetail');if(t)t.textContent='SynthOslek startup code did not load. Reload the page or check the script error below.';if(d)d.textContent='The main script did not register the Start function. This usually means an earlier JavaScript error or a stale cached page.';if(e)e.style.display='block';}">Start</button>
     <div class="welcome-foot">Tap Start to unlock audio · Chrome / Edge / Safari recommended</div>
   </div>
