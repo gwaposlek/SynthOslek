@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.73-audio-test-harness-diagnostics">
-<title>SynthOslek v16.73 — Audio Test Harness & Diagnostics</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.74-welcome-copy-live-audio-smoke">
+<title>SynthOslek v16.74 — Welcome Refresh & Live Audio Tests</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -524,13 +524,13 @@ header{display:none!important}
 <div id="compatBanner" class="compat-banner"></div>
 <div id="errorScreen" class="error-screen"><div class="box"><h2>SynthOslek could not start</h2><div id="errorText">A browser compatibility error occurred.</div><pre id="errorDetail"></pre><button class="btn" id="errorReload" type="button" style="margin-top:12px">Reload</button></div></div>
 <div class="rot">↻ Rotate to landscape for the best layout</div>
-<header><h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1><p>Subtractive synth · unison · chorus · OLED</p></header>
+<header><h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1><p>Real-time synthesis · expressive control · live performance</p></header>
 
 <div class="welcome" id="welcome">
   <div class="welcome-card">
     <h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
     <div class="welcome-tag">Performance Workstation</div>
-    <p class="welcome-desc">A web-based <b>subtractive synth</b> with 4 layers, touch keys, WebMIDI, scenes, and a text sound designer — built for live play on desktop, tablet, and controllers like the SMK 37.</p>
+    <p class="welcome-desc">A real-time browser synth for shaping expressive sounds, exploring modulation, and performing live. Play the on-screen keyboard or connect a MIDI controller, morph your tone, and describe a sound to build a starting patch — on desktop, tablet, or phone.</p>
     <button class="btn" id="welcomeStart" type="button" onclick="this.textContent='Checking…';this.disabled=true;if(typeof window.startSynthOslekFromGesture==='function'){window.startSynthOslekFromGesture().finally(()=>{this.disabled=false;this.textContent='Start';});}else{this.disabled=false;this.textContent='SCRIPT ERROR';var e=document.getElementById('errorScreen'),t=document.getElementById('errorText'),d=document.getElementById('errorDetail');if(t)t.textContent='SynthOslek startup code did not load. Reload the page or check the script error below.';if(d)d.textContent='The main script did not register the Start function. This usually means an earlier JavaScript error or a stale cached page.';if(e)e.style.display='block';}">Start</button>
     <div class="welcome-foot">Tap Start to unlock audio · Chrome / Edge / Safari recommended</div>
   </div>
