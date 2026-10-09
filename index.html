@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.66-polyblep-oscillator-fix">
-<title>SynthOslek v16.66 — Band-Limited Oscillator Fix</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.67-worklet-waveform-morph-fix">
+<title>SynthOslek v16.67 — Waveform Morph Fix</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1007,6 +1007,7 @@ void Promise.race([
     const wheel=Number(this.modWheel)||0,rev=this._layerParamRevision?.[v.layer]||0,brev=this._abSnapshotRevision||0,cacheKey="L"+(v.layer??0)+":"+rev+":"+brev,letKey=cacheKey+":"+wheel+":"+this.getMorphMode(v.layer);let P=this._morphCache.get(letKey);
     if(!P){P=this._morphParams(v.params||this.params,v.layer);this._morphCache.set(letKey,P);if(this._morphCache.size>24){const first=this._morphCache.keys().next().value;this._morphCache.delete(first);}}
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
+    for(const x of v.oscs){if(x.kind==="sub")continue;const wave=P["osc"+x.w+"Wave"]||"sine";if(x.o._lastWave!==wave){x.o._lastWave=wave;try{x.o.type=wave;if(x.o.port)x.o.port.postMessage({type:"wave",wave});}catch(e){}}}
     const T=(a,x,tc=.015)=>{try{a.setTargetAtTime(x,t,tc);}catch(e){}};
     const rCut=this._routeValue("cutoff",0,v),rRes=this._routeValue("resonance",0,v),rO1=this._routeValue("osc1Level",0,v),rO2=this._routeValue("osc2Level",0,v),rSpread=this._routeValue("spread",0,v),rFm=this._routeValue("fmAmount",0,v),rLfo=this._routeValue("lfoDepth",0,v);
     const keyTrack=Number(P.filterKeyTrack)||0,routeCutoff=Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyTrack*(Number(v.midi??60)-60)*80+rCut*6000));
@@ -1230,7 +1231,7 @@ void Promise.race([
       if(v.layer!==this.activeLayer)continue;
       v.params[k]=x;
       if(k==="filterType"){const nt=x==="lowpass24"||x==="lowpass"?"lowpass":x==="highpass24"||x==="highpass"?"highpass":x==="notch"?"notch":x==="bandpass"?"bandpass":"lowpass";if(v.vf)v.vf.type=nt;if(v.vf2)v.vf2.type=nt;if(v.voiceDSP)v.voiceDSP.update("filterType",x==="highpass"?1:x==="bandpass"?2:x==="notch"?3:x==="lowpass24"?4:x==="highpass24"?5:0,t);}else if(k==="resonance"){if(v.vf)v.vf.Q.value=Math.max(.0001,Math.min(18,Number(x)||0));if(v.vf2)v.vf2.Q.value=Math.max(.0001,Math.min(18,Number(x)||0));}
-      else if(/^osc[12]Wave$/.test(k))v.oscs.forEach(o=>{if(o.kind!=="sub"&&o.w==k[3])o.o.type=x;});
+      else if(/^osc[12]Wave$/.test(k))v.oscs.forEach(o=>{if(o.kind!=="sub"&&o.w==k[3]&&o._lastWave!==x){o._lastWave=x;try{o.o.type=x;if(o.o.port)o.o.port.postMessage({type:"wave",wave:x});}catch(e){}}});
       this._applyMorphToVoice(v,t);
     }
     if(detuneParam)this._det(.012,t);
