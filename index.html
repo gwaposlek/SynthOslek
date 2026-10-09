@@ -2847,9 +2847,9 @@ syncSynthState(false);
       arpTimer=setTimeout(arpTick,delay);
     }else{arpTimer=0;}
   }
-  function startArp(){clearTimeout(arpTimer);arpTimer=0;arpIndex=0;arpDir=1;arpNextAt=audioNow()+.01;arpTick();}
+  function startArp(){clearTimeout(arpTimer);arpTimer=0;arpExpectedWakeMs=0;arpIndex=0;arpDir=1;arpNextAt=audioNow()+.01;arpTick();}
   function stopArp(){
-    clearTimeout(arpTimer);arpTimer=0;arpNextAt=0;
+    clearTimeout(arpTimer);arpTimer=0;arpExpectedWakeMs=0;arpNextAt=0;
     const last=arpLast;arpLast=null;arpHeld.clear();
     if(last){
       noteMonitor.setArpPending(true);
