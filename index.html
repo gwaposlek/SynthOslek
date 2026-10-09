@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.63-mpe-panic-stability">
-<title>SynthOslek v16.63 — MPE & Panic Stability</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.64-panic-tail-retrigger-fix">
+<title>SynthOslek v16.64 — Panic Tail & MPE Fix</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -962,9 +962,9 @@ void Promise.race([
       let src=mm.getSource(r.source);
       if(voice){
         if(r.source==="velocity")src=Math.max(0,Math.min(1,Number(voice.velocity)||0));
-        else if(r.source==="aftertouch")src=Math.max(0,Math.min(1,Number(voice.mpePressure)||0));
-        else if(r.source==="pitchBend")src=Math.max(-1,Math.min(1,(Number(voice.mpeBend)||0)/200));
-        else if(r.source==="mpeTimbre")src=Math.max(0,Math.min(1,Number(voice.mpeTimbre)||0));
+        else if(r.source==="aftertouch"&&Number(voice.mpeChannel)>0)src=Math.max(0,Math.min(1,Number(voice.mpePressure)||0));
+        else if(r.source==="pitchBend"&&Number(voice.mpeChannel)>0)src=Math.max(-1,Math.min(1,(Number(voice.mpeBend)||0)/200));
+        else if(r.source==="mpeTimbre"&&Number(voice.mpeChannel)>0)src=Math.max(0,Math.min(1,Number(voice.mpeTimbre)||0));
       }
       out+=src*Number(r.amount||0);
     }
@@ -1172,7 +1172,7 @@ void Promise.race([
       const nodes=[v.lm,v.va,v.voiceDSP,v.fmMod,v.fmGain,v.fx,v.fxDelay,v.fxReverb,v.fxChorus,v.layerGain,v.pan];
       for(const n of nodes){try{n?.disconnect();}catch(e){}}
     };
-    const fire=()=>{if(key){const rec=this._voiceCleanupTimers.get(key);if(rec?.voice===v)this._voiceCleanupTimers.delete(key);}cleanup();};
+    const fire=()=>{if(key){const rec=this._voiceCleanupTimers.get(key);if(rec?.voice===v)this._voiceCleanupTimers.delete(key);}cleanup();};v._cleanupFire=fire;
     const ms=Math.max(this.mobileAudio?45:80,Math.max(0,(Number.isFinite(t)?t:(this.ctx?.currentTime||0))-(this.ctx?.currentTime||0))*1000+(this.mobileAudio?40:65));
     if(key)this._voiceCleanupTimers.set(key,{voice:v,timer:setTimeout(fire,ms)});
     const first=v.all?.[0];if(first)first.onended=fire;
@@ -1195,7 +1195,11 @@ void Promise.race([
     const end=Math.max(now+fade,Number.isFinite(at)?at:now+fade),start=Math.max(now,end-fade);
     try{
       if(v.voiceDSP){v.voiceDSP.release(start);}else{const g=v.env.gain;g.cancelScheduledValues(start);g.setValueAtTime(Math.max(.0001,g.value||.0001),start);g.linearRampToValueAtTime(.0001,end);}
-      this._kill(v,end+.02,key);
+      const stopAt=end+.02;
+      if(v._cleanupScheduled){
+        v.all?.forEach(o=>{try{o.stop(stopAt);}catch(e){}});
+        if(key){const rec=this._voiceCleanupTimers.get(key);if(rec?.voice===v)clearTimeout(rec.timer);const wait=Math.max(this.mobileAudio?45:80,Math.max(0,stopAt-now)*1000+(this.mobileAudio?40:65));this._voiceCleanupTimers.set(key,{voice:v,timer:setTimeout(()=>v._cleanupFire?.(),wait)});}
+      }else this._kill(v,stopAt,key);
     }catch(e){}
     this.voices.delete(key);this.tailVoices.delete(key);this.voicePool?.release(key,0);
   }
