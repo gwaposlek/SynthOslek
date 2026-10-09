@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.72-voice-allocation-failure-cleanup">
-<title>SynthOslek v16.72 — Voice Allocation Failure Cleanup</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.73-audio-test-harness-diagnostics">
+<title>SynthOslek v16.73 — Audio Test Harness & Diagnostics</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -3143,6 +3143,49 @@ syncSynthState(false);
   setStatus("v16.60 engine ready · True A/B Morph · Android 1x voice budget · 2ms audio target · 2-layer core · "+(navigator.gpu?"WebGPU":"Canvas")+" · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
+</script>
+<style id="so-diagnostics-style">
+#soDiagToggle{position:fixed;right:10px;bottom:10px;z-index:10020;border:1px solid #536477;border-radius:999px;padding:7px 11px;background:rgba(8,14,23,.92);color:#d9f4ff;font:600 11px/1.2 system-ui,sans-serif;box-shadow:0 3px 16px #0006;cursor:pointer}
+#soDiagPanel{position:fixed;right:10px;bottom:48px;z-index:10021;width:min(310px,calc(100vw - 20px));max-height:min(65vh,460px);overflow:auto;display:none;background:rgba(7,12,20,.97);color:#e7f1fb;border:1px solid #34475c;border-radius:12px;padding:12px;box-shadow:0 8px 28px #0009;font:12px/1.45 system-ui,sans-serif;backdrop-filter:blur(12px)}
+#soDiagPanel.open{display:block}#soDiagPanel h3{font-size:13px;margin:0 0 8px;color:#9fe8ff}#soDiagPanel .soDiagGrid{display:grid;grid-template-columns:1fr auto;gap:5px 12px}#soDiagPanel .soDiagValue{font-variant-numeric:tabular-nums;text-align:right;color:#fff}#soDiagPanel .soDiagHint{font-size:10px;color:#9aa9bb;margin-top:9px}#soDiagPanel button{border:1px solid #40556d;border-radius:7px;background:#152337;color:#e7f1fb;padding:5px 8px;cursor:pointer}
+@media(max-width:600px){#soDiagToggle{right:7px;bottom:7px;padding:6px 9px}#soDiagPanel{right:7px;bottom:43px}}
+</style>
+<button id="soDiagToggle" type="button" aria-expanded="false" aria-controls="soDiagPanel">Audio stats</button>
+<section id="soDiagPanel" aria-label="Audio diagnostics" aria-live="polite">
+<h3>SynthOslek · Runtime diagnostics</h3><div class="soDiagGrid">
+<span>Audio context</span><span class="soDiagValue" id="soDiagState">not started</span>
+<span>Active voices</span><span class="soDiagValue" id="soDiagActive">—</span>
+<span>Release tails</span><span class="soDiagValue" id="soDiagTails">—</span>
+<span>Voice pool</span><span class="soDiagValue" id="soDiagPool">—</span>
+<span>Pool pressure</span><span class="soDiagValue" id="soDiagPressure">—</span>
+<span>Base latency</span><span class="soDiagValue" id="soDiagBase">not reported</span>
+<span>Output latency</span><span class="soDiagValue" id="soDiagOutput">not reported</span>
+<span>ARP timer jitter</span><span class="soDiagValue" id="soDiagJitter">waiting for ARP</span>
+<span>ARP samples</span><span class="soDiagValue" id="soDiagSamples">0</span></div>
+<div style="display:flex;gap:7px;margin-top:10px"><button id="soDiagReset" type="button">Reset jitter</button><button id="soDiagExport" type="button">Copy report</button></div>
+<div class="soDiagHint">Latency values are browser estimates when supported. ARP jitter is timer wake-up drift, not MIDI-to-speaker round-trip latency.</div><pre id="soDiagReport" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;margin:8px 0 0"></pre>
+</section>
+<script id="so-diagnostics-script">
+(()=>{const $=id=>document.getElementById(id),panel=$('soDiagPanel'),toggle=$('soDiagToggle');if(!panel||!toggle)return;
+const jitter=[];let timer=0,report=null;
+window.SynthOslekDiagnostics={
+ recordArpWake(expected,actual){const d=actual-expected;if(Number.isFinite(d)){jitter.push(d);if(jitter.length>240)jitter.shift();}},
+ reset(){jitter.length=0;},
+ snapshot(){const a=jitter.slice().sort((x,y)=>x-y),avg=a.length?a.reduce((s,x)=>s+x,0)/a.length:0;return{count:a.length,meanMs:+avg.toFixed(2),p95Ms:a.length?+a[Math.min(a.length-1,Math.floor(a.length*.95))].toFixed(2):null,maxAbsMs:a.length?+Math.max(...a.map(Math.abs)).toFixed(2):null};}
+};
+function update(){let s=null;try{s=window.SynthOslekPerformance&&window.SynthOslekPerformance.snapshot();}catch(e){}
+const put=(id,v)=>{const el=$(id);if(el)el.textContent=String(v);};
+put('soDiagState',s?s.audioState:'not started');put('soDiagActive',s?s.activeVoices:'—');put('soDiagTails',s?s.tails:'—');put('soDiagPool',s?s.occupied+'/'+s.maxVoices+' ('+s.free+' free)':'—');let pressure=0;try{pressure=window.SynthOslekPerformance.pressure()||0;}catch(e){}put('soDiagPressure',s?Math.round(pressure*100)+'%':'—');
+put('soDiagBase',s&&s.baseLatencyMs?s.baseLatencyMs+' ms':'not reported');put('soDiagOutput',s&&s.outputLatencyMs?s.outputLatencyMs+' ms':'not reported');
+const j=window.SynthOslekDiagnostics.snapshot();put('soDiagJitter',j.count?'mean '+j.meanMs+' · p95 '+j.p95Ms+' · max ±'+j.maxAbsMs+' ms':'waiting for ARP');put('soDiagSamples',j.count);
+report={capturedAt:new Date().toISOString(),version:document.title,performance:s,jitter:j,userAgent:navigator.userAgent,visibility:document.visibilityState};const out=$('soDiagReport');if(out)out.textContent='Updated '+new Date(report.capturedAt).toLocaleTimeString()+'\n'+document.visibilityState+' tab · '+(navigator.platform||'platform unknown');
+}
+function start(){if(timer)return;update();timer=setInterval(update,750);}function stop(){if(timer){clearInterval(timer);timer=0;}}
+toggle.addEventListener('click',()=>{const open=panel.classList.toggle('open');toggle.setAttribute('aria-expanded',String(open));if(open)start();else stop();});
+$('soDiagReset').addEventListener('click',()=>{window.SynthOslekDiagnostics.reset();update();});
+$('soDiagExport').addEventListener('click',async()=>{update();try{await navigator.clipboard.writeText(JSON.stringify(report,null,2));$('soDiagExport').textContent='Copied';}catch(e){$('soDiagReport').textContent=JSON.stringify(report,null,2);}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')stop();else if(panel.classList.contains('open'))start();});
+})();
 </script>
 </body>
 </html>
