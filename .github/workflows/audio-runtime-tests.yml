@@ -1,0 +1,41 @@
+name: SynthOslek Audio Runtime Tests
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'tests/**'
+      - 'playwright.config.cjs'
+      - '.github/workflows/audio-runtime-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tests/**'
+      - 'playwright.config.cjs'
+      - '.github/workflows/audio-runtime-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser-audio-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Playwright test runner
+        run: npm install --no-save @playwright/test
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run runtime and offline audio tests
+        run: npx playwright test
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthoslek-audio-test-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
