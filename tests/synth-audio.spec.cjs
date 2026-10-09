@@ -111,3 +111,59 @@ test('actual SynthOslek note path produces analyser energy and releases cleanly'
   expect(result.activeAfterRelease).toBeLessThanOrEqual(result.activeBeforeRelease);
   expect(pageErrors).toEqual([]);
 });
+
+
+test('actual ARP stress keeps voices bounded and records timer jitter', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    const arp = document.getElementById('so67Arp');
+    const rate = document.getElementById('so67Rate');
+    if (!synth || !arp || !rate || !synth.analyser) return { unsupported: true, reason: 'ARP controls or analyser unavailable' };
+    synth.panic();
+    window.SynthOslekDiagnostics.reset();
+    rate.value = '1/16';
+    rate.dispatchEvent(new Event('change', { bubbles: true }));
+    arp.click();
+    [60, 64, 67, 72].forEach((n, i) => synth.noteOn(n, 0.72 - i * 0.05, 0));
+    const peakSamples = [];
+    const data = new Float32Array(synth.analyser.fftSize);
+    const until = performance.now() + 550;
+    while (performance.now() < until) {
+      synth.modWheel = (Math.sin(performance.now() / 75) + 1) / 2;
+      synth.analyser.getFloatTimeDomainData(data);
+      let peak = 0;
+      for (const v of data) peak = Math.max(peak, Math.abs(v));
+      peakSamples.push(peak);
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    const jitter = window.SynthOslekDiagnostics.snapshot();
+    const poolDuring = synth.voicePool.stats();
+    [60, 64, 67, 72].forEach(n => synth.noteOff(n, 0));
+    arp.click();
+    synth.panic();
+    const poolAfter = synth.voicePool.stats();
+    return {
+      unsupported: false,
+      jitter,
+      poolDuring,
+      poolAfter,
+      peakMax: Math.max(0, ...peakSamples),
+      finitePeaks: peakSamples.every(Number.isFinite),
+      audioState: synth.ctx.state
+    };
+  });
+  test.skip(result.unsupported, result.reason || 'ARP runtime diagnostics unavailable');
+  expect(result.audioState).toBe('running');
+  expect(result.jitter.count).toBeGreaterThan(0);
+  expect(result.jitter.maxAbsMs).toBeGreaterThanOrEqual(0);
+  expect(result.poolDuring.occupied).toBeLessThanOrEqual(result.poolDuring.max);
+  expect(result.poolAfter.active).toBe(0);
+  expect(result.finitePeaks).toBeTruthy();
+  expect(result.peakMax).toBeGreaterThan(0.00001);
+  expect(pageErrors).toEqual([]);
+});
