@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.69-master-volume-gain">
-<title>SynthOslek v16.69 — Master Volume Gain Fix</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.70-arp-state-cleanup">
+<title>SynthOslek v16.70 — ARP State Cleanup</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -2810,17 +2810,18 @@ syncSynthState(false);
     /* Schedule note boundaries against AudioContext time, not setTimeout jitter.
        This keeps Bluetooth/MIDI input responsive while making the ARP itself stable. */
     const when=Math.max(now+.012,arpNextAt||0);
-    if(arpLast)try{
-      const releaseAt=Math.min(arpLast.off||when,Math.max(now,when-.001));
+    if(arpLast){
+      const previous=arpLast;arpLast=null;
+      const releaseAt=Math.min(previous.off||when,Math.max(now,when-.001));
       noteMonitor.setArpPending(true);
-      monitoredBaseOff(arpLast.midi,arpLast.layer,releaseAt);
-      noteMonitor.setArpPending(false);
-    }catch(e){}
+      try{monitoredBaseOff(previous.midi,previous.layer,releaseAt);}catch(e){}
+      finally{noteMonitor.setArpPending(false);}
+    }
     if(n){
       const off=when+step*clamp(Number(SO.arp.gate)||.82,.05,1);
       noteMonitor.setArpPending(true);
-      monitoredBaseOn(n.midi,n.vel,n.layer,when);
-      noteMonitor.setArpPending(false);
+      try{monitoredBaseOn(n.midi,n.vel,n.layer,when);}catch(e){}
+      finally{noteMonitor.setArpPending(false);}
       arpLast={...n,off};
       arpIndex += arpDir; if(SO.arp.mode==="up/down")arpIndex=clamp(arpIndex,0,Math.max(0,arpCandidates().length-1));
       /* v16.35: do not touch the DOM on every ARP tick; frequent status writes
