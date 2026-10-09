@@ -2660,7 +2660,7 @@ syncSynthState(false);
   SO.seq.pattern.forEach((_,i)=>{const e=document.createElement("button");e.className="so-step";e.textContent=i+1;e.dataset.i=i; e.onclick=()=>{SO.seq.pattern[i].on=!SO.seq.pattern[i].on;e.classList.toggle("on",SO.seq.pattern[i].on);};$("#so67Steps")?.appendChild(e);});
 
   /* ---------- ARP ---------- */
-  const arpHeld=new Map(); let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null,arpNextAt=0;
+  const arpHeld=new Map(); let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null,arpNextAt=0,arpExpectedWakeMs=0;
   const baseOn=synth.noteOn.bind(synth), baseOff=synth.noteOff.bind(synth);
 
   /* v16.32 temporary visual note monitor: one source of truth at the actual
@@ -2813,6 +2813,8 @@ syncSynthState(false);
     return a[arpIndex%a.length];
   }
   function arpTick(){
+    if(arpExpectedWakeMs&&window.SynthOslekDiagnostics){try{window.SynthOslekDiagnostics.recordArpWake(arpExpectedWakeMs,performance.now());}catch(e){}}
+    arpExpectedWakeMs=0;
     if(!SO.arp.on||!arpHeld.size){arpTimer=0;return;}
     const n=arpPick(), now=audioNow(), step=rateSec(), swing=(SO.arp.swing||0)*step*.5;
     /* Schedule note boundaries against AudioContext time, not setTimeout jitter.
@@ -2841,6 +2843,7 @@ syncSynthState(false);
          next boundary; this greatly reduces main-thread jitter crackles. */
       const lookAheadMs=(/Android|Windows/i.test(navigator.userAgent)?28:16);
       const delay=Math.max(12,(arpNextAt-audioNow())*1000-lookAheadMs);
+      arpExpectedWakeMs=performance.now()+delay;
       arpTimer=setTimeout(arpTick,delay);
     }else{arpTimer=0;}
   }
