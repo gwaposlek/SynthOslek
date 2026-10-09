@@ -113,7 +113,7 @@ test('actual SynthOslek note path produces analyser energy and releases cleanly'
 });
 
 
-test('actual ARP stress keeps voices bounded and records timer jitter', async ({ page }) => {
+test('actual ARP stress keeps voices bounded and measures waveform continuity', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto('/');
@@ -130,40 +130,58 @@ test('actual ARP stress keeps voices bounded and records timer jitter', async ({
     rate.dispatchEvent(new Event('change', { bubbles: true }));
     arp.click();
     [60, 64, 67, 72].forEach((n, i) => synth.noteOn(n, 0.72 - i * 0.05, 0));
-    const peakSamples = [];
     const data = new Float32Array(synth.analyser.fftSize);
-    const until = performance.now() + 550;
+    const peaks = [], rmsValues = [], dcValues = [], maxJumps = [];
+    const until = performance.now() + 900;
     while (performance.now() < until) {
+      /* Exercise the same public note/morph state while the real ARP is active. */
       synth.modWheel = (Math.sin(performance.now() / 75) + 1) / 2;
       synth.analyser.getFloatTimeDomainData(data);
-      let peak = 0;
-      for (const v of data) peak = Math.max(peak, Math.abs(v));
-      peakSamples.push(peak);
+      let peak = 0, sum = 0, mean = 0, maxJump = 0, invalid = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = data[i];
+        if (!Number.isFinite(v)) invalid++;
+        peak = Math.max(peak, Math.abs(v));
+        sum += v * v;
+        mean += v;
+        if (i > 0) maxJump = Math.max(maxJump, Math.abs(v - data[i - 1]));
+      }
+      peaks.push(peak);
+      rmsValues.push(Math.sqrt(sum / data.length));
+      dcValues.push(mean / data.length);
+      maxJumps.push(maxJump);
+      if (invalid) return { unsupported: false, invalid };
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     const jitter = window.SynthOslekDiagnostics.snapshot();
     const poolDuring = synth.voicePool.stats();
+    const waveform = {
+      peakMax: Math.max(...peaks),
+      rmsMax: Math.max(...rmsValues),
+      dcAbsMax: Math.max(...dcValues.map(Math.abs)),
+      maxAdjacentSampleJump: Math.max(...maxJumps),
+      framesSampled: data.length * peaks.length,
+      sampleWindows: peaks.length,
+      allFinite: peaks.every(Number.isFinite) && rmsValues.every(Number.isFinite) &&
+        dcValues.every(Number.isFinite) && maxJumps.every(Number.isFinite)
+    };
     [60, 64, 67, 72].forEach(n => synth.noteOff(n, 0));
     arp.click();
     synth.panic();
     const poolAfter = synth.voicePool.stats();
-    return {
-      unsupported: false,
-      jitter,
-      poolDuring,
-      poolAfter,
-      peakMax: Math.max(0, ...peakSamples),
-      finitePeaks: peakSamples.every(Number.isFinite),
-      audioState: synth.ctx.state
-    };
+    return { unsupported: false, jitter, poolDuring, poolAfter, waveform, audioState: synth.ctx.state };
   });
   test.skip(result.unsupported, result.reason || 'ARP runtime diagnostics unavailable');
+  expect(result.invalid || 0).toBe(0);
   expect(result.audioState).toBe('running');
   expect(result.jitter.count).toBeGreaterThan(0);
-  expect(result.jitter.maxAbsMs).toBeGreaterThanOrEqual(0);
   expect(result.poolDuring.occupied).toBeLessThanOrEqual(result.poolDuring.max);
   expect(result.poolAfter.active).toBe(0);
-  expect(result.finitePeaks).toBeTruthy();
-  expect(result.peakMax).toBeGreaterThan(0.00001);
+  expect(result.waveform.allFinite).toBeTruthy();
+  expect(result.waveform.peakMax).toBeGreaterThan(0.00001);
+  expect(result.waveform.peakMax).toBeLessThan(1);
+  expect(result.waveform.rmsMax).toBeGreaterThan(0);
+  /* Diagnostic metric, not a universal click threshold: abrupt changes need listening/context. */
+  console.log('ARP stress audio metrics:', JSON.stringify({ jitter: result.jitter, poolDuring: result.poolDuring, poolAfter: result.poolAfter, waveform: result.waveform }));
   expect(pageErrors).toEqual([]);
 });
