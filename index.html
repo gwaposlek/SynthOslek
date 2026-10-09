@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.64-panic-tail-retrigger-fix">
-<title>SynthOslek v16.64 — Panic Tail & MPE Fix</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.65-sustain-all-notes-off-fix">
+<title>SynthOslek v16.65 — Sustain & All Notes Off Fix</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1204,7 +1204,7 @@ void Promise.race([
     this.voices.delete(key);this.tailVoices.delete(key);this.voicePool?.release(key,0);
   }
   panic(){return this.dspBackend?.panic();}
-  allNotesOff(){if(!this.started)return;for(const key of [...this.voices.keys()]){const [layer,midi]=key.split(":");this.noteOff(Number(midi),Number(layer));}this.sustained.clear();}
+  allNotesOff(){if(!this.started)return;const wasSustain=this.sustain;this.sustain=false;for(const key of [...this.voices.keys()]){const [layer,midi]=key.split(":");this.noteOff(Number(midi),Number(layer));}this.sustained.clear();this.sustain=wasSustain;}
   _nativePanic(){this.sustained.clear();this.sustain=false;this.monoHeld=Array.from({length:LAYER_COUNT},()=>[]);const keys=new Set([...this.voices.keys(),...this.tailVoices.keys()]);for(const key of keys)this._forceStop(key);this.lastFreqByLayer.fill(0);this.modMatrix?.setSource("aftertouch",0);this.modMatrix?.setSource("mpeTimbre",0);}
   _updateDelayTime(){const bpm=Math.max(20,Math.min(300,Number(window.SynthOslekTiming?.bpm)||120)),map={"1/1":4,"1/2":2,"1/4":1,"1/8":.5,"1/16":.25,"1/8d":.75,"1/8t":1/3};const sec=map[this.delaySync];if(sec&&this.delay)this.delay.delayTime.setTargetAtTime(Math.max(.01,Math.min(1.5,(60/bpm)*sec)),this.ctx.currentTime,.015);}
   setTempoBpm(v){if(this.started)this._updateDelayTime();return v;}
