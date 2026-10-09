@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.67-worklet-waveform-morph-fix">
-<title>SynthOslek v16.67 — Waveform Morph Fix</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.68-retrigger-envelope-hold">
+<title>SynthOslek v16.68 — Retrigger Envelope Hold</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1195,7 +1195,7 @@ void Promise.race([
     const now=this.ctx.currentTime,fade=Math.max(.002,Number(fadeMs)||5)/1000;
     const end=Math.max(now+fade,Number.isFinite(at)?at:now+fade),start=Math.max(now,end-fade);
     try{
-      if(v.voiceDSP){v.voiceDSP.release(start);}else{const g=v.env.gain;g.cancelScheduledValues(start);g.setValueAtTime(Math.max(.0001,g.value||.0001),start);g.linearRampToValueAtTime(.0001,end);}
+      if(v.voiceDSP){v.voiceDSP.release(start);}else{const g=v.env.gain;if(g.cancelAndHoldAtTime)g.cancelAndHoldAtTime(start);else{g.cancelScheduledValues(start);g.setValueAtTime(Math.max(.0001,g.value||.0001),start);}g.linearRampToValueAtTime(.0001,end);}
       const stopAt=end+.02;
       if(v._cleanupScheduled){
         v.all?.forEach(o=>{try{o.stop(stopAt);}catch(e){}});
