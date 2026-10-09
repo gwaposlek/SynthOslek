@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-09-v16.71-stop-arp-safe-cleanup">
-<title>SynthOslek v16.71 — Stop ARP Safe Cleanup</title>
+<meta name="synthoslek-build" content="2026-10-09-v16.72-voice-allocation-failure-cleanup">
+<title>SynthOslek v16.72 — Voice Allocation Failure Cleanup</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1326,8 +1326,16 @@ synth.noteOn=function(midi,vel=.85,layer=this.activeLayer,when=null,stealFadeMs=
   const key=layer+":"+midi;
   if(this.voicePool.active.has(key))this._forceStop(key,/Android/i.test(navigator.userAgent)?8:6,when);
   const allocation=this.voicePool.acquire(key,vel);
+  if(!allocation?.slot)return false;
   if(allocation.stolenKey)this._forceStop(allocation.stolenKey,/Android/i.test(navigator.userAgent)?8:6,when);
-  _noteOn0(midi,vel,layer,when,stealFadeMs,mpeChannel,mpeBend);
+  try{
+    _noteOn0(midi,vel,layer,when,stealFadeMs,mpeChannel,mpeBend);
+  }catch(error){
+    /* Never leave a reserved pool slot behind if node creation/scheduling fails. */
+    if(this.voices.has(key)||this.tailVoices?.has(key))this._forceStop(key,/Android/i.test(navigator.userAgent)?8:6,when);
+    else this.voicePool.release(key);
+    throw error;
+  }
   if(!this.voices.has(key))this.voicePool.release(key);
   return this.voices.has(key);
 };
