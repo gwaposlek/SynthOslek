@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('SynthOslek loads, preserves key UI, and exposes optional diagnostics', async ({ page }) => {
+test('SynthOslek starts its audio engine and preserves key UI/diagnostics', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto('/');
@@ -8,12 +8,16 @@ test('SynthOslek loads, preserves key UI, and exposes optional diagnostics', asy
   await expect(page.locator('#keyboard')).toBeAttached();
   await expect(page.locator('#soDiagToggle')).toBeAttached();
   await expect(page.locator('#soDiagPanel')).toBeHidden();
+  await page.locator('#welcomeStart').click();
+  await expect.poll(async () => page.evaluate(() => {
+    try { return window.SynthOslekPerformance && window.SynthOslekPerformance.snapshot().audioState; }
+    catch (e) { return 'error'; }
+  }), { timeout: 10000 }).toBe('running');
   await page.locator('#soDiagToggle').click();
   await expect(page.locator('#soDiagPanel')).toBeVisible();
-  await expect(page.locator('#soDiagState')).not.toHaveText('');
+  await expect(page.locator('#soDiagState')).toHaveText('running');
   expect(pageErrors).toEqual([]);
 });
-
 test('diagnostics records ARP timer drift and summarizes it', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(() => {
