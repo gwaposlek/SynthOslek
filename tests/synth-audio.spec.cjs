@@ -4,10 +4,13 @@ test('SynthOslek starts its audio engine and preserves key UI/diagnostics', asyn
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto('/');
-  await expect(page).toHaveTitle(/SynthOslek v16\.74/);
+  await expect(page).toHaveTitle(/SynthOslek v16\.75/);
   await expect(page.locator('#keyboard')).toBeAttached();
-  await expect(page.locator('.welcome-desc')).toContainText('real-time browser synth');
+  await expect(page.locator('.welcome-desc')).toContainText('Shape a sound. Make it yours.');
   await expect(page.locator('.welcome-desc')).not.toContainText('4 layers');
+  await expect(page.locator('.welcome-features')).toContainText('DESIGN');
+  await expect(page.locator('.welcome-features')).toContainText('MORPH');
+  await expect(page.locator('.welcome-features')).toContainText('PERFORM');
   await expect(page.locator('#soDiagToggle')).toBeAttached();
   await expect(page.locator('#soDiagPanel')).toBeHidden();
   await page.locator('#welcomeStart').click();
