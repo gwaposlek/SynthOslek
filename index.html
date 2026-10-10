@@ -1227,7 +1227,8 @@ class SynthOslek{
       if(vf2)vf2.frequency.linearRampToValueAtTime(Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset+envAmt)),now+fA);
     }
     if(workletPath){
-      env.connect(vf);if(vf2){vf.connect(vf2);vf2.connect(va);}else vf.connect(va);
+      // AudioWorklet oscillators use the native envelope/amp path; native filter nodes are absent here.
+      env.connect(va);
     }else{
       env.connect(vf);if(vf2){vf.connect(vf2);vf2.connect(va);}else vf.connect(va);
     }
