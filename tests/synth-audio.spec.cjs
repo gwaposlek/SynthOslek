@@ -4,7 +4,7 @@ test('SynthOslek starts its audio engine and preserves key UI/diagnostics', asyn
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto('/');
-  await expect(page).toHaveTitle(/SynthOslek v16\.67/);
+  await expect(page).toHaveTitle(/SynthOslek v16\.68/);
   await expect(page.locator('#keyboard')).toBeAttached();
   await expect(page.locator('.welcome-desc')).toContainText('Describe the sound in your head');
   await expect(page.locator('.welcome-desc')).not.toContainText('4 layers');
@@ -227,7 +227,7 @@ test('voice-pool reclaim clears orphaned reservations and panic leaves no voices
 
 test('minimal mode keeps essentials visible and ADV toggle restores full controls', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle(/SynthOslek v16\.67/);
+  await expect(page).toHaveTitle(/SynthOslek v16\.68/);
   await expect(page.locator('.welcome-desc')).toContainText('MIDI controller');
   await page.locator('#welcomeStart').click();
   await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
