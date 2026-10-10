@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.65.2-prompt-placement-fix">
-<title>SynthOslek v16.65 — Morph Instrument</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.66-voice-pool-fix">
+<title>SynthOslek v16.66 — Morph Instrument & Voice-Pool Fix</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -584,6 +584,13 @@ header{display:none!important}
 @media(orientation:portrait){#so67{overflow:visible}.so-steps{flex:none}#so67Panel{font-size:.6rem}#so67 .so-main-row{width:100%}#so67 .so-music-row{width:100%;display:grid;grid-template-columns:auto auto 1fr auto 1fr auto 1fr;align-items:center}#so67 .so-music-row .so-label{white-space:nowrap}#so67 .so-music-row select{width:100%;min-width:0}}
 
 #panels{display:none!important}
+
+.welcome-features{display:flex;justify-content:center;gap:.45rem;flex-wrap:wrap;margin:-.45rem 0 1.35rem}
+.welcome-features span{padding:.28rem .55rem;border:1px solid #263247;border-radius:999px;color:#a9c9ff;font-size:.58rem;font-weight:800;letter-spacing:.14em;background:rgba(42,67,105,.12)}
+#soDiagToggle{position:fixed;right:10px;bottom:10px;z-index:19990;border:1px solid #536477;border-radius:999px;padding:7px 11px;background:rgba(8,14,23,.94);color:#d9f4ff;font:600 11px/1.2 system-ui,sans-serif;box-shadow:0 3px 16px #0006;cursor:pointer}
+#soDiagPanel{position:fixed;right:10px;bottom:48px;z-index:19991;width:min(315px,calc(100vw - 20px));max-height:min(65vh,460px);overflow:auto;display:none;background:rgba(7,12,20,.97);color:#e7f1fb;border:1px solid #34475c;border-radius:12px;padding:12px;box-shadow:0 8px 28px #0009;font:12px/1.45 system-ui,sans-serif;backdrop-filter:blur(12px)}
+#soDiagPanel.open{display:block}#soDiagPanel h3{font-size:13px;margin:0 0 8px;color:#9fe8ff}#soDiagPanel .soDiagGrid{display:grid;grid-template-columns:1fr auto;gap:5px 10px}#soDiagPanel .soDiagValue{font-variant-numeric:tabular-nums;text-align:right;color:#fff}#soDiagPanel .soDiagHint{font-size:10px;color:#9aa9bb;margin-top:9px}#soDiagPanel button{border:1px solid #40556d;border-radius:7px;background:#152337;color:#e7f1fb;padding:5px 8px;cursor:pointer}
+@media(max-width:600px){#soDiagToggle{right:7px;bottom:7px;padding:6px 9px}#soDiagPanel{right:7px;bottom:43px}}
 </style>
 </head>
 <body>
@@ -596,7 +603,8 @@ header{display:none!important}
   <div class="welcome-card">
     <h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
     <div class="welcome-tag">Morph Instrument</div>
-    <p class="welcome-desc">Describe a sound — or tap <b>Surprise Me</b>. Then move one wheel to morph between what you asked for and what it becomes.</p>
+    <p class="welcome-desc">Shape a sound. Make it yours. Describe the tone you hear in your head, start playing, then morph it live with one wheel.</p>
+    <div class="welcome-features" aria-label="SynthOslek highlights"><span>DESIGN</span><span>MORPH</span><span>PERFORM</span></div>
     <button class="btn" id="welcomeStart" type="button" onclick="this.textContent='Checking…';this.disabled=true;if(typeof window.startSynthOslekFromGesture==='function'){window.startSynthOslekFromGesture().finally(()=>{this.disabled=false;this.textContent='Start';});}else{this.disabled=false;this.textContent='SCRIPT ERROR';var e=document.getElementById('errorScreen'),t=document.getElementById('errorText'),d=document.getElementById('errorDetail');if(t)t.textContent='SynthOslek startup code did not load. Reload the page or check the script error below.';if(d)d.textContent='The main script did not register the Start function. This usually means an earlier JavaScript error or a stale cached page.';if(e)e.style.display='block';}">Start</button>
     <div class="welcome-foot">Tap Start to unlock audio · Chrome / Edge / Safari recommended</div>
   </div>
@@ -863,7 +871,16 @@ class VoicePool{
     return {slot,duplicate:false,stolenKey,reason};
   }
   release(key,tailMs=0){
-    const slot=this.active.get(key);if(!slot)return;
+    const slot=this.active.get(key);
+    if(!slot){
+      const orphan=this.slots.find(x=>x.key===key);
+      if(orphan){
+        if(orphan.timer){clearTimeout(orphan.timer);orphan.timer=0;}
+        orphan.active=false;orphan.key=null;orphan.velocity=0;orphan.age=0;orphan.releasingUntil=0;
+      }
+      this.active.delete(key);
+      return;
+    }
     this.active.delete(key);slot.active=false;
     const ms=Math.max(0,Number(tailMs)||0);
     if(ms>0){
@@ -872,6 +889,34 @@ class VoicePool{
       const heldKey=slot.key;
       slot.timer=setTimeout(()=>{if(!slot.active&&slot.key===heldKey){slot.timer=0;this._clearRelease(slot);}},ms+20);
     }else this._clearRelease(slot);
+  }
+  reclaim(liveKeys){
+    const now=performance.now();
+    const live=liveKeys instanceof Set?liveKeys:new Set(liveKeys||[]);
+    let reclaimed=0;
+    for(const slot of this.slots){
+      if(!slot.key)continue;
+      const key=slot.key;
+      const keyOrphaned=slot.active&&!live.has(key);
+      const tailExpired=!slot.active&&slot.releasingUntil>0&&slot.releasingUntil<now-50;
+      if(keyOrphaned||tailExpired){
+        if(slot.timer){clearTimeout(slot.timer);slot.timer=0;}
+        this.active.delete(key);
+        slot.active=false;slot.key=null;slot.velocity=0;slot.age=0;slot.releasingUntil=0;
+        reclaimed++;
+      }
+    }
+    for(const [key,slot] of this.active){
+      if(!live.has(key)||!slot||!slot.active){
+        this.active.delete(key);
+        if(slot&&slot.key===key){
+          if(slot.timer){clearTimeout(slot.timer);slot.timer=0;}
+          slot.active=false;slot.key=null;slot.velocity=0;slot.age=0;slot.releasingUntil=0;
+          reclaimed++;
+        }
+      }
+    }
+    return reclaimed;
   }
   clear(){
     for(const slot of this.slots){if(slot.timer)clearTimeout(slot.timer);slot.active=false;slot.timer=0;this._clearRelease(slot);}
@@ -886,8 +931,9 @@ class VoicePool{
 class SynthOslekPerformanceMonitor{
   constructor(synth){this.synth=synth;this.started=performance.now();}
   snapshot(){
-    const s=this.synth,p=s.voicePool?.stats?.()||{max:48,active:s.voices?.size||0,tails:0,occupied:s.voices?.size||0};
-    return {audioState:s.ctx?.state||"uninitialized",activeVoices:p.active,tails:p.tails,occupied:p.occupied,maxVoices:p.max};
+    const s=this.synth,p=s.voicePool?.stats?.()||{max:48,active:s.voices?.size||0,tails:0,occupied:s.voices?.size||0,free:0};
+    const base=s.ctx?.baseLatency||0,output=s.ctx?.outputLatency||0;
+    return {audioState:s.ctx?.state||"uninitialized",activeVoices:p.active,tails:p.tails,occupied:p.occupied,free:p.free??Math.max(0,(p.max||48)-(p.occupied||0)),maxVoices:p.max,baseLatencyMs:+(base*1000).toFixed(2),outputLatencyMs:+(output*1000).toFixed(2)};
   }
   pressure(){const x=this.snapshot();return Math.min(1,x.maxVoices?x.occupied/x.maxVoices:0);}
 }
@@ -1381,7 +1427,9 @@ class SynthOslek{
     }
   }
   _forceStop(key,fadeMs=5,at=null){
-    const v=this.voices.get(key)||this.tailVoices.get(key);if(!v)return;
+    const v=this.voices.get(key)||this.tailVoices.get(key);
+    this.sustained?.delete(key);
+    if(!v){this.voicePool?.release(key,0);return;}
     const now=this.ctx.currentTime,fade=Math.max(.002,Number(fadeMs)||5)/1000;
     const end=Math.max(now+fade,Number.isFinite(at)?at:now+fade),start=Math.max(now,end-fade);
     try{
@@ -1693,7 +1741,7 @@ Object.defineProperty(synth,"params",{
   set(v){if(v&&this.layerProfiles[this.activeLayer]!==v)this.layerProfiles[this.activeLayer]=v;}
 });
 
-synth.voicePool=new VoicePool(/Android/i.test(navigator.userAgent)?24:48);
+synth.voicePool=new VoicePool(/Android/i.test(navigator.userAgent)?24:128);
 synth.performanceMonitor=new SynthOslekPerformanceMonitor(synth);
 window.SynthOslekPerformance={snapshot:()=>synth.performanceMonitor.snapshot(),pressure:()=>synth.performanceMonitor.pressure()};
 synth.modMatrix=new ModulationMatrix();
@@ -1722,12 +1770,23 @@ synth.mpeEnabled=false;synth.mpeChannelBends=new Map();
 const _noteOn0=synth.noteOn.bind(synth);
 synth.noteOn=function(midi,vel=.85,layer=this.activeLayer,when=null){
   if(!this.started)return false;
+  if(this.voicePool.reclaim){
+    try{this.voicePool.reclaim(new Set(this.voices.keys()));}catch(e){}
+  }
   const key=layer+":"+midi;
   if(this.voicePool.active.has(key))this._forceStop(key,6,when);
   const allocation=this.voicePool.acquire(key,vel);
+  if(!allocation||!allocation.slot){this.voicePool.release(key,0);return false;}
   if(allocation.stolenKey)this._forceStop(allocation.stolenKey,6,when);
-  _noteOn0(midi,vel,layer,when);
-  if(!this.voices.has(key))this.voicePool.release(key);
+  try{_noteOn0(midi,vel,layer,when);}
+  catch(e){
+    try{
+      if(this.voices.has(key)||this.tailVoices.has(key))this._forceStop(key,5,when);
+      else this.voicePool.release(key,0);
+    }catch(cleanupError){this.voicePool.release(key,0);}
+    throw e;
+  }
+  if(!this.voices.has(key))this.voicePool.release(key,0);
   return this.voices.has(key);
 };
 
@@ -1737,7 +1796,8 @@ synth.noteOff=function(midi,layer=null,when=null){
   const layers=layer==null?layerState.map((_,i)=>i):[layer];
   for(const l of layers){
     const key=l+":"+midi;
-    if(!this.voices.has(key)&&!this.sustained.has(key))this.voicePool.release(key);
+    if(this.sustained.has(key))continue;
+    this.voicePool.release(key,0);
   }
   return out;
 };
@@ -1745,12 +1805,27 @@ synth.noteOff=function(midi,layer=null,when=null){
 const _releaseSustain0=synth.releaseSustain.bind(synth);
 synth.releaseSustain=function(){
   const out=_releaseSustain0();
-  for(const key of[...this.voicePool.active.keys()])if(!this.voices.has(key))this.voicePool.release(key);
+  if(this.voicePool.reclaim){
+    try{this.voicePool.reclaim(new Set(this.voices.keys()));}catch(e){}
+  }
   return out;
 };
 
 const _panic0=synth.panic.bind(synth);
-synth.panic=function(){const out=_panic0();this.voicePool.clear();return out;};
+synth.panic=function(){
+  let out;
+  try{out=_panic0();}
+  finally{
+    for(const key of [...this.tailVoices.keys()]){
+      try{this._forceStop(key,2);}catch(e){}
+    }
+    try{this.sustained.clear();}catch(e){}
+    try{this.voices.clear();}catch(e){}
+    try{this.tailVoices.clear();}catch(e){}
+    this.voicePool.clear();
+  }
+  return out;
+};
 
 let stateSyncTimer=0;
 const queueSynthStateSync=()=>{
@@ -2651,7 +2726,19 @@ modeEl?.querySelectorAll("button[data-m]").forEach(b=>b.addEventListener("click"
 /* ========================= PANIC ========================= */
 $("panicBtn")?.addEventListener("click",()=>{
   synth.panic();midiManager?.clearMidiVisuals?.();activeKeys.clear();
-  document.querySelectorAll(".key.active").forEach(k=>k.classList.remove("active"));
+  document.querySelectorAll(".key.active,.key.midi-active").forEach(k=>k.classList.remove("active","midi-active"));
+});
+document.addEventListener("keydown",(e)=>{
+  if(e.key!=="Escape")return;
+  if(e.target&&(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable))return;
+  try{
+    synth.panic();
+    if(typeof midiManager!=="undefined")midiManager.clearMidiVisuals?.();
+    if(typeof activeKeys!=="undefined")activeKeys.clear();
+    document.querySelectorAll(".key.active,.key.midi-active").forEach(k=>k.classList.remove("active","midi-active"));
+    const st=document.getElementById("stxt");
+    if(st)st.textContent="Panic — all voices cleared";
+  }catch(err){}
 });
 
 /* ========================= BLE MIDI ========================= */
@@ -3053,7 +3140,7 @@ syncSynthState(false);
   SO.seq.pattern.forEach((_,i)=>{const e=document.createElement("button");e.className="so-step";e.textContent=i+1;e.dataset.i=i;e.onclick=()=>{SO.seq.pattern[i].on=!SO.seq.pattern[i].on;e.classList.toggle("on",SO.seq.pattern[i].on);};$$("#so67Steps")?.appendChild(e);});
 
   /* ARP */
-  const arpHeld=new Map();let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null,arpNextAt=0;
+  const arpHeld=new Map();let arpTimer=0,arpIndex=0,arpDir=1,arpLast=null,arpNextAt=0,arpExpectedWakeMs=0;
   const baseOn=synth.noteOn.bind(synth),baseOff=synth.noteOff.bind(synth);
   const noteMonitor=(()=>{
     const state={input:new Map(),generated:new Map(),arp:new Map(),arpPending:false,root:null};
@@ -3132,6 +3219,8 @@ syncSynthState(false);
     return a[arpIndex%a.length];
   }
   function arpTick(){
+    if(arpExpectedWakeMs&&window.SynthOslekDiagnostics){try{window.SynthOslekDiagnostics.recordArpWake(arpExpectedWakeMs,performance.now());}catch(e){}}
+    arpExpectedWakeMs=0;
     if(!SO.arp.on||!arpHeld.size){arpTimer=0;return;}
     const n=arpPick(),now=audioNow(),step=rateSec(),swing=(SO.arp.swing||0)*step*.5;
     const when=Math.max(now+.012,arpNextAt||0);
@@ -3147,11 +3236,12 @@ syncSynthState(false);
       arpNextAt=when+Math.max(.01,step+(arpIndex%2?swing:-swing));
       const lookAheadMs=(/Android|Windows/i.test(navigator.userAgent)?28:16);
       const delay=Math.max(12,(arpNextAt-audioNow())*1000-lookAheadMs);
+      arpExpectedWakeMs=performance.now()+delay;
       arpTimer=setTimeout(arpTick,delay);
     }else{arpTimer=0;}
   }
-  function startArp(){clearTimeout(arpTimer);arpTimer=0;arpIndex=0;arpDir=1;arpNextAt=audioNow()+.01;arpTick();}
-  function stopArp(){clearTimeout(arpTimer);arpTimer=0;arpNextAt=0;if(arpLast){try{monitoredBaseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}arpHeld.clear();}
+  function startArp(){clearTimeout(arpTimer);arpTimer=0;arpExpectedWakeMs=0;arpIndex=0;arpDir=1;arpNextAt=audioNow()+.01;arpTick();}
+  function stopArp(){clearTimeout(arpTimer);arpTimer=0;arpExpectedWakeMs=0;arpNextAt=0;if(arpLast){try{monitoredBaseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}arpHeld.clear();}
   const musicHeld=new Map();
   synth.noteOn=function(midi,vel=.85,layer=synth.activeLayer,when=null){
     noteMonitor.inputOn(midi);
@@ -3331,7 +3421,7 @@ syncSynthState(false);
   window.SynthOslekPerformance={snapshot:()=>({audioState:synth?.ctx?.state||"uninitialized",bpm:SO.clock.bpm,activeVoices:synth?.voices?.size||0,tailVoices:synth?.tailVoices?.size||0,sampleRate:synth?.ctx?.sampleRate||0})};
 
   window.SynthOslekRoadmap={version:"16.65",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.65 engine ready · A/B morph · gyro · pair memory · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.66 engine ready · voice-pool fix · A/B morph · gyro · pair memory · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
 })();
 
 /* ========================= WELCOME + START ========================= */
@@ -3378,5 +3468,48 @@ welcomeStart?.addEventListener("click",()=>{void startSynthOslekFromGesture();})
 welcomeStart?.addEventListener("pointerup",e=>{if(e.pointerType==="touch")void startSynthOslekFromGesture();},{passive:true});
 document.getElementById("errorReload")?.addEventListener("click",()=>location.reload());
 </script>
+
+<button id="soDiagToggle" type="button" aria-expanded="false" aria-controls="soDiagPanel">Audio stats</button>
+<section id="soDiagPanel" aria-label="Audio diagnostics" aria-live="polite">
+<h3>SynthOslek · Runtime diagnostics</h3><div class="soDiagGrid">
+<span>Audio context</span><span class="soDiagValue" id="soDiagState">not started</span>
+<span>Active voices</span><span class="soDiagValue" id="soDiagActive">—</span>
+<span>Release tails</span><span class="soDiagValue" id="soDiagTails">—</span>
+<span>Voice pool</span><span class="soDiagValue" id="soDiagPool">—</span>
+<span>Pool pressure</span><span class="soDiagValue" id="soDiagPressure">—</span>
+<span>Base latency</span><span class="soDiagValue" id="soDiagBase">not reported</span>
+<span>Output latency</span><span class="soDiagValue" id="soDiagOutput">not reported</span>
+<span>ARP timer jitter</span><span class="soDiagValue" id="soDiagJitter">waiting for ARP</span>
+<span>ARP samples</span><span class="soDiagValue" id="soDiagSamples">0</span></div>
+<div style="display:flex;gap:7px;margin-top:10px"><button id="soDiagReset" type="button">Reset jitter</button><button id="soDiagExport" type="button">Copy report</button></div>
+<div class="soDiagHint">Latency values are browser estimates. ARP jitter is timer wake-up drift, not end-to-end MIDI-to-speaker latency.</div><pre id="soDiagReport" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;margin:8px 0 0"></pre>
+</section>
+<script id="so-diagnostics-script">
+(()=>{const $=id=>document.getElementById(id),panel=$('soDiagPanel'),toggle=$('soDiagToggle');if(!panel||!toggle)return;
+const jitter=[];let timer=0,report=null;
+window.SynthOslekDiagnostics={
+ recordArpWake(expected,actual){const d=actual-expected;if(Number.isFinite(d)){jitter.push(d);if(jitter.length>240)jitter.shift();}},
+ reset(){jitter.length=0;},
+ snapshot(){const a=jitter.slice().sort((x,y)=>x-y),avg=a.length?a.reduce((sum,x)=>sum+x,0)/a.length:0;return{count:a.length,meanMs:+avg.toFixed(2),p95Ms:a.length?+a[Math.min(a.length-1,Math.floor(a.length*.95))].toFixed(2):null,maxAbsMs:a.length?+Math.max(...a.map(Math.abs)).toFixed(2):null};}
+};
+function update(){let stat=null;try{stat=window.SynthOslekPerformance&&window.SynthOslekPerformance.snapshot();}catch(e){}
+const put=(id,value)=>{const el=$(id);if(el)el.textContent=String(value);};
+put('soDiagState',stat?stat.audioState:'not started');put('soDiagActive',stat?stat.activeVoices:'—');put('soDiagTails',stat?stat.tails:'—');
+put('soDiagPool',stat?stat.occupied+'/'+stat.maxVoices+' ('+stat.free+' free)':'—');
+let pressure=0;try{pressure=window.SynthOslekPerformance.pressure()||0;}catch(e){}
+put('soDiagPressure',stat?Math.round(pressure*100)+'%':'—');
+put('soDiagBase',stat&&stat.baseLatencyMs?stat.baseLatencyMs+' ms':'not reported');put('soDiagOutput',stat&&stat.outputLatencyMs?stat.outputLatencyMs+' ms':'not reported');
+const j=window.SynthOslekDiagnostics.snapshot();put('soDiagJitter',j.count?'mean '+j.meanMs+' · p95 '+j.p95Ms+' · max ±'+j.maxAbsMs+' ms':'waiting for ARP');put('soDiagSamples',j.count);
+report={capturedAt:new Date().toISOString(),version:document.title,performance:stat,jitter:j,userAgent:navigator.userAgent,visibility:document.visibilityState};
+const pre=$('soDiagReport');if(pre)pre.textContent='Updated '+new Date(report.capturedAt).toLocaleTimeString()+'\n'+document.visibilityState+' tab';
+}
+function start(){if(timer)return;update();timer=setInterval(update,750);}function stop(){if(timer){clearInterval(timer);timer=0;}}
+toggle.addEventListener('click',()=>{const open=panel.classList.toggle('open');toggle.setAttribute('aria-expanded',String(open));if(open)start();else stop();});
+$('soDiagReset').addEventListener('click',()=>{window.SynthOslekDiagnostics.reset();update();});
+$('soDiagExport').addEventListener('click',async()=>{update();try{await navigator.clipboard.writeText(JSON.stringify(report,null,2));$('soDiagExport').textContent='Copied';}catch(e){$('soDiagReport').textContent=JSON.stringify(report,null,2);}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')stop();else if(panel.classList.contains('open'))start();});
+})();
+</script>
+
 </body>
 </html>
