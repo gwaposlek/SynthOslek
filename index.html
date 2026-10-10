@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.78-min-adv-smooth-transition">
-<title>SynthOslek v16.78 — SynthOslek</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.79-live-morph-direction-balance">
+<title>SynthOslek v16.79 — SynthOslek</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1460,7 +1460,12 @@ class SynthOslek{
   _voiceMorphProfile(v){
     const base=v?.rawA||v?.params||this.params;
     if(this.getMorphMode()==="xfade")return base;
-    if(v?.rawB)return interpolateProfile(base,v.rawB,this._morphAmount());
+    if(v?.rawB){
+      // Match note-on initialization exactly: both paths must apply the same
+      // macro shaping after A/B interpolation or held-note morph can feel
+      // asymmetric depending on which wheel position the note started at.
+      return this._morphParams(interpolateProfile(base,v.rawB,this._morphAmount()));
+    }
     return this._morphParams(v?.params||this.params);
   }
   _applyMorphToVoice(v,at=null){
