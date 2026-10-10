@@ -1797,7 +1797,8 @@ synth.noteOff=function(midi,layer=null,when=null){
   for(const l of layers){
     const key=l+":"+midi;
     if(this.sustained.has(key))continue;
-    this.voicePool.release(key,0);
+    /* Keep a scheduled release-tail reservation; clear only a still-active slot. */
+    if(this.voicePool.active.has(key))this.voicePool.release(key,0);
   }
   return out;
 };
