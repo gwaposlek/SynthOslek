@@ -4,9 +4,9 @@ test('SynthOslek starts its audio engine and preserves key UI/diagnostics', asyn
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto('/');
-  await expect(page).toHaveTitle(/SynthOslek v16\.66/);
+  await expect(page).toHaveTitle(/SynthOslek v16\.67/);
   await expect(page.locator('#keyboard')).toBeAttached();
-  await expect(page.locator('.welcome-desc')).toContainText('Shape a sound. Make it yours.');
+  await expect(page.locator('.welcome-desc')).toContainText('Describe the sound in your head');
   await expect(page.locator('.welcome-desc')).not.toContainText('4 layers');
   await expect(page.locator('.welcome-features')).toContainText('DESIGN');
   await expect(page.locator('.welcome-features')).toContainText('MORPH');
@@ -227,7 +227,7 @@ test('voice-pool reclaim clears orphaned reservations and panic leaves no voices
 
 test('minimal mode keeps essentials visible and ADV toggle restores full controls', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle(/SynthOslek v16\.66\.1/);
+  await expect(page).toHaveTitle(/SynthOslek v16\.67/);
   await expect(page.locator('.welcome-desc')).toContainText('MIDI controller');
   await page.locator('#welcomeStart').click();
   await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
@@ -247,4 +247,54 @@ test('minimal mode keeps essentials visible and ADV toggle restores full control
   await page.locator('#advToggle').click();
   await expect(page.locator('#advToggle')).toHaveText('⚙ ADV');
   await expect(page.locator('#keyboard')).toBeHidden();
+});
+
+
+test('synonym chains map descriptive prompts to known sound-design rules', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    const cathedral = SD.analyze('cathedral pad');
+    const crystalline = SD.analyze('crystalline lead');
+    const noir = SD.analyze('noir');
+    return {
+      cathedralTags: cathedral.tags,
+      cathedralEngine: cathedral.engine,
+      crystallineTags: crystalline.tags,
+      noirTags: noir.tags
+    };
+  });
+  expect(result.cathedralTags).toContain('ORGAN');
+  expect(result.crystallineTags).toContain('GLASSY');
+  expect(result.noirTags).toContain('CINEMATIC-CONTEXT');
+});
+
+test('PairMemory stores and restores the morph wheel position', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    const memory = window.SynthOslekPairMemory;
+    memory.clear();
+    const A = { ...synth.params };
+    const B = { ...synth.params, cutoff: Math.min(14000, (Number(synth.params.cutoff) || 2000) + 600) };
+    synth.setModWheel(0.63);
+    memory.push({ A, B, family: 'SYNTH' }, 'morph restore test');
+    const savedWheel = memory.all[0]?.wheel;
+    synth.setModWheel(0.12);
+    const recalled = memory.recall(0);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const restoredWheel = synth.modWheel;
+    const status = document.getElementById('stxt')?.textContent || '';
+    memory.clear();
+    synth.panic();
+    return { savedWheel, restoredWheel, recalled, status };
+  });
+  expect(result.recalled).toBeTruthy();
+  expect(result.savedWheel).toBeCloseTo(0.63, 3);
+  expect(result.restoredWheel).toBeCloseTo(0.63, 3);
+  expect(result.status).toContain('@ 0.63');
+  expect(pageErrors).toEqual([]);
 });
