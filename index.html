@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.69-audio-recovery-profile-sanitize">
-<title>SynthOslek v16.68 — Panic Sustain Clear</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.70-native-voice-stability">
+<title>SynthOslek v16.70 — Native Voice Stability</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -984,30 +984,25 @@ class DSPBackend{
 class NativeWebAudioBackend extends DSPBackend{
   constructor(){super();this.name="native-web-audio";this.workletReady=false;this.workletURL=null;}
   async init(runtime,synth){
-    await super.init(runtime,synth);const c=runtime?.ctx;
-    if(c?.audioWorklet&&typeof AudioWorkletNode==="function"){try{
-      const src=[
-        "class SynthOslekDSPProcessor extends AudioWorkletProcessor{",
-        "static get parameterDescriptors(){return[{name:\"frequency\",defaultValue:440,minValue:0,maxValue:24000,automationRate:\"a-rate\"},{name:\"detune\",defaultValue:0,minValue:-4800,maxValue:4800,automationRate:\"a-rate\"}];}",
-        "constructor(){super();this.phase=0;this.wave=\"sine\";this.running=false;this.startAt=0;this.port.onmessage=e=>{if(e.data?.type===\"wave\")this.wave=e.data.wave||\"sine\";if(e.data?.type===\"start\"){this.startAt=Number(e.data.at)||currentTime;this.running=true;}if(e.data?.type===\"stop\")this.running=false;};}",
-        "process(inputs,outputs,params){const out=outputs[0]?.[0];if(!out)return true;if(!this.running||currentTime<this.startAt){out.fill(0);return true;}const f=params.frequency,d=params.detune;for(let i=0;i<out.length;i++){const hz=Math.max(0,Math.min(24000,(f.length>1?f[i]:f[0])*Math.pow(2,((d.length>1?d[i]:d[0])/1200))));const p=this.phase;let x;if(this.wave===\"square\")x=p<.5?1:-1;else if(this.wave===\"sawtooth\")x=2*p-1;else if(this.wave===\"triangle\")x=1-4*Math.abs(p-.5);else x=Math.sin(2*Math.PI*p);out[i]=x;this.phase=(p+hz/sampleRate)%1;}return true;}",
-        "}",
-        "registerProcessor(\"synthoslek-dsp\",SynthOslekDSPProcessor);"
-      ].join("\n");
-      const blob=new Blob([src],{type:"application/javascript"});this.workletURL=URL.createObjectURL(blob);
-      await c.audioWorklet.addModule(this.workletURL);this.workletReady=true;this.capabilities.audioWorklet=true;
-    }catch(e){this.workletReady=false;}}
+    // Use the browser's native oscillator implementation for each voice.
+    // The previous design created one JavaScript AudioWorkletProcessor per
+    // oscillator and did not honor scheduled stop times. Fast lines plus
+    // unison/morph could overload the audio renderer and truncate releases.
+    await super.init(runtime,synth);
+    this.workletReady=false;
+    this.capabilities.audioWorklet=false;
     return this;
   }
   createVoiceOscillator(ctx,wave){
-    if(!this.workletReady||this.synth?.mobileAudio)return ctx.createOscillator();
-    const n=new AudioWorkletNode(ctx,"synthoslek-dsp",{outputChannelCount:[1]});
-    n.frequency=n.parameters.get("frequency");n.detune=n.parameters.get("detune");n.type=wave||"sine";
-    n.start=(when=ctx.currentTime)=>{try{n.port.postMessage({type:"start",at:Math.max(ctx.currentTime,when)});}catch(e){}};
-    n.stop=(when=ctx.currentTime)=>{try{n.port.postMessage({type:"stop"});}catch(e){}setTimeout(()=>{try{n.disconnect();}catch(e){}},Math.max(0,(when-ctx.currentTime)*1000)+20);};
-    n.port.postMessage({type:"wave",wave:wave||"sine"});return n;
+    const oscillator=ctx.createOscillator();
+    if(wave==="sine"||wave==="square"||wave==="sawtooth"||wave==="triangle")oscillator.type=wave;
+    return oscillator;
   }
-  dispose(){if(this.workletURL){try{URL.revokeObjectURL(this.workletURL);}catch(e){}this.workletURL=null;}this.workletReady=false;this.capabilities.audioWorklet=false;}
+  dispose(){
+    if(this.workletURL){try{URL.revokeObjectURL(this.workletURL);}catch(e){}this.workletURL=null;}
+    this.workletReady=false;
+    this.capabilities.audioWorklet=false;
+  }
 }
 
 class AudioRuntime{
@@ -1227,32 +1222,39 @@ class SynthOslek{
     T(this.flangerGain?.gain,Math.max(0,Math.min(1,Number(P.flangerMix)||0)),.012);
   }
   setModWheel(v,at=null){
-    // Keep controller/UI readouts immediate even when morph processing is coalesced.
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
     this._modWheelUpdateAt=at;
 
-    // Layer crossfade is a pair of gain updates, so keep it synchronous and responsive.
     if(this.getMorphMode()==="xfade"){
-      refreshLayerGains(at);
+      try{refreshLayerGains(at);}catch(err){console.warn("[SynthOslek] morph crossfade update failed",err);}
       return;
     }
-
-    // Coalesce expensive per-voice macro morphing to at most one pass per animation frame.
     if(this._morphRafScheduled)return;
     this._morphRafScheduled=true;
     const self=this;
     const flush=()=>{
+      // Clear first: any exception in a voice must not permanently disable morph.
       self._morphRafScheduled=false;
-      if(!self.started)return;
-      const stamp=self._modWheelUpdateAt;
-      const t=Number.isFinite(stamp)?Math.max(self.ctx.currentTime,stamp):self.ctx.currentTime;
-      if(self.getMorphMode()==="xfade"){refreshLayerGains(t);return;}
-      for(const voice of self.voices.values())self._applyMorphToVoice(voice,t);
-      self._det(.012,t);
+      if(!self.started||!self.ctx||self.ctx.state==="closed")return;
+      const t=self.ctx.currentTime;
+      let failed=0;
+      try{
+        if(self.getMorphMode()==="xfade"){refreshLayerGains(t);return;}
+        for(const voice of [...self.voices.values()]){
+          try{self._applyMorphToVoice(voice,t);}catch(err){failed++;}
+        }
+        try{self._det(.012,t);}catch(err){failed++;}
+      }catch(err){failed++;}
+      if(failed)console.warn("[SynthOslek] skipped "+failed+" morph update(s); scheduler remains active");
     };
-    if(typeof requestAnimationFrame==="function")requestAnimationFrame(flush);
-    else setTimeout(flush,16);
+    try{
+      if(typeof requestAnimationFrame==="function")requestAnimationFrame(flush);
+      else setTimeout(flush,16);
+    }catch(err){
+      self._morphRafScheduled=false;
+      setTimeout(flush,16);
+    }
   }
   _det(tc=.01,at=null){
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime),m=this._morphAmount();
@@ -1274,22 +1276,31 @@ class SynthOslek{
   setBend(c,tc=.01,at=null){
     this.bend=Number.isFinite(c)?c:0;
     this.modMatrix?.setSource("pitchBend",Math.max(-1,Math.min(1,this.bend/200)));
-    if(!this.started)return;
+    if(!this.started||!this.ctx||this.ctx.state==="closed")return;
     const bendDrivesMorph=this.modMatrix?.routes?.some(r=>r.source==="pitchBend");
-    if(bendDrivesMorph){
-      for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);
-    }
-    this._det(tc,at);
+    if(bendDrivesMorph)for(const voice of [...this.voices.values()]){try{this._applyMorphToVoice(voice,at);}catch(err){console.warn("[SynthOslek] pitch-bend morph update failed",err);}}
+    try{this._det(tc,at);}catch(err){console.warn("[SynthOslek] pitch-bend detune update failed",err);}
   }
-  setWheel(c,at=null){this.wheel=Number.isFinite(c)?c:0;this._morphCache.clear();if(this.started){for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);this._det(.02,at);}}
+  setWheel(c,at=null){
+    this.wheel=Number.isFinite(c)?c:0;this._morphCache.clear();
+    if(!this.started||!this.ctx||this.ctx.state==="closed")return;
+    for(const voice of [...this.voices.values()]){try{this._applyMorphToVoice(voice,at);}catch(err){console.warn("[SynthOslek] pitch-wheel morph update failed",err);}}
+    try{this._det(.02,at);}catch(err){console.warn("[SynthOslek] pitch-wheel detune update failed",err);}
+  }
   noteOn(midi,vel=.85,layer=this.activeLayer,when=null){return this.dspBackend?.noteOn(midi,vel,layer,when);}
   noteOff(midi,layer=null,when=null){return this.dspBackend?.noteOff(midi,layer,when);}
   _nativeNoteOn(midi,vel=.85,layer=this.activeLayer,when=null){
-    if(!this.started)return;
+    if(!this.started||!this.ctx||this.ctx.state==="closed")return false;
+    midi=Number(midi);vel=Number(vel);
+    layer=Number(layer);
+    if(!Number.isFinite(midi)||midi<0||midi>127||!Number.isFinite(vel)||!Number.isFinite(layer))return false;
+    midi=Math.round(midi);vel=Math.max(0,Math.min(1,vel));
+    if(layer<0||layer>=this.layerProfiles.length)return false;
     const key=layer+":"+midi;
     if(this.voices.has(key))this._forceStop(key,6,when);
-    // Bound active polyphony so fast lead runs cannot accumulate unbounded live oscillators.
-    // Steal the oldest active voice with a very short fade before allocating another.
+    // Bound active polyphony and scale unison down under load. Native oscillators
+    // are handled by the browser audio engine; unison remains adaptive so dense
+    // runs do not create hundreds of parallel oscillator/effect nodes.
     const maxActiveVoices=this.mobileAudio?12:24;
     if(this.voices.size>=maxActiveVoices){
       const oldestKey=this.voices.keys().next().value;
@@ -1313,7 +1324,7 @@ class SynthOslek{
     const P=cleanProfile(this._morphParams(baseP)),G=v=>this._G(v);
     const now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime);
     const freq=440*Math.pow(2,(midi-69)/12);
-    const workletPath=!!this.dspBackend.workletReady&&!this.mobileAudio;
+    const workletPath=false; // Native oscillator path is the stable, fully enveloped/filtering path.
     const env=G(workletPath?1:.00001);
     const vf=workletPath?null:c.createBiquadFilter();
     const vf2=workletPath?null:((P.filterType==="lowpass24"||P.filterType==="highpass24")?c.createBiquadFilter():null);
@@ -1366,7 +1377,9 @@ class SynthOslek{
     }
     const v={env,vf,vf2,va,lm,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,layer,midi,params:{...baseP},rawA:{...rawA},rawB:rawB?{...rawB}:null,oscs:[],all:[],fmMod:null,fmGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
-    const maxUnison=this.mobileAudio?(this.voices.size>6?1:2):(this.voices.size>24?4:8);
+    const maxUnison=this.mobileAudio
+      ?(this.voices.size>=6?1:2)
+      :(this.voices.size>=18?1:this.voices.size>=12?2:this.voices.size>=6?4:8);
     const n=Math.max(1,Math.min(maxUnison,Math.round(Number(P.unison)||1)));
     const spreadShape=(i)=>n===1?0:Math.sign(i-(n-1)/2)*Math.pow(Math.abs((i-(n-1)/2)/((n-1)/2)),.82);
     const norm=1/Math.sqrt(n);
@@ -1405,7 +1418,9 @@ class SynthOslek{
   _kill(v,t,key=null){
     if(!v||v._cleanupScheduled)return;
     v._cleanupScheduled=true;
-    v.all.forEach(o=>{try{o.stop(t);}catch(e){}});
+    const now=this.ctx?.currentTime||0;
+    const stopAt=Math.max(now,Number.isFinite(t)?t:now);
+    v.all.forEach(o=>{try{o.stop(stopAt);}catch(e){}});
     if(key)this.tailVoices.set(key,v);
     const cleanup=()=>{
       if(v._cleaned)return;v._cleaned=true;
@@ -1415,8 +1430,11 @@ class SynthOslek{
       for(const n of nodes){try{n?.disconnect();}catch(e){}}
     };
     const fire=()=>{if(key){const rec=this._voiceCleanupTimers.get(key);if(rec?.voice===v)this._voiceCleanupTimers.delete(key);}cleanup();};
-    const ms=this.mobileAudio?45:80;
-    if(key)this._voiceCleanupTimers.set(key,{voice:v,timer:setTimeout(fire,ms)});
+    // Keep the gain/effect chain connected through the scheduled release tail.
+    // The former fixed 45/80 ms timer disconnected notes before their envelope ended.
+    const extraMs=this.mobileAudio?45:70;
+    const waitMs=Math.min(5000,Math.max(extraMs,(stopAt-now)*1000+extraMs));
+    if(key)this._voiceCleanupTimers.set(key,{voice:v,timer:setTimeout(fire,waitMs)});
     const first=v.all?.[0];if(first)first.onended=fire;
   }
   _nativeNoteOff(midi,layer=null,when=null){
@@ -3516,7 +3534,7 @@ syncSynthState(false);
   window.SynthOslekPerformance={snapshot:()=>({audioState:synth?.ctx?.state||"uninitialized",bpm:SO.clock.bpm,activeVoices:synth?.voices?.size||0,tailVoices:synth?.tailVoices?.size||0,sampleRate:synth?.ctx?.sampleRate||0})};
 
   window.SynthOslekRoadmap={version:"16.65",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.68 engine ready · panic sustain clear · rAF morph · voice stress tests");
+  setStatus("v16.70 engine ready · native voice path · morph guarded · release-tail cleanup fixed");
 })();
 
 /* ========================= WELCOME + START ========================= */
