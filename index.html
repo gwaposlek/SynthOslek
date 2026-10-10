@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.65.1-rapid-retrigger-prompt-visible">
+<meta name="synthoslek-build" content="2026-10-10-v16.65.2-prompt-placement-fix">
 <title>SynthOslek v16.65 — Morph Instrument</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -1860,7 +1860,7 @@ const PANES={};
 
 const soundDesigner=document.querySelector(".sound-designer");
 if(soundDesigner){
-  PANES.Layers.appendChild(soundDesigner);
+  // Keep the sound prompt in the main performance layout; moving it into PANES.Layers hides it in compact mode.
   const architecture=soundDesigner.querySelector(".sd-architecture");
   if(architecture)architecture.style.display="none";
 }
