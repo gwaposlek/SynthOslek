@@ -138,7 +138,7 @@ test('actual ARP stress keeps voices bounded and measures waveform continuity', 
     const until = performance.now() + 900;
     while (performance.now() < until) {
       /* Exercise the same public note/morph state while the real ARP is active. */
-      synth.modWheel = (Math.sin(performance.now() / 75) + 1) / 2;
+      synth.setModWheel((Math.sin(performance.now() / 75) + 1) / 2);
       synth.analyser.getFloatTimeDomainData(data);
       let peak = 0, sum = 0, mean = 0, maxJump = 0, invalid = 0;
       for (let i = 0; i < data.length; i++) {
@@ -297,4 +297,148 @@ test('PairMemory stores and restores the morph wheel position', async ({ page })
   expect(result.restoredWheel).toBeCloseTo(0.63, 3);
   expect(result.status).toContain('@ 0.63');
   expect(pageErrors).toEqual([]);
+});
+
+
+test('rapid lead-note and morph sweep stress leaves the synth healthy', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const arpButton = document.getElementById('so67Arp');
+    if (typeof SO !== 'undefined' && SO.arp.on && arpButton) arpButton.click();
+    synth.panic();
+
+    const data = new Float32Array(synth.analyser.fftSize);
+    const samples = [];
+    const start = performance.now();
+    let accepted = 0, rejected = 0, noteCount = 360;
+    for (let i = 0; i < noteCount; i++) {
+      const midi = 48 + (i % 36);
+      const velocity = 0.48 + ((i % 9) / 20);
+      const wheel = ((i * 37) % 101) / 100;
+      synth.setModWheel(wheel);
+      const ok = synth.noteOn(midi, velocity, 0);
+      if (ok === false) rejected++;
+      else accepted++;
+      setTimeout(() => { try { synth.noteOff(midi, 0); } catch (e) {} }, 12);
+      if (i % 30 === 0) {
+        synth.analyser.getFloatTimeDomainData(data);
+        let sum = 0, peak = 0, invalid = 0;
+        for (const v of data) {
+          if (!Number.isFinite(v)) invalid++;
+          sum += v * v;
+          peak = Math.max(peak, Math.abs(v));
+        }
+        samples.push({ rms: Math.sqrt(sum / data.length), peak, invalid });
+      }
+      await sleep(4);
+    }
+    await sleep(80);
+    synth.analyser.getFloatTimeDomainData(data);
+    let finalRms = 0, finalPeak = 0, invalidFinal = 0;
+    for (const v of data) {
+      if (!Number.isFinite(v)) invalidFinal++;
+      finalRms += v * v;
+      finalPeak = Math.max(finalPeak, Math.abs(v));
+    }
+    const beforePanic = {
+      elapsedMs: +(performance.now() - start).toFixed(1),
+      accepted, rejected, active: synth.voices.size, tails: synth.tailVoices.size,
+      pool: synth.voicePool.stats(),
+      sampleCount: samples.length,
+      samplesFinite: samples.every(x => x.invalid === 0 && Number.isFinite(x.rms) && Number.isFinite(x.peak)),
+      peakMax: Math.max(0, ...samples.map(x => x.peak)),
+      rmsMax: Math.max(0, ...samples.map(x => x.rms)),
+      finalPeak, finalRms: Math.sqrt(finalRms / data.length), invalidFinal
+    };
+    synth.panic();
+    await sleep(35);
+    return {
+      beforePanic,
+      afterPanic: {
+        active: synth.voices.size,
+        tails: synth.tailVoices.size,
+        sustained: synth.sustained.size,
+        pool: synth.voicePool.stats(),
+        audioState: synth.ctx.state
+      }
+    };
+  });
+
+  expect(result.beforePanic.accepted).toBeGreaterThan(300);
+  expect(result.beforePanic.rejected).toBe(0);
+  expect(result.beforePanic.samplesFinite).toBeTruthy();
+  expect(result.beforePanic.invalidFinal).toBe(0);
+  expect(result.beforePanic.peakMax).toBeGreaterThan(0.00001);
+  expect(result.beforePanic.peakMax).toBeLessThan(1.25);
+  expect(result.beforePanic.pool.occupied).toBeLessThanOrEqual(result.beforePanic.pool.max);
+  expect(result.afterPanic.active).toBe(0);
+  expect(result.afterPanic.tails).toBe(0);
+  expect(result.afterPanic.sustained).toBe(0);
+  expect(result.afterPanic.pool.occupied).toBe(0);
+  expect(result.afterPanic.audioState).toBe('running');
+  expect(pageErrors).toEqual([]);
+  console.log('Rapid lead/morph stress metrics:', JSON.stringify(result));
+});
+
+test('VoicePool 10,000-operation randomized invariant stress', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    const pool = new VoicePool(32);
+    const live = new Set();
+    let seed = 0x51A7;
+    const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    let acquisitions = 0, releases = 0, steals = 0, duplicates = 0, reclaimed = 0;
+    let invariantFailures = 0;
+    const verify = () => {
+      const activeSlots = pool.slots.filter(x => x.active);
+      if (pool.active.size !== activeSlots.length) invariantFailures++;
+      for (const [key, slot] of pool.active) {
+        if (!slot || !slot.active || slot.key !== key) invariantFailures++;
+      }
+      for (const slot of activeSlots) {
+        if (!pool.active.has(slot.key) || pool.active.get(slot.key) !== slot) invariantFailures++;
+      }
+      if (pool.slots.length !== pool.max || pool.slots.some(x => x.active && (!x.key || !Number.isFinite(x.velocity)))) invariantFailures++;
+      if (pool.stats().occupied > pool.max) invariantFailures++;
+    };
+    for (let i = 0; i < 10000; i++) {
+      const midi = 36 + Math.floor(rand() * 72);
+      const key = (Math.floor(rand() * 2)) + ':' + midi;
+      const action = rand();
+      if (action < .62) {
+        const a = pool.acquire(key, rand());
+        acquisitions++;
+        if (a.stolenKey) { steals++; live.delete(a.stolenKey); }
+        if (a.duplicate) duplicates++;
+        if (a.slot) live.add(key);
+        else live.delete(key);
+      } else if (action < .91) {
+        if (live.has(key)) releases++;
+        live.delete(key);
+        pool.release(key, rand() < .12 ? 4 : 0);
+      } else {
+        reclaimed += pool.reclaim(live);
+      }
+      if (i % 13 === 0) verify();
+    }
+    reclaimed += pool.reclaim(live);
+    verify();
+    pool.clear();
+    const final = pool.stats();
+    return { acquisitions, releases, steals, duplicates, reclaimed, invariantFailures, final };
+  });
+  expect(result.acquisitions).toBeGreaterThan(5000);
+  expect(result.steals).toBeGreaterThan(0);
+  expect(result.invariantFailures).toBe(0);
+  expect(result.final.active).toBe(0);
+  expect(result.final.tails).toBe(0);
+  expect(result.final.occupied).toBe(0);
+  console.log('VoicePool randomized stress metrics:', JSON.stringify(result));
 });
