@@ -442,3 +442,94 @@ test('VoicePool 10,000-operation randomized invariant stress', async ({ page }) 
   expect(result.final.occupied).toBe(0);
   console.log('VoicePool randomized stress metrics:', JSON.stringify(result));
 });
+
+
+test('Panic resets sustain pedal state and cannot latch the next note', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const led = document.getElementById('sustainLed');
+    synth.panic();
+    synth.sustain = true;
+    if (led) { led.classList.add('on'); led.textContent = 'SUSTAIN ON'; }
+    synth.noteOn(60, 0.8, 0);
+    await sleep(35);
+    synth.noteOff(60, 0);
+    const before = { sustain: synth.sustain, sustained: synth.sustained.size, activeVoices: synth.voices.size };
+    synth.panic();
+    const afterPanic = {
+      sustain: synth.sustain, sustained: synth.sustained.size,
+      activeVoices: synth.voices.size, tails: synth.tailVoices.size,
+      pool: synth.voicePool.stats(),
+      ledOn: !!led?.classList.contains('on')
+    };
+    synth.noteOn(64, 0.8, 0);
+    await sleep(35);
+    synth.noteOff(64, 0);
+    await sleep(45);
+    const afterNextNote = {
+      sustain: synth.sustain, sustained: synth.sustained.size,
+      activeVoices: synth.voices.size, tails: synth.tailVoices.size
+    };
+    synth.panic();
+    return { before, afterPanic, afterNextNote };
+  });
+  expect(result.before.sustain).toBe(true);
+  expect(result.before.sustained).toBeGreaterThan(0);
+  expect(result.afterPanic.sustain).toBe(false);
+  expect(result.afterPanic.sustained).toBe(0);
+  expect(result.afterPanic.activeVoices).toBe(0);
+  expect(result.afterPanic.tails).toBe(0);
+  expect(result.afterPanic.pool.occupied).toBe(0);
+  expect(result.afterPanic.ledOn).toBe(false);
+  expect(result.afterNextNote.sustain).toBe(false);
+  expect(result.afterNextNote.sustained).toBe(0);
+  expect(result.afterNextNote.activeVoices).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
+
+test('release-tail reservations drain naturally without needing Panic', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    synth.panic();
+    synth.sustain = false;
+    synth.noteOn(60, 0.85, 0);
+    await sleep(45);
+    synth.noteOff(60, 0);
+    await sleep(25);
+    const released = {
+      active: synth.voicePool.stats().active,
+      tails: synth.voicePool.stats().tails,
+      occupied: synth.voicePool.stats().occupied
+    };
+    await sleep(1325);
+    const drained = {
+      active: synth.voicePool.stats().active,
+      tails: synth.voicePool.stats().tails,
+      occupied: synth.voicePool.stats().occupied,
+      voices: synth.voices.size,
+      tailVoices: synth.tailVoices.size
+    };
+    synth.panic();
+    return { released, drained };
+  });
+  expect(result.released.active).toBe(0);
+  expect(result.released.tails).toBeGreaterThan(0);
+  expect(result.drained.active).toBe(0);
+  expect(result.drained.tails).toBe(0);
+  expect(result.drained.occupied).toBe(0);
+  expect(result.drained.voices).toBe(0);
+  expect(result.drained.tailVoices).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
