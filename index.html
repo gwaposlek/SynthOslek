@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.66-voice-pool-fix">
-<title>SynthOslek v16.66 — Morph Instrument & Voice-Pool Fix</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.66.1-minimal-adv">
+<title>SynthOslek v16.66.1 — Minimal ADV & Voice-Pool Fix</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -263,6 +263,22 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
 .pair-strip .ps-empty{font-size:.55rem;color:#3a3a3a;font-style:italic;padding:.2rem 0}
 .synth.mode-min .pair-strip{padding:.25rem .55rem}
 @media(orientation:portrait){.pair-strip{padding:.35rem .5rem}.pair-strip .ps-item{min-height:32px;font-size:.62rem;max-width:160px}.pair-strip .ps-clear{min-height:28px;min-width:28px}}
+
+/* v16.66.1 Minimal ADV: retain only the essential performance controls. */
+.synth.mode-min .perf-bar{display:none!important}
+.synth.mode-min .scope{display:none!important}
+.synth.mode-min #panicBtn{display:none!important}
+.synth.mode-min #gyroWrap{display:none!important}
+.synth.mode-min .sd-examples{display:none!important}
+.synth.mode-min .sd-architecture{display:none!important}
+.synth.mode-min .layer-mixer{display:none!important}
+.synth.mode-min .tabs{display:none!important}
+.synth.mode-min .panes{display:none!important}
+.synth.mode-min .kb-sec{display:none!important}
+/* The sequencer/ARP controls are advanced controls too. */
+.synth.mode-min #so67,.synth.mode-min #so67Panel{display:none!important}
+/* Keep the status text readable at narrow desktop widths and phones. */
+.synth.mode-min .top-bar .status span{display:inline!important}
 
 /* v13.3 cross-platform compatibility */
 html{background:#000;color-scheme:dark}
@@ -603,7 +619,7 @@ header{display:none!important}
   <div class="welcome-card">
     <h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
     <div class="welcome-tag">Morph Instrument</div>
-    <p class="welcome-desc">Shape a sound. Make it yours. Describe the tone you hear in your head, start playing, then morph it live with one wheel.</p>
+    <p class="welcome-desc">Shape a sound. Make it yours. Describe a lead, pad, bass or texture, create a starting patch, then play and morph it live with touch controls or your MIDI controller.</p>
     <div class="welcome-features" aria-label="SynthOslek highlights"><span>DESIGN</span><span>MORPH</span><span>PERFORM</span></div>
     <button class="btn" id="welcomeStart" type="button" onclick="this.textContent='Checking…';this.disabled=true;if(typeof window.startSynthOslekFromGesture==='function'){window.startSynthOslekFromGesture().finally(()=>{this.disabled=false;this.textContent='Start';});}else{this.disabled=false;this.textContent='SCRIPT ERROR';var e=document.getElementById('errorScreen'),t=document.getElementById('errorText'),d=document.getElementById('errorDetail');if(t)t.textContent='SynthOslek startup code did not load. Reload the page or check the script error below.';if(d)d.textContent='The main script did not register the Start function. This usually means an earlier JavaScript error or a stale cached page.';if(e)e.style.display='block';}">Start</button>
     <div class="welcome-foot">Tap Start to unlock audio · Chrome / Edge / Safari recommended</div>
@@ -620,7 +636,7 @@ header{display:none!important}
     </div>
     <div class="row">
       <select id="midiSelect" class="adv-only" title="MIDI input" style="width:130px"><option>No MIDI devices</option></select>
-      <button class="btn sec sm adv-only" id="bleMidiBtn" type="button" title="Connect a Bluetooth LE MIDI device">BT MIDI</button>
+      <button class="btn sec sm" id="bleMidiBtn" type="button" title="Connect a Bluetooth LE MIDI device">BT MIDI</button>
       <span class="gyro-btn-wrap" id="gyroWrap" style="display:none">
         <button class="btn sec sm gyro-btn" id="gyroBtn" type="button" title="Tilt to morph">GYRO</button>
         <button class="btn sec sm" id="gyroModeBtn" type="button" title="Gyro mode" style="padding:.2rem .4rem;min-width:20px">▾</button>
@@ -756,7 +772,7 @@ header{display:none!important}
   <div class="panes" id="panels"></div>
 </div>
 
-<div class="footer">SynthOslek v16.65 · Morph Instrument · A/B · Gyro · Pair Memory</div>
+<div class="footer">SynthOslek v16.66.1 · Minimal ADV · A/B Morph · Voice-Pool Fix</div>
 <script>
 /* v16.18 startup diagnostics */
 (function(){
@@ -2641,7 +2657,10 @@ class SynthOslekGyro{
     synthEl.classList.toggle("mode-adv",mode==="adv");
     synthEl.classList.toggle("mode-min",mode==="min");
     btn.classList.toggle("on",mode==="adv");
-    btn.title=mode==="adv"?"Advanced controls visible — tap to simplify":"Advanced controls hidden — tap to expand";
+    btn.textContent=mode==="adv"?"◀ MIN":"⚙ ADV";
+    btn.title=mode==="adv"
+      ?"Return to minimalist — hide all controls"
+      :"Show full controls — layers, scenes, MIDI, keyboard, wheels";
   };
   apply(savedMode);
   btn.addEventListener("click",()=>{
@@ -3422,7 +3441,7 @@ syncSynthState(false);
   window.SynthOslekPerformance={snapshot:()=>({audioState:synth?.ctx?.state||"uninitialized",bpm:SO.clock.bpm,activeVoices:synth?.voices?.size||0,tailVoices:synth?.tailVoices?.size||0,sampleRate:synth?.ctx?.sampleRate||0})};
 
   window.SynthOslekRoadmap={version:"16.65",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.66 engine ready · voice-pool fix · A/B morph · gyro · pair memory · "+(typeof WebAssembly!=="undefined"?"WASM ready":"WASM unavailable"));
+  setStatus("v16.66.1 engine ready · minimal ADV · voice-pool fix · A/B morph");
 })();
 
 /* ========================= WELCOME + START ========================= */
