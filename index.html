@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.66.1-minimal-adv">
-<title>SynthOslek v16.66.1 — Minimal ADV & Voice-Pool Fix</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.67-feel-patch">
+<title>SynthOslek v16.67 — Feel Patch & Synonym Morph</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -619,7 +619,7 @@ header{display:none!important}
   <div class="welcome-card">
     <h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
     <div class="welcome-tag">Morph Instrument</div>
-    <p class="welcome-desc">Shape a sound. Make it yours. Describe a lead, pad, bass or texture, create a starting patch, then play and morph it live with touch controls or your MIDI controller.</p>
+    <p class="welcome-desc">Describe the sound in your head—a soaring lead, deep bass, warm keys, or an evolving pad—or tap Surprise Me. SynthOslek builds a playable patch for you; then shape and morph it live with touch controls, the mod wheel, or your MIDI controller.</p>
     <div class="welcome-features" aria-label="SynthOslek highlights"><span>DESIGN</span><span>MORPH</span><span>PERFORM</span></div>
     <button class="btn" id="welcomeStart" type="button" onclick="this.textContent='Checking…';this.disabled=true;if(typeof window.startSynthOslekFromGesture==='function'){window.startSynthOslekFromGesture().finally(()=>{this.disabled=false;this.textContent='Start';});}else{this.disabled=false;this.textContent='SCRIPT ERROR';var e=document.getElementById('errorScreen'),t=document.getElementById('errorText'),d=document.getElementById('errorDetail');if(t)t.textContent='SynthOslek startup code did not load. Reload the page or check the script error below.';if(d)d.textContent='The main script did not register the Start function. This usually means an earlier JavaScript error or a stale cached page.';if(e)e.style.display='block';}">Start</button>
     <div class="welcome-foot">Tap Start to unlock audio · Chrome / Edge / Safari recommended</div>
@@ -1034,7 +1034,7 @@ class AudioRuntime{
 class SynthOslek{
   constructor(){
     this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();
-    this._startPromise=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();
+    this._startPromise=null;this._morphRafScheduled=false;this._modWheelUpdateAt=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();
     this._morphCache=new Map();this.monoHeld=[[],[]];this.voices=new Map();this.tailVoices=new Map();
     this.sustained=new Set();this.sustain=false;this.started=false;
     this.mobileAudio=/Android/i.test(navigator.userAgent);
@@ -1215,21 +1215,29 @@ class SynthOslek{
     T(this.flangerGain?.gain,Math.max(0,Math.min(1,Number(P.flangerMix)||0)),.012);
   }
   setModWheel(v,at=null){
+    // Keep controller/UI readouts immediate even when morph processing is coalesced.
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
-    // Coalesce dense MIDI CC1 streams to one audio-parameter update per visual frame.
-    // Keep the control value immediate so newly triggered notes use the latest wheel position.
     this._modWheelUpdateAt=at;
-    if(this._modWheelUpdatePending)return;
-    this._modWheelUpdatePending=true;
+
+    // Layer crossfade is a pair of gain updates, so keep it synchronous and responsive.
+    if(this.getMorphMode()==="xfade"){
+      refreshLayerGains(at);
+      return;
+    }
+
+    // Coalesce expensive per-voice macro morphing to at most one pass per animation frame.
+    if(this._morphRafScheduled)return;
+    this._morphRafScheduled=true;
+    const self=this;
     const flush=()=>{
-      this._modWheelUpdatePending=false;
-      const t=this._modWheelUpdateAt;
-      if(this.getMorphMode()==="xfade"){refreshLayerGains(t);return;}
-      if(this.started){
-        for(const voice of this.voices.values())this._applyMorphToVoice(voice,t);
-        this._det(.012,t);
-      }
+      self._morphRafScheduled=false;
+      if(!self.started)return;
+      const stamp=self._modWheelUpdateAt;
+      const t=Number.isFinite(stamp)?Math.max(self.ctx.currentTime,stamp):self.ctx.currentTime;
+      if(self.getMorphMode()==="xfade"){refreshLayerGains(t);return;}
+      for(const voice of self.voices.values())self._applyMorphToVoice(voice,t);
+      self._det(.012,t);
     };
     if(typeof requestAnimationFrame==="function")requestAnimationFrame(flush);
     else setTimeout(flush,16);
@@ -2095,10 +2103,38 @@ function soCompleteWord(text,suggestion){
   return (head?head+" ":"")+suggestion+" ";
 }
 
+/* v16.67: synonym chains let descriptive language resolve to known synthesis vocabulary. */
+const SO_SYNONYMS = {
+  airy:["bright","breathy"], fluffy:["soft","dreamy"], brittle:["metallic","aggressive"],
+  plaintive:["haunting"], brooding:["dark","cinematic"], cathedral:["church","warm","ethereal"],
+  crystalline:["glassy","bright"], velvety:["warm","soft"], silky:["warm","soft"],
+  gritty:["dirty","aggressive"], gravelly:["dirty","dark"], squeaky:["nasal","bright"],
+  rubbery:["hollow","metallic"], wet:["dreamy","lush"], dry:["static"], icy:["bright","metallic"],
+  fiery:["aggressive","bright"], smoky:["dark","warm"], plucked:["pluck"], bowed:["strings","violin"],
+  blown:["brass","breathy"], whispered:["breathy","soft"], shouted:["aggressive","brass"],
+  singing:["string","lead"], churchy:["church","warm"], orchestral:["orchestra","string"],
+  filmic:["film","cinematic"], noir:["dark","film"], sunlit:["bright","warm"],
+  funereal:["dark","slow"], elegiac:["haunting","slow"], frantic:["fast","aggressive"],
+  serene:["soft","dreamy"], swirling:["evolving","motion"], drifting:["evolving","pad"],
+  stuttering:["fast","pulsing"], wobbly:["motion","lfo"], raw:["dirty","aggressive"],
+  clean:["digital","bright"], lush:["lush","dreamy"], thin:["hollow","nasal"],
+  thick:["warm","bass"], muddy:["dark","lofi"], clear:["bright","digital"], hifi:["digital","bright"],
+  tape:["lofi","warm"], vinyl:["lofi","warm"], space:["drone","pad"], cosmos:["ethereal","pad"],
+  machine:["digital","metallic"], organic:["warm","strings"], natural:["warm","strings"],
+  synthetic:["digital","metallic"], retro:["retro","vintage"], vintage:["vintage","warm"],
+  futuristic:["futuristic","modern"]
+};
+
 /* ========================= SD ANALYZER ========================= */
 const SD={
   analyze(text){
-    const q=(text||"").toLowerCase().trim();
+    // v16.67: canonicalize descriptive near-synonyms before existing rules run.
+    let raw=(text||"").toLowerCase();
+    for(const [word,aliases] of Object.entries(SO_SYNONYMS)){
+      const re=new RegExp("\\b"+word+"\\b","g");
+      if(re.test(raw))raw=raw.replace(re,aliases.join(" "));
+    }
+    const q=raw.trim();
     let p={...PRESETS.init};const hits=[];
     const norm=(" "+q.replace(/[^a-z0-9]+/g," ")+" ").replace(/\s+/g," ");
     const has=(...w)=>w.some(x=>norm.includes(" "+String(x).toLowerCase()+" "));
@@ -2228,7 +2264,13 @@ const PairMemory=(()=>{
     const family=pair.family||"SYNTH",label=makeLabel(prompt,family),key=label+"|"+family;
     const idx=entries.findIndex(e=>e.key===key);
     if(idx>=0)entries.splice(idx,1);
-    entries.unshift({key,label,family,A:{...pair.A},B:{...pair.B},at:Date.now()});
+    entries.unshift({
+      key,label,family,
+      A:{...pair.A},
+      B:{...pair.B},
+      wheel:Number(synth.modWheel)||0,
+      at:Date.now()
+    });
     if(entries.length>SO_PAIRS_MAX)entries.length=SO_PAIRS_MAX;
     save();render();
   };
@@ -2241,11 +2283,13 @@ const PairMemory=(()=>{
     synth._bRevision[layer]=(synth._bRevision[layer]||0)+1;
     synth._morphCache?.clear();
     applyParams(e.A);
-    synth.setModWheel(0);
-    if(typeof setModWheelVisual==="function")setModWheelVisual($("modWheel"),0);
+    // v16.67: restore the morph position captured with this saved A/B pair.
+    const restoreWheel=Number.isFinite(e.wheel)?Math.max(0,Math.min(1,e.wheel)):0;
+    synth.setModWheel(restoreWheel);
+    if(typeof setModWheelVisual==="function")setModWheelVisual($("modWheel"),restoreWheel);
     render(i);
     const st=document.getElementById("stxt");
-    if(st)st.textContent="Recalled · "+e.label+" ("+e.family+")";
+    if(st)st.textContent="Recalled · "+e.label+" ("+e.family+") @ "+restoreWheel.toFixed(2);
     return true;
   };
   const render=(currentIndex)=>{
@@ -3441,7 +3485,7 @@ syncSynthState(false);
   window.SynthOslekPerformance={snapshot:()=>({audioState:synth?.ctx?.state||"uninitialized",bpm:SO.clock.bpm,activeVoices:synth?.voices?.size||0,tailVoices:synth?.tailVoices?.size||0,sampleRate:synth?.ctx?.sampleRate||0})};
 
   window.SynthOslekRoadmap={version:"16.65",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.66.1 engine ready · minimal ADV · voice-pool fix · A/B morph");
+  setStatus("v16.67 engine ready · feel patch · rAF morph · synonym chains · wheel recall");
 })();
 
 /* ========================= WELCOME + START ========================= */
