@@ -209,14 +209,17 @@ test('voice-pool reclaim clears orphaned reservations and panic leaves no voices
     const afterForceStop = pool.stats();
     synth.noteOn(60, 0.8, 0);
     synth.noteOff(60, 0);
+    const afterNoteOff = pool.stats();
     synth.panic();
-    return { allocation: !!allocation.slot, before, reclaimed, after, afterForceStop, afterPanic: pool.stats() };
+    return { allocation: !!allocation.slot, before, reclaimed, after, afterForceStop, afterNoteOff, afterPanic: pool.stats() };
   });
   expect(result.allocation).toBeTruthy();
   expect(result.before.active).toBe(1);
   expect(result.reclaimed).toBeGreaterThanOrEqual(1);
   expect(result.after.active).toBe(0);
   expect(result.afterForceStop.active).toBe(0);
+  expect(result.afterNoteOff.active).toBe(0);
+  expect(result.afterNoteOff.tails).toBeGreaterThan(0);
   expect(result.afterPanic.active).toBe(0);
   expect(result.afterPanic.occupied).toBe(0);
   expect(pageErrors).toEqual([]);
