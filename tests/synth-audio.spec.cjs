@@ -4,7 +4,7 @@ test('SynthOslek starts its audio engine and preserves key UI/diagnostics', asyn
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto('/');
-  await expect(page).toHaveTitle(/SynthOslek v16\.75/);
+  await expect(page).toHaveTitle(/SynthOslek v16\.66/);
   await expect(page.locator('#keyboard')).toBeAttached();
   await expect(page.locator('.welcome-desc')).toContainText('Shape a sound. Make it yours.');
   await expect(page.locator('.welcome-desc')).not.toContainText('4 layers');
@@ -186,5 +186,38 @@ test('actual ARP stress keeps voices bounded and measures waveform continuity', 
   expect(result.waveform.rmsMax).toBeGreaterThan(0);
   /* Diagnostic metric, not a universal click threshold: abrupt changes need listening/context. */
   console.log('ARP stress audio metrics:', JSON.stringify({ jitter: result.jitter, poolDuring: result.poolDuring, poolAfter: result.poolAfter, waveform: result.waveform }));
+  expect(pageErrors).toEqual([]);
+});
+
+
+test('voice-pool reclaim clears orphaned reservations and panic leaves no voices', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(() => {
+    const synth = window.synth;
+    const pool = synth.voicePool;
+    pool.clear();
+    const allocation = pool.acquire('__test_orphan__', 0.7);
+    const before = pool.stats();
+    const reclaimed = pool.reclaim(new Set(synth.voices.keys()));
+    const after = pool.stats();
+    pool.acquire('__test_force_stop__', 0.7);
+    synth._forceStop('__test_force_stop__');
+    const afterForceStop = pool.stats();
+    synth.noteOn(60, 0.8, 0);
+    synth.noteOff(60, 0);
+    synth.panic();
+    return { allocation: !!allocation.slot, before, reclaimed, after, afterForceStop, afterPanic: pool.stats() };
+  });
+  expect(result.allocation).toBeTruthy();
+  expect(result.before.active).toBe(1);
+  expect(result.reclaimed).toBeGreaterThanOrEqual(1);
+  expect(result.after.active).toBe(0);
+  expect(result.afterForceStop.active).toBe(0);
+  expect(result.afterPanic.active).toBe(0);
+  expect(result.afterPanic.occupied).toBe(0);
   expect(pageErrors).toEqual([]);
 });
