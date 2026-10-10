@@ -255,17 +255,17 @@ test('synonym chains map descriptive prompts to known sound-design rules', async
   const result = await page.evaluate(() => {
     const cathedral = SD.analyze('cathedral pad');
     const crystalline = SD.analyze('crystalline lead');
-    const silky = SD.analyze('silky electric piano');
+    const noir = SD.analyze('noir');
     return {
       cathedralTags: cathedral.tags,
       cathedralEngine: cathedral.engine,
       crystallineTags: crystalline.tags,
-      silkyTags: silky.tags
+      noirTags: noir.tags
     };
   });
   expect(result.cathedralTags).toContain('ORGAN');
   expect(result.crystallineTags).toContain('GLASSY');
-  expect(result.silkyTags).toContain('E-PIANO');
+  expect(result.noirTags).toContain('CINEMATIC-CONTEXT');
 });
 
 test('PairMemory stores and restores the morph wheel position', async ({ page }) => {
