@@ -1152,11 +1152,22 @@ class SynthOslek{
   setModWheel(v,at=null){
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
-    if(this.getMorphMode()==="xfade"){refreshLayerGains(at);return;}
-    if(this.started){
-      for(const voice of this.voices.values())this._applyMorphToVoice(voice,at);
-      this._det(.012,at);
-    }
+    // Coalesce dense MIDI CC1 streams to one audio-parameter update per visual frame.
+    // Keep the control value immediate so newly triggered notes use the latest wheel position.
+    this._modWheelUpdateAt=at;
+    if(this._modWheelUpdatePending)return;
+    this._modWheelUpdatePending=true;
+    const flush=()=>{
+      this._modWheelUpdatePending=false;
+      const t=this._modWheelUpdateAt;
+      if(this.getMorphMode()==="xfade"){refreshLayerGains(t);return;}
+      if(this.started){
+        for(const voice of this.voices.values())this._applyMorphToVoice(voice,t);
+        this._det(.012,t);
+      }
+    };
+    if(typeof requestAnimationFrame==="function")requestAnimationFrame(flush);
+    else setTimeout(flush,16);
   }
   _det(tc=.01,at=null){
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime),m=this._morphAmount();
