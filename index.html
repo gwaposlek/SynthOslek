@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.72-audio-graph-lifecycle-fix">
-<title>SynthOslek v16.72 — Audio Graph Lifecycle Fix</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.73-low-latency-readable-ui">
+<title>SynthOslek v16.73 — SynthOslek</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -607,6 +607,97 @@ header{display:none!important}
 #soDiagPanel{position:fixed;right:10px;bottom:48px;z-index:19991;width:min(315px,calc(100vw - 20px));max-height:min(65vh,460px);overflow:auto;display:none;background:rgba(7,12,20,.97);color:#e7f1fb;border:1px solid #34475c;border-radius:12px;padding:12px;box-shadow:0 8px 28px #0009;font:12px/1.45 system-ui,sans-serif;backdrop-filter:blur(12px)}
 #soDiagPanel.open{display:block}#soDiagPanel h3{font-size:13px;margin:0 0 8px;color:#9fe8ff}#soDiagPanel .soDiagGrid{display:grid;grid-template-columns:1fr auto;gap:5px 10px}#soDiagPanel .soDiagValue{font-variant-numeric:tabular-nums;text-align:right;color:#fff}#soDiagPanel .soDiagHint{font-size:10px;color:#9aa9bb;margin-top:9px}#soDiagPanel button{border:1px solid #40556d;border-radius:7px;background:#152337;color:#e7f1fb;padding:5px 8px;cursor:pointer}
 @media(max-width:600px){#soDiagToggle{right:7px;bottom:7px;padding:6px 9px}#soDiagPanel{right:7px;bottom:43px}}
+
+/* v16.73 — Minimalist performance UI readability and low-friction startup. */
+.welcome{background:radial-gradient(ellipse at 50% 34%,#081321 0%,#020306 42%,#000 78%);padding:clamp(20px,5vw,56px)}
+.welcome-card{width:min(94vw,900px);max-width:900px;padding:clamp(14px,3vw,32px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(28px,5.5vh,54px);border:0;border-radius:0;background:transparent;box-shadow:none}
+.welcome-card h1{margin:0;font-size:clamp(3rem,10vw,7.8rem);line-height:1;letter-spacing:.13em;transform:scaleX(1.04);filter:drop-shadow(0 0 18px rgba(0,229,255,.08))}
+.welcome-tag,.welcome-desc,.welcome-features,.welcome-foot{display:none!important}
+.welcome-card .btn#welcomeStart{display:block;width:min(78vw,360px);min-width:0;min-height:86px;padding:1rem 2rem;border:1px solid #75e8ff;border-radius:14px;background:linear-gradient(135deg,#1863d8 0%,#4b55eb 56%,#6c3dd9 100%);color:#fff;font-size:clamp(1.25rem,3.2vw,1.8rem);font-weight:900;letter-spacing:.24em;box-shadow:0 0 24px rgba(50,112,255,.27),inset 0 1px 0 rgba(255,255,255,.22);transition:filter .16s,transform .16s,box-shadow .16s}
+.welcome-card .btn#welcomeStart:hover{filter:brightness(1.14);box-shadow:0 0 36px rgba(50,150,255,.42),inset 0 1px 0 rgba(255,255,255,.3)}
+.welcome-card .btn#welcomeStart:active{transform:scale(.985)}
+.welcome-card .btn#welcomeStart:disabled{filter:saturate(.55);opacity:.86}
+.synth.mode-min{display:grid!important;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(220px,1fr) auto;width:100%;max-width:none;margin:0 auto;height:calc(100dvh - .65rem)!important;min-height:0;overflow:hidden;border-radius:14px;background:linear-gradient(180deg,#0a0d13 0%,#050608 60%,#050505 100%);border:1px solid #202a38;box-shadow:0 12px 50px rgba(0,0,0,.4)}
+.synth.mode-min>.top-bar{grid-row:1;order:0;display:flex;align-items:center;flex-wrap:wrap;gap:.65rem;padding:.55rem .85rem!important;min-height:58px!important;background:#090d14;border-bottom:1px solid #202a38}
+.synth.mode-min .brand{margin-right:.4rem}
+.synth.mode-min .brand h1{font-size:clamp(1.25rem,2.3vw,2rem)!important;letter-spacing:.095em;line-height:1.1}
+.synth.mode-min .top-bar .status{margin-left:auto;max-width:32%;font-size:.82rem;gap:.5rem;white-space:nowrap}
+.synth.mode-min .top-bar .status span{display:inline!important;overflow:hidden;text-overflow:ellipsis}
+.synth.mode-min .top-bar .row{gap:.5rem;align-items:center}
+.synth.mode-min .top-bar .btn{min-height:40px!important;padding:.35rem .8rem!important;font-size:.82rem!important;border-radius:8px}
+.synth.mode-min #rndBtn{font-size:.82rem!important;min-height:40px!important}
+.synth.mode-min #bleMidiBtn{min-width:86px}
+.synth.mode-min .adv-toggle{min-width:54px}
+.synth.mode-min #volKnob .knob{min-height:40px}
+.synth.mode-min #volKnob .knob svg{width:34px!important;height:34px!important}
+.synth.mode-min #volKnob .knob .n,.synth.mode-min #volKnob .knob .v{font-size:.72rem}
+.synth.mode-min>.sound-designer{grid-row:2;order:1;display:grid;grid-template-columns:minmax(0,1fr);gap:.6rem;padding:.9rem 1rem!important;background:#080b11;border:0;border-bottom:1px solid #202a38;border-radius:0}
+.synth.mode-min .sd-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:.6rem;font-size:.9rem;letter-spacing:.11em;line-height:1.25}
+.synth.mode-min .sd-heading span{font-size:.76rem;line-height:1.45;color:#a1adbf}
+.synth.mode-min .sd-main{display:flex;align-items:stretch;gap:.65rem;width:100%}
+.synth.mode-min .sd-input{min-width:0;min-height:56px!important;height:56px!important;max-height:56px!important;padding:.7rem .9rem;font-size:1.03rem!important;line-height:1.35;border-radius:9px;background:#05070b;border-color:#2b3749}
+.synth.mode-min .sd-input::placeholder{color:#818da1;opacity:1}
+.synth.mode-min .sd-btn{min-height:56px!important;height:56px;padding:.65rem 1rem!important;font-size:.85rem!important;letter-spacing:.045em;border-radius:9px}
+.synth.mode-min .sd-result{min-height:1.25em;font-size:.78rem;line-height:1.4;color:#aab4c5}
+.synth.mode-min>.scope{display:none!important}
+.synth.mode-min>.kb-sec{grid-row:3;order:2;display:flex!important;align-items:stretch;gap:.7rem;width:100%;min-height:0!important;height:auto!important;max-height:none!important;padding:.8rem .9rem!important;overflow:hidden!important;flex-direction:row!important;background:linear-gradient(180deg,#090c12 0%,#060709 100%);border-top:0;border-bottom:1px solid #202a38}
+.synth.mode-min .wheels{order:0;display:flex!important;align-self:stretch;align-items:stretch;gap:.5rem;flex:none;width:90px;height:100%;padding:0}
+.synth.mode-min .wheel{width:42px!important;min-height:0!important;height:100%!important;flex:1 1 0;border-radius:9px;border-color:#2e3a4d;background:linear-gradient(90deg,rgba(0,0,0,.72),rgba(255,255,255,.08) 50%,rgba(0,0,0,.72)),repeating-linear-gradient(0deg,#10141b 0 4px,#252d3a 4px 5px)}
+.synth.mode-min .wheel .wt{height:17px;border-radius:5px}
+.synth.mode-min .wheel b{font-size:.56rem;letter-spacing:.08em;color:#bac5d6}
+.synth.mode-min .morph-readout{min-width:52px;padding:.25rem .2rem;align-self:flex-end}
+.synth.mode-min .morph-readout .mr-val{font-size:.82rem}
+.synth.mode-min .morph-readout .mr-mode{font-size:.58rem}
+.synth.mode-min .keyboard{order:1;display:flex;flex:1 1 auto;align-self:stretch;align-items:stretch;width:100%!important;min-width:0!important;min-height:0!important;max-height:none!important;height:100%!important;gap:0;position:relative}
+.synth.mode-min .keyboard .key{height:100%!important;min-height:0!important;padding-bottom:.6rem;font-size:.72rem;line-height:1.1;border-radius:0 0 7px 7px}
+.synth.mode-min .keyboard .key.black{height:63%!important;font-size:.6rem}
+.synth.mode-min>.pair-strip{grid-row:4;order:3;display:flex;align-items:center;gap:.55rem;padding:.55rem .85rem!important;background:#080b11;border:0}
+.synth.mode-min .pair-strip .ps-label{font-size:.7rem;letter-spacing:.12em;color:#97a6bd}
+.synth.mode-min .pair-strip .ps-items{gap:.4rem}
+.synth.mode-min .pair-strip .ps-item{min-height:36px;max-width:220px;padding:.4rem .7rem;font-size:.73rem;border-radius:7px;color:#c4cddd}
+.synth.mode-min .pair-strip .ps-item .ps-fam{font-size:.6rem}
+.synth.mode-min .pair-strip .ps-empty{font-size:.72rem}
+.synth.mode-min .pair-strip .ps-clear{min-height:34px;min-width:34px;font-size:1rem}
+@media (orientation:portrait), (max-width:700px){
+  body{overflow:auto!important;overflow-x:hidden!important;align-items:stretch!important;padding:.3rem!important}
+  .synth.mode-min{display:flex!important;flex-direction:column!important;gap:0;width:100%;height:auto!important;min-height:calc(100dvh - .6rem);overflow:visible!important;margin:0;border-radius:12px}
+  .synth.mode-min>.top-bar{order:0;grid-row:auto;gap:.5rem .65rem;padding:.6rem .65rem!important;min-height:0!important;align-items:center}
+  .synth.mode-min .brand h1{font-size:clamp(1.05rem,4.8vw,1.55rem)!important;letter-spacing:.07em}
+  .synth.mode-min .top-bar .status{order:3;flex:1 0 100%;max-width:100%;margin:0;font-size:.75rem}
+  .synth.mode-min .top-bar .row{width:auto;flex:1 1 auto;justify-content:flex-end;gap:.4rem}
+  .synth.mode-min .top-bar .btn{min-height:38px!important;padding:.35rem .58rem!important;font-size:.76rem!important}
+  .synth.mode-min #volKnob .knob svg{width:30px!important;height:30px!important}
+  .synth.mode-min>.sound-designer{order:1;grid-row:auto;padding:.7rem .7rem!important;gap:.5rem}
+  .synth.mode-min .sd-heading{font-size:.8rem;gap:.35rem}
+  .synth.mode-min .sd-heading span{font-size:.72rem}
+  .synth.mode-min .sd-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(116px,.42fr);gap:.45rem}
+  .synth.mode-min .sd-input{height:54px!important;min-height:54px!important;max-height:54px!important;font-size:.95rem!important;padding:.6rem .65rem}
+  .synth.mode-min .sd-btn{height:54px;min-height:54px!important;padding:.4rem .55rem!important;font-size:.73rem!important;white-space:normal;line-height:1.2}
+  .synth.mode-min .sd-result{font-size:.74rem}
+  .synth.mode-min>.kb-sec{order:2;grid-row:auto;height:158px!important;min-height:158px!important;max-height:158px!important;padding:.5rem .35rem!important;gap:.35rem;overflow-x:auto!important;overflow-y:hidden!important}
+  .synth.mode-min .wheels{position:sticky;left:0;z-index:8;align-self:stretch;width:72px;gap:.3rem;padding-right:.35rem;background:#080b11}
+  .synth.mode-min .wheel{width:34px!important;min-width:30px;min-height:0!important;height:100%!important}
+  .synth.mode-min .wheel b{font-size:.48rem}
+  .synth.mode-min .morph-readout{min-width:0;padding:0 .05rem}
+  .synth.mode-min .morph-readout .mr-val{font-size:.68rem}
+  .synth.mode-min .morph-readout .mr-mode{font-size:.48rem}
+  .synth.mode-min .keyboard{flex:none;width:690px!important;min-width:690px!important;height:144px!important;min-height:144px!important;max-height:144px!important}
+  .synth.mode-min .keyboard .key{height:144px!important;font-size:.62rem;padding-bottom:.55rem}
+  .synth.mode-min .keyboard .key.black{height:91px!important;font-size:.52rem}
+  .synth.mode-min>.pair-strip{order:3;grid-row:auto;padding:.45rem .55rem!important;gap:.4rem}
+  .synth.mode-min .pair-strip .ps-label{font-size:.62rem}
+  .synth.mode-min .pair-strip .ps-item{max-width:180px;min-height:34px;font-size:.68rem}
+}
+@media (max-width:420px){
+  .synth.mode-min .brand h1{font-size:1.02rem!important;letter-spacing:.045em}
+  .synth.mode-min .top-bar .row{gap:.3rem}
+  .synth.mode-min .sd-main{grid-template-columns:minmax(0,1fr) 116px}
+  .synth.mode-min .sd-btn{font-size:.68rem!important}
+  .welcome-card h1{font-size:clamp(2.55rem,11vw,3.5rem)}
+  .welcome-card .btn#welcomeStart{min-height:76px}
+}
+@media (prefers-reduced-motion:reduce){.welcome-card h1 span,.welcome-card .btn#welcomeStart{animation:none;transition:none}}
+
 </style>
 </head>
 <body>
@@ -615,14 +706,10 @@ header{display:none!important}
 <div class="rot">↻ Rotate to landscape for the best layout</div>
 <header><h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1><p>Subtractive synth · unison · chorus · OLED</p></header>
 
-<div class="welcome" id="welcome">
+<div class="welcome" id="welcome" aria-label="SynthOslek start screen">
   <div class="welcome-card">
-    <h1><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
-    <div class="welcome-tag">Morph Instrument</div>
-    <p class="welcome-desc">Describe the sound in your head—a soaring lead, deep bass, warm keys, or an evolving pad—or tap Surprise Me. SynthOslek builds a playable patch for you; then shape and morph it live with touch controls, the mod wheel, or your MIDI controller.</p>
-    <div class="welcome-features" aria-label="SynthOslek highlights"><span>DESIGN</span><span>MORPH</span><span>PERFORM</span></div>
-    <button class="btn" id="welcomeStart" type="button" onclick="this.textContent='Checking…';this.disabled=true;if(typeof window.startSynthOslekFromGesture==='function'){window.startSynthOslekFromGesture().finally(()=>{this.disabled=false;this.textContent='Start';});}else{this.disabled=false;this.textContent='SCRIPT ERROR';var e=document.getElementById('errorScreen'),t=document.getElementById('errorText'),d=document.getElementById('errorDetail');if(t)t.textContent='SynthOslek startup code did not load. Reload the page or check the script error below.';if(d)d.textContent='The main script did not register the Start function. This usually means an earlier JavaScript error or a stale cached page.';if(e)e.style.display='block';}">Start</button>
-    <div class="welcome-foot">Tap Start to unlock audio · Chrome / Edge / Safari recommended</div>
+    <h1 aria-label="SynthOslek"><span style="--i:0">S</span><span style="--i:1">y</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">h</span><span style="--i:5">O</span><span style="--i:6">s</span><span style="--i:7">l</span><span style="--i:8">e</span><span style="--i:9">k</span></h1>
+    <button class="btn" id="welcomeStart" type="button">START</button>
   </div>
 </div>
 
@@ -805,7 +892,10 @@ const midiPerformanceToAudioTime=(ctx,stamp,leadMs=.75)=>{
   const t=normalizeMidiPerformanceTime(stamp);
   if(t==null)return ctx.currentTime;
   const deltaMs=t-performance.now()+leadMs;
-  return ctx.currentTime+Math.max(0,Math.min(40,deltaMs))/1000;
+  // Play late MIDI immediately and avoid queuing events far into the future
+  // when BLE/driver timestamp clocks disagree with the browser clock.
+  const maxAheadMs=8;
+  return ctx.currentTime+Math.max(0,Math.min(maxAheadMs,deltaMs))/1000;
 };
 
 /* ========================= CORE ARCHITECTURE ========================= */
@@ -2917,7 +3007,7 @@ class BleMidiTransport{
     this.MIDI_CHARACTERISTIC="7772e5db-3868-4112-a1a9-f2669d106bf3";
     this.storageId="so-ble-midi-id-v14";this.storageName="so-ble-midi-name-v14";
     this._deviceDisconnectHandler=null;this._charHandler=null;this.clock=new BleMidiClock();
-    this.bleLeadMs=3;this._autoReconnectInFlight=null;this._autoReconnectTimer=0;
+    this.bleLeadMs=1;this._autoReconnectInFlight=null;this._autoReconnectTimer=0;
     this._manualDisconnect=false;this._autoReconnectSeq=0;
   }
   _cleanupCharacteristic(){if(this.characteristic&&this._charHandler){try{this.characteristic.removeEventListener("characteristicvaluechanged",this._charHandler);}catch(e){}}this._charHandler=null;this.characteristic=null;}
@@ -3582,7 +3672,7 @@ syncSynthState(false);
   window.SynthOslekPerformance={snapshot:()=>({audioState:synth?.ctx?.state||"uninitialized",bpm:SO.clock.bpm,activeVoices:synth?.voices?.size||0,tailVoices:synth?.tailVoices?.size||0,sampleRate:synth?.ctx?.sampleRate||0})};
 
   window.SynthOslekRoadmap={version:"16.65",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.71 engine ready · smoothed morph · per-voice flanger · thump fix");
+  setStatus("v16.73 ready · fast MIDI response · readable minimalist UI");
 })();
 
 /* ========================= WELCOME + START ========================= */
@@ -3606,7 +3696,7 @@ async function startSynthOslekFromGesture(){
   const button=document.getElementById("welcomeStart");
   try{
     if(st)st.textContent="Starting audio…";
-    if(button){button.disabled=true;button.textContent="Starting…";}
+    if(button){button.disabled=true;button.textContent="STARTING…";}
     const boot=synth.start();
     await Promise.race([boot,new Promise((_,reject)=>setTimeout(()=>reject(new Error("Audio startup timed out after 3000 ms")),3000))]);
     if(!synth.started)throw new Error("Audio engine did not enter the running state");
@@ -3622,11 +3712,10 @@ async function startSynthOslekFromGesture(){
     if(d)d.textContent=String(err?.message||err);
     if(screen)screen.style.display="block";
     return false;
-  }finally{startupBusy=false;if(button){button.disabled=false;button.textContent="Start";}}
+  }finally{startupBusy=false;if(button){button.disabled=false;button.textContent="START";}}
 }
 window.startSynthOslekFromGesture=startSynthOslekFromGesture;
 welcomeStart?.addEventListener("click",()=>{void startSynthOslekFromGesture();});
-welcomeStart?.addEventListener("pointerup",e=>{if(e.pointerType==="touch")void startSynthOslekFromGesture();},{passive:true});
 document.getElementById("errorReload")?.addEventListener("click",()=>location.reload());
 </script>
 
