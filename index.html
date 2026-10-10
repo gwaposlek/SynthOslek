@@ -1241,26 +1241,25 @@ class SynthOslek{
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
     this._modWheelUpdateAt=at;
-
-    if(this.getMorphMode()==="xfade"){
-      try{refreshLayerGains(at);}catch(err){console.warn("[SynthOslek] morph crossfade update failed",err);}
-      return;
-    }
+    // Coalesce fast MIDI/USB/Bluetooth/UI/gyro events in every morph mode.
+    // Previously X-FADE bypassed rAF and scheduled gain changes for every CC event.
     if(this._morphRafScheduled)return;
     this._morphRafScheduled=true;
     const self=this;
     const flush=()=>{
-      // Clear first: any exception in a voice must not permanently disable morph.
       self._morphRafScheduled=false;
       if(!self.started||!self.ctx||self.ctx.state==="closed")return;
       const t=self.ctx.currentTime;
       let failed=0;
       try{
-        if(self.getMorphMode()==="xfade"){refreshLayerGains(t);return;}
-        for(const voice of [...self.voices.values()]){
-          try{self._applyMorphToVoice(voice,t);}catch(err){failed++;}
+        if(self.getMorphMode()==="xfade"){
+          try{refreshLayerGains(t);}catch(err){failed++;}
+        }else{
+          for(const voice of [...self.voices.values()]){
+            try{self._applyMorphToVoice(voice,t);}catch(err){failed++;}
+          }
+          try{self._det(.035,t);}catch(err){failed++;}
         }
-        try{self._det(.012,t);}catch(err){failed++;}
       }catch(err){failed++;}
       if(failed)console.warn("[SynthOslek] skipped "+failed+" morph update(s); scheduler remains active");
     };
@@ -1283,7 +1282,7 @@ class SynthOslek{
         const spread=x.kind==="sub"?0:x.off*effectiveSpread;
         const det=base+spread+this.bend+(this.wheel||0)+(v.mpeBend||0);
         if(!Number.isFinite(x.o._lastDetune)||Math.abs(x.o._lastDetune-det)>1e-4){
-          try{x.o.detune.setTargetAtTime(det,t,tc);}catch(e){}
+          this._smoothParamTarget(x.o.detune,det,t,Math.max(.03,Number(tc)||.01),.4);
           x.o._lastDetune=det;
         }
       }
@@ -1946,11 +1945,11 @@ function refreshLayerGains(at=null){
   for(const v of synth.voices.values())if(v.layerGain){
     const L=synth.layerMix[v.layer],enabled=layerAudible(v.layer)&&L?.enabled!==false;
     const gainTarget=enabled?(L?.vol??0):0;
-    if(Math.abs(v.layerGain.gain.value-gainTarget)>eps)v.layerGain.gain.setTargetAtTime(gainTarget,t,.008);
+    synth._smoothParamTarget(v.layerGain.gain,gainTarget,t,.045,.002);
     const panTarget=L?.pan||0;
-    if(v.pan&&Math.abs(v.pan.pan.value-panTarget)>eps)v.pan.pan.setTargetAtTime(panTarget,t,.01);
+    if(v.pan)synth._smoothParamTarget(v.pan.pan,panTarget,t,.025,.003);
     const fxTarget=L?.fx||0;
-    if(v.fx&&Math.abs(v.fx.gain.value-fxTarget)>eps)v.fx.gain.setTargetAtTime(fxTarget,t,.01);
+    if(v.fx)synth._smoothParamTarget(v.fx.gain,fxTarget,t,.04,.003);
   }
 }
 
@@ -3551,7 +3550,7 @@ syncSynthState(false);
   window.SynthOslekPerformance={snapshot:()=>({audioState:synth?.ctx?.state||"uninitialized",bpm:SO.clock.bpm,activeVoices:synth?.voices?.size||0,tailVoices:synth?.tailVoices?.size||0,sampleRate:synth?.ctx?.sampleRate||0})};
 
   window.SynthOslekRoadmap={version:"16.65",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.70 engine ready · native voice path · morph guarded · release-tail cleanup fixed");
+  setStatus("v16.71 engine ready · smoothed morph · per-voice flanger · thump fix");
 })();
 
 /* ========================= WELCOME + START ========================= */
