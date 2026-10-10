@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.77-adv-theme-live-morph-stability">
-<title>SynthOslek v16.77 — SynthOslek</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.78-min-adv-smooth-transition">
+<title>SynthOslek v16.78 — SynthOslek</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -815,6 +815,51 @@ body.so-adv-open{overflow-y:auto!important;overflow-x:hidden!important;align-ite
   .synth.mode-adv .keyboard .key:not(.black){height:152px!important;font-size:.66rem;padding-bottom:.5rem}
   .synth.mode-adv .keyboard .key.black{height:94px!important;font-size:.56rem}
   .synth.mode-adv .panes>.tabpane.on{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+}
+
+/* v16.78 — Premium MIN ⇄ ADV transitions: restrained motion, staggered entry, smooth focus scroll. */
+.synth{
+  scroll-margin-block:12px;
+  transition:border-radius .38s cubic-bezier(.22,.75,.25,1),box-shadow .38s cubic-bezier(.22,.75,.25,1),border-color .38s ease
+}
+@keyframes soModePanelReveal{
+  from{opacity:.08;transform:translate3d(0,12px,0)}
+  to{opacity:1;transform:translate3d(0,0,0)}
+}
+.synth.mode-adv.so-mode-enter-adv>.top-bar,
+.synth.mode-adv.so-mode-enter-adv>.sound-designer,
+.synth.mode-adv.so-mode-enter-adv>.scope,
+.synth.mode-adv.so-mode-enter-adv>.kb-sec,
+.synth.mode-adv.so-mode-enter-adv>.pair-strip,
+.synth.mode-adv.so-mode-enter-adv>.layer-mixer,
+.synth.mode-adv.so-mode-enter-adv>.perf-bar,
+.synth.mode-adv.so-mode-enter-adv>.tabs{
+  animation:soModePanelReveal .44s cubic-bezier(.2,.75,.25,1) both;
+  will-change:opacity,transform
+}
+.synth.mode-adv.so-mode-enter-adv>.top-bar{animation-delay:0ms}
+.synth.mode-adv.so-mode-enter-adv>.sound-designer{animation-delay:28ms}
+.synth.mode-adv.so-mode-enter-adv>.scope{animation-delay:56ms}
+.synth.mode-adv.so-mode-enter-adv>.kb-sec{animation-delay:84ms}
+.synth.mode-adv.so-mode-enter-adv>.pair-strip{animation-delay:112ms}
+.synth.mode-adv.so-mode-enter-adv>.layer-mixer{animation-delay:156ms}
+.synth.mode-adv.so-mode-enter-adv>.perf-bar{animation-delay:192ms}
+.synth.mode-adv.so-mode-enter-adv>.tabs{animation-delay:228ms}
+.synth.mode-min.so-mode-enter-min>.top-bar,
+.synth.mode-min.so-mode-enter-min>.sound-designer,
+.synth.mode-min.so-mode-enter-min>.scope,
+.synth.mode-min.so-mode-enter-min>.kb-sec,
+.synth.mode-min.so-mode-enter-min>.pair-strip{
+  animation:soModePanelReveal .36s cubic-bezier(.2,.75,.25,1) both;
+  will-change:opacity,transform
+}
+.synth.mode-min.so-mode-enter-min>.top-bar{animation-delay:0ms}
+.synth.mode-min.so-mode-enter-min>.sound-designer{animation-delay:24ms}
+.synth.mode-min.so-mode-enter-min>.scope{animation-delay:48ms}
+.synth.mode-min.so-mode-enter-min>.kb-sec{animation-delay:72ms}
+.synth.mode-min.so-mode-enter-min>.pair-strip{animation-delay:96ms}
+@media(prefers-reduced-motion:reduce){
+  .synth,.synth.mode-adv.so-mode-enter-adv>*,.synth.mode-min.so-mode-enter-min>*{transition:none!important;animation:none!important;will-change:auto!important}
 }
 </style>
 </head>
@@ -3014,14 +3059,30 @@ class SynthOslekGyro{
 })();
 
 /* ========================= UI MODE TOGGLE ========================= */
+/* Layout-only motion; it never touches the audio graph or MIDI event path. */
 (function initUIMode(){
   const synthEl=document.querySelector(".synth");
   const btn=document.getElementById("advToggle");
   if(!synthEl||!btn)return;
   let savedMode="min";
+  let revealTimer=0;
+  let scrollTimer=0;
   try{savedMode=localStorage.getItem("so-ui-mode")||"min";}catch(e){}
   if(savedMode!=="adv")savedMode="min";
-  const apply=(mode)=>{
+
+  const reduceMotion=()=>{
+    try{return !!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches);}
+    catch(e){return false;}
+  };
+  const cancelMotion=()=>{
+    if(revealTimer)window.clearTimeout(revealTimer);
+    if(scrollTimer)window.clearTimeout(scrollTimer);
+    revealTimer=0;scrollTimer=0;
+    synthEl.classList.remove("so-mode-enter-adv","so-mode-enter-min");
+  };
+  const apply=(mode,animate=false)=>{
+    mode=mode==="adv"?"adv":"min";
+    cancelMotion();
     synthEl.classList.toggle("mode-adv",mode==="adv");
     synthEl.classList.toggle("mode-min",mode==="min");
     document.body.classList.toggle("so-adv-open",mode==="adv");
@@ -3030,12 +3091,42 @@ class SynthOslekGyro{
     btn.title=mode==="adv"
       ?"Return to minimalist — hide all controls"
       :"Show full controls — layers, scenes, MIDI, keyboard, wheels";
+
+    if(!animate)return;
+    const reduced=reduceMotion();
+    if(!reduced){
+      const motionClass=mode==="adv"?"so-mode-enter-adv":"so-mode-enter-min";
+      synthEl.classList.add(motionClass);
+      /* Clear the temporary class after the last staggered panel has settled. */
+      revealTimer=window.setTimeout(()=>{
+        synthEl.classList.remove(motionClass);
+        revealTimer=0;
+      },mode==="adv"?820:560);
+    }
+
+    /* When ADV opens, gently bring the first advanced performance section into view.
+       Returning to MIN returns the page to the instrument's top edge. */
+    scrollTimer=window.setTimeout(()=>{
+      const activeMode=synthEl.classList.contains("mode-adv")?"adv":"min";
+      if(activeMode!==mode)return;
+      if(mode==="adv"){
+        if(reduced)return;
+        const target=document.getElementById("layerMixer")||document.getElementById("perfBar")||document.getElementById("tabs");
+        if(target&&target.getClientRects().length){
+          target.scrollIntoView({behavior:"smooth",block:"nearest",inline:"nearest"});
+        }
+      }else{
+        window.scrollTo({top:0,behavior:reduced?"auto":"smooth"});
+      }
+      scrollTimer=0;
+    },mode==="adv"?190:110);
   };
-  apply(savedMode);
+
+  /* Restore saved mode silently on startup. */
+  apply(savedMode,false);
   btn.addEventListener("click",()=>{
-    const isAdv=synthEl.classList.contains("mode-adv");
-    const next=isAdv?"min":"adv";
-    apply(next);
+    const next=synthEl.classList.contains("mode-adv")?"min":"adv";
+    apply(next,true);
     try{localStorage.setItem("so-ui-mode",next);}catch(e){}
     const st=document.getElementById("stxt");
     if(st)st.textContent=next==="adv"?"Advanced controls visible":"Minimal mode — text / surprise / wheel";
@@ -3045,9 +3136,13 @@ class SynthOslekGyro{
     if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
     e.preventDefault();btn.click();
   });
-  window.SynthOslekUIMode={current:()=>synthEl.classList.contains("mode-adv")?"adv":"min",set:(m)=>{apply(m);try{localStorage.setItem("so-ui-mode",m);}catch(e){}},toggle:()=>btn.click()};
+  window.SynthOslekUIMode={
+    current:()=>synthEl.classList.contains("mode-adv")?"adv":"min",
+    set:(m)=>{const mode=m==="adv"?"adv":"min";apply(mode,true);try{localStorage.setItem("so-ui-mode",mode);}catch(e){}},
+    toggle:()=>btn.click()
+  };
 })();
-
+ 
 /* ========================= SCOPE ========================= */
 const scopeCanvas=document.getElementById("scope"),scopeCtx=scopeCanvas.getContext("2d");
 let scopeMode="wave";
