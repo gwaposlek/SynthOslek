@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.68-panic-sustain-clear">
+<meta name="synthoslek-build" content="2026-10-10-v16.69-audio-recovery-profile-sanitize">
 <title>SynthOslek v16.68 — Panic Sustain Clear</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -1007,14 +1007,14 @@ class NativeWebAudioBackend extends DSPBackend{
     n.stop=(when=ctx.currentTime)=>{try{n.port.postMessage({type:"stop"});}catch(e){}setTimeout(()=>{try{n.disconnect();}catch(e){}},Math.max(0,(when-ctx.currentTime)*1000)+20);};
     n.port.postMessage({type:"wave",wave:wave||"sine"});return n;
   }
-  dispose(){if(this.workletURL){try{URL.revokeObjectURL(this.workletURL);}catch(e){}}}
+  dispose(){if(this.workletURL){try{URL.revokeObjectURL(this.workletURL);}catch(e){}this.workletURL=null;}this.workletReady=false;this.capabilities.audioWorklet=false;}
 }
 
 class AudioRuntime{
   constructor(){this.ctx=null;this._bound=false;}
   supported(){return !!(window.AudioContext||window.webkitAudioContext);}
   create(){
-    if(this.ctx)return this.ctx;
+    if(this.ctx&&this.ctx.state!=="closed")return this.ctx;
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC)throw new Error("Web Audio API is unavailable. Use current Chrome, Edge, or Safari.");
     this.ctx=new AC({latencyHint:"interactive"});
@@ -1071,7 +1071,21 @@ class SynthOslek{
     return curve;
   }
   async start(){
-    if(this.started){if(this.ctx.state==="suspended")await this.ctx.resume();return;}
+    if(this.ctx?.state==="closed"){
+      this.started=false;
+      for(const rec of this._voiceCleanupTimers.values())if(rec?.timer)clearTimeout(rec.timer);
+      this._voiceCleanupTimers.clear();
+      this.voicePool?.clear();
+      this.voices.clear();this.tailVoices.clear();this.sustained.clear();
+      this._morphCache.clear();this._morphRafScheduled=false;
+      try{this.dspBackend?.dispose();}catch(e){}
+      this.audioRuntime.ctx=null;this.ctx=null;
+    }
+    if(this.started){
+      if(this.ctx?.state==="suspended")await this.audioRuntime.resume();
+      if(this.ctx?.state!=="running")throw new Error("AudioContext is "+(this.ctx?.state||"uninitialized")+"; tap Start again to resume audio.");
+      return;
+    }
     const c=this.ctx=this.audioRuntime.create(),p=this.params,G=v=>this._G(v);
     const volScalar=Math.min(.8,Math.max(.05,Number(p.volume)||.6));
     this.bus=G(this.mobileAudio?.44:.72);
@@ -1117,11 +1131,9 @@ class SynthOslek{
       this.analyser.connect(this.dcBlock);this.dcBlock.connect(L);L.connect(this.masterGain);this.masterGain.connect(c.destination);
     }
     this.started=true;
-    void Promise.race([
-      this.audioRuntime.resume().catch(()=>{}),
-      this.dspBackend.init(this.audioRuntime,this),
-      new Promise(resolve=>setTimeout(resolve,1500))
-    ]).catch(()=>{});
+    await this.audioRuntime.resume();
+    if(c.state!=="running")throw new Error("AudioContext did not enter the running state (state: "+c.state+"). Check Edge site audio permission, then tap Start again.");
+    void this.dspBackend.init(this.audioRuntime,this).catch(()=>{this.dspBackend.workletReady=false;});
   }
   _lfoScale(P=this.params){
     const dest=({cutoff:1800,pitch:50,amp:.35})[P?.lfoDest];
@@ -1284,12 +1296,21 @@ class SynthOslek{
       if(oldestKey!==undefined&&oldestKey!==key)this._forceStop(oldestKey,4,when);
     }
     const c=this.ctx;
-    const rawA=this.layerProfiles[layer]||this.params;
-    const rawB=this.layerProfilesB?.[layer]||null;
+    const cleanProfile=profile=>{
+      const out={...PRESETS.init,...(profile||{})};
+      for(const [k,def] of Object.entries(PRESETS.init)){
+        if(typeof def==="number"){
+          const n=Number(out[k]);out[k]=Number.isFinite(n)?n:def;
+        }
+      }
+      return out;
+    };
+    const rawA=cleanProfile(this.layerProfiles[layer]||this.params);
+    const rawB=this.layerProfilesB?.[layer]?cleanProfile(this.layerProfilesB[layer]):null;
     const morphT=this.getMorphMode()==="xfade"?0:this._morphAmount();
     const rawP=rawB?interpolateProfile(rawA,rawB,morphT):rawA;
-    const baseP={...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0};
-    const P=this._morphParams(baseP),G=v=>this._G(v);
+    const baseP=cleanProfile({...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0});
+    const P=cleanProfile(this._morphParams(baseP)),G=v=>this._G(v);
     const now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime);
     const freq=440*Math.pow(2,(midi-69)/12);
     const workletPath=!!this.dspBackend.workletReady&&!this.mobileAudio;
@@ -1301,7 +1322,7 @@ class SynthOslek{
     const nativeFilterType=P.filterType==="lowpass24"||P.filterType==="lowpass"?"lowpass":P.filterType==="highpass24"||P.filterType==="highpass"?"highpass":P.filterType==="notch"?"notch":P.filterType==="bandpass"?"bandpass":"lowpass";
     if(vf){vf.type=nativeFilterType;vf.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
     if(vf2){vf2.type=nativeFilterType;vf2.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
-    const atk=Math.max(this.mobileAudio?.015:.008,P.attack),dec=Math.max(.01,P.decay);
+    const atk=Math.max(this.mobileAudio?.015:.008,Math.min(5,Number(P.attack)||.01)),dec=Math.max(.01,Math.min(10,Number(P.decay)||.2));
     if(!workletPath){
       env.gain.setValueAtTime(0,now);
       env.gain.linearRampToValueAtTime(Math.max(.0001,vel),now+atk);
@@ -1310,7 +1331,7 @@ class SynthOslek{
     const envPol=Number(P.filterEnvPolarity??1)>=0?1:-1,keyTrack=Number(P.filterKeyTrack)||0;
     const keyOffset=keyTrack*(midi-60)*80;
     const envAmt=Math.max(-12000,Math.min(12000,Number(P.fEnvAmt||0)*6000*(.4+.6*vel)*envPol));
-    const fA=Math.max(.018,Number(P.fAttack)||0),fD=Math.max(.01,Number(P.fDecay)||0);
+    const fA=Math.max(.018,Math.min(5,Number(P.fAttack)||0)),fD=Math.max(.01,Math.min(10,Number(P.fDecay)||0));
     if(!workletPath){
       vf.frequency.setValueAtTime(Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset)),now);
       if(vf2)vf2.frequency.setValueAtTime(Math.max(20,Math.min(18000,(Number(P.cutoff)||2000)+keyOffset)),now);
@@ -3109,7 +3130,11 @@ class MidiManager{
     if(cc===123){this.synth.allNotesOff();this.clearMidiVisuals();return;}
     if(cc===121){this.synth.sustain=false;this.synth.releaseSustain(when);this.synth.setBend(0,.003,when);this.synth.modMatrix.setSource("pitchBend",0);this.synth.modMatrix.setSource("modWheel",0);this.synth.setModWheel(0,when);const led=$("sustainLed");if(led){led.classList.remove("on");led.textContent="SUSTAIN OFF";}this.clearMidiVisuals();syncSynthState(false);return;}
     if(cc===1){this.synth.modMatrix.setSource("modWheel",x);this.synth.setModWheel(x,when);setModWheelVisual($("modWheel"),x);return;}
-    if(cc===7){this.synth.updateParam("volume",x,when);UI.volume?.set(x,true);return;}
+    if(cc===7){
+      try{this.synth.updateParam("volume",x,when);}catch(err){console.warn("SynthOslek CC7 volume update failed",err);}
+      try{UI.volume?.set(x,true);}catch(err){console.warn("SynthOslek CC7 UI sync failed",err);}
+      return;
+    }
     if(cc===10){layerState[layer].pan=x*2-1;refreshLayerGains(when);return;}
     if(cc===64){const was=this.synth.sustain;this.synth.sustain=x>=.5;if(was&&!this.synth.sustain)this.synth.releaseSustain(when);const led=$("sustainLed");if(led){led.classList.toggle("on",this.synth.sustain);led.textContent=this.synth.sustain?"SUSTAIN ON":"SUSTAIN OFF";}syncSynthState(false);return;}
     if(cc>=20&&cc<=23){layerState[cc-20].vol=x;refreshLayerGains(when);return;}
