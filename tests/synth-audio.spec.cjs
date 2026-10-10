@@ -224,3 +224,27 @@ test('voice-pool reclaim clears orphaned reservations and panic leaves no voices
   expect(result.afterPanic.occupied).toBe(0);
   expect(pageErrors).toEqual([]);
 });
+
+test('minimal mode keeps essentials visible and ADV toggle restores full controls', async ({ page }) => {
+  await page.goto('/');
+  await expect(page).toHaveTitle(/SynthOslek v16\.66\.1/);
+  await expect(page.locator('.welcome-desc')).toContainText('MIDI controller');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const essentialSelectors = ['.brand h1', '#stxt', '#rndBtn', '#soundPrompt', '#soundGenerate', '#volKnob', '.pair-strip', '#bleMidiBtn', '#advToggle'];
+  for (const selector of essentialSelectors) await expect(page.locator(selector)).toBeVisible();
+  await expect(page.locator('#keyboard')).toBeHidden();
+  await expect(page.locator('#so67')).toBeHidden();
+  await expect(page.locator('#perfBar')).toBeHidden();
+
+  await page.locator('#advToggle').click();
+  await expect(page.locator('#advToggle')).toHaveText('◀ MIN');
+  await expect(page.locator('#keyboard')).toBeVisible();
+  await expect(page.locator('#so67')).toBeVisible();
+  await expect(page.locator('#tabs')).toBeVisible();
+
+  await page.locator('#advToggle').click();
+  await expect(page.locator('#advToggle')).toHaveText('⚙ ADV');
+  await expect(page.locator('#keyboard')).toBeHidden();
+});
