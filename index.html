@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.65-full">
+<meta name="synthoslek-build" content="2026-10-10-v16.65.1-rapid-retrigger-prompt-visible">
 <title>SynthOslek v16.65 — Morph Instrument</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
@@ -180,7 +180,7 @@ html,body,.synth,.synth *{-webkit-user-select:none;user-select:none;-webkit-touc
 @media (orientation:landscape) and (min-width:1001px){.layer-knobs{display:grid;grid-template-columns:repeat(3,1fr);gap:0}.layer-knob{width:100%;display:flex;flex-direction:column;align-items:center;touch-action:none;user-select:none}.layer-knob svg{width:34px;height:34px}.layer-knob .lk-v{font-size:.54rem;color:var(--text);font-variant-numeric:tabular-nums}.layer-knob .lk-n{font-size:.42rem;color:var(--muted)}}
 
 /* v12 AI-style text sound designer */
-.sound-designer{background:var(--panel2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:.45rem .6rem;display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:.45rem;align-items:center}.sd-main{display:flex;gap:.4rem;align-items:center;min-width:0}.sd-input{flex:1;min-width:0;background:#080808;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.5rem .65rem;font-size:.72rem;outline:none;min-height:42px}.sd-input:focus{border-color:var(--accent);box-shadow:0 0 0 1px rgba(91,140,255,.2)}.sd-btn{min-height:42px;padding:.45rem .8rem;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;font-weight:800;font-size:.68rem;white-space:nowrap}.sd-examples{display:flex;gap:.25rem;overflow-x:auto;grid-column:1/-1}.sd-chip{min-height:30px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:5px;padding:.25rem .5rem;font-size:.58rem;white-space:nowrap}.sd-chip:active{background:var(--accent);color:#fff}.sd-result{font-size:.57rem;color:var(--muted);min-height:1.1em}.sd-result b{color:var(--text)}@media(max-width:700px){.sound-designer{grid-template-columns:1fr}.sd-main{width:100%}.sd-btn{padding:.45rem .6rem}}
+.sound-designer{background:var(--panel2);border:1px solid #202a40;border-radius:8px;padding:.55rem .6rem;display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:.45rem;align-items:center}.sd-heading{grid-column:1/-1;display:flex;align-items:baseline;gap:.55rem;font-size:.65rem;font-weight:900;letter-spacing:.1em;color:var(--accent)}.sd-heading span{font-size:.57rem;font-weight:500;letter-spacing:0;color:var(--muted)}.sd-main{display:flex;gap:.4rem;align-items:center;min-width:0}.sd-input{flex:1;min-width:0;background:#080808;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:.5rem .65rem;font-size:.72rem;outline:none;min-height:42px}.sd-input:focus{border-color:var(--accent);box-shadow:0 0 0 1px rgba(91,140,255,.2)}.sd-btn{min-height:42px;padding:.45rem .8rem;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;font-weight:800;font-size:.68rem;white-space:nowrap}.sd-examples{display:flex;gap:.25rem;overflow-x:auto;grid-column:1/-1}.sd-chip{min-height:30px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:5px;padding:.25rem .5rem;font-size:.58rem;white-space:nowrap}.sd-chip:active{background:var(--accent);color:#fff}.sd-result{font-size:.57rem;color:var(--muted);min-height:1.1em}.sd-result b{color:var(--text)}@media(max-width:700px){.sound-designer{grid-template-columns:1fr}.sd-main{width:100%}.sd-btn{padding:.45rem .6rem}}
 
 /* v16.58 Autocomplete */
 .sd-suggest-host{position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:.4rem}
@@ -630,6 +630,33 @@ header{display:none!important}
     </div>
   </div>
 
+  <div class="sound-designer" id="soundDesigner">
+    <div class="sd-heading">AI SOUND DESIGNER <span>Describe the sound you want, then tap Make Sound</span></div>
+    <div class="sd-main">
+      <input id="soundPrompt" class="sd-input" type="text" autocomplete="off" spellcheck="false" placeholder="Type a sound… e.g. punchy 90s lead, warm gospel organ, dreamy pad">
+      <button class="sd-btn" id="soundGenerate" type="button">✨ MAKE A SOUND</button>
+    </div>
+    <div class="sd-result" id="soundResult" aria-live="polite">Ready · describe a sound and tap Make a Sound</div>
+    <div class="sd-architecture" style="display:none">
+      <label style="font-size:.78rem;opacity:.75">ENGINE</label>
+      <select id="soundEngine" aria-label="Sound architecture guidance">
+        <option value="auto">Auto</option>
+        <option value="additive">Additive</option>
+        <option value="subtractive">Subtractive</option>
+        <option value="physical">Physical-ish</option>
+      </select>
+      <span id="soundConfidence" style="font-size:.75rem;opacity:.7"></span>
+    </div>
+    <div class="sd-examples">
+      <button class="sd-chip" type="button" data-sound="warm gospel organ">Warm Gospel Organ</button>
+      <button class="sd-chip" type="button" data-sound="bright 80s synth brass">80s Synth Brass</button>
+      <button class="sd-chip" type="button" data-sound="soft dreamy analog pad">Dreamy Analog Pad</button>
+      <button class="sd-chip" type="button" data-sound="deep punchy sub bass">Punchy Sub Bass</button>
+      <button class="sd-chip" type="button" data-sound="sparkling bell pluck">Sparkling Bell</button>
+      <button class="sd-chip" type="button" data-sound="lofi warm electric keys">Lo-fi EP</button>
+    </div>
+  </div>
+
   <div class="scope" style="position:relative">
     <div class="ovl">
       <div class="seg adv-only" id="mode">
@@ -668,31 +695,7 @@ header{display:none!important}
     </div>
   </div>
 
-  <div class="sound-designer" id="soundDesigner">
-    <div class="sd-main">
-      <input id="soundPrompt" class="sd-input" type="text" autocomplete="off" spellcheck="false" placeholder="Describe a sound… e.g. warm gospel organ, 80s synth brass, dark cinematic pad">
-      <button class="sd-btn" id="soundGenerate" type="button">✨ MAKE SOUND</button>
-    </div>
-    <div class="sd-result" id="soundResult" aria-live="polite">Text Sound Designer · describe the sound you want</div>
-    <div class="sd-architecture" style="display:none">
-      <label style="font-size:.78rem;opacity:.75">ENGINE</label>
-      <select id="soundEngine" aria-label="Sound architecture guidance">
-        <option value="auto">Auto</option>
-        <option value="additive">Additive</option>
-        <option value="subtractive">Subtractive</option>
-        <option value="physical">Physical-ish</option>
-      </select>
-      <span id="soundConfidence" style="font-size:.75rem;opacity:.7"></span>
-    </div>
-    <div class="sd-examples">
-      <button class="sd-chip" type="button" data-sound="warm gospel organ">Warm Gospel Organ</button>
-      <button class="sd-chip" type="button" data-sound="bright 80s synth brass">80s Synth Brass</button>
-      <button class="sd-chip" type="button" data-sound="soft dreamy analog pad">Dreamy Analog Pad</button>
-      <button class="sd-chip" type="button" data-sound="deep punchy sub bass">Punchy Sub Bass</button>
-      <button class="sd-chip" type="button" data-sound="sparkling bell pluck">Sparkling Bell</button>
-      <button class="sd-chip" type="button" data-sound="lofi warm electric keys">Lo-fi EP</button>
-    </div>
-  </div>
+
 
   <div class="pair-strip" id="pairStrip">
     <span class="ps-label">RECENT</span>
@@ -1203,6 +1206,13 @@ class SynthOslek{
     if(!this.started)return;
     const key=layer+":"+midi;
     if(this.voices.has(key))this._forceStop(key,6,when);
+    // Bound active polyphony so fast lead runs cannot accumulate unbounded live oscillators.
+    // Steal the oldest active voice with a very short fade before allocating another.
+    const maxActiveVoices=this.mobileAudio?12:24;
+    if(this.voices.size>=maxActiveVoices){
+      const oldestKey=this.voices.keys().next().value;
+      if(oldestKey!==undefined&&oldestKey!==key)this._forceStop(oldestKey,4,when);
+    }
     const c=this.ctx;
     const rawA=this.layerProfiles[layer]||this.params;
     const rawB=this.layerProfilesB?.[layer]||null;
