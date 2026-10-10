@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.76-live-morph-parameter-coverage">
-<title>SynthOslek v16.76 — SynthOslek</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.77-adv-theme-live-morph-stability">
+<title>SynthOslek v16.77 — SynthOslek</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -738,6 +738,84 @@ body{overflow:auto!important;overflow-x:hidden!important;align-items:stretch!imp
 .welcome-card .btn#welcomeStart{min-height:74px}
 }
 @media(prefers-reduced-motion:reduce){.welcome-card h1 span,.welcome-card .btn#welcomeStart,.synth.mode-min .btn,.synth.mode-min .sd-btn{animation:none;transition:none}}
+/* v16.77 — Apply the same grade and readable sizing in ADV; keep audio voice graphs stable. */
+body.so-adv-open{overflow-y:auto!important;overflow-x:hidden!important;align-items:stretch!important}
+.synth.mode-adv{
+  display:flex!important;flex-direction:column!important;gap:0;width:100%;max-width:1680px;
+  height:auto!important;min-height:calc(100dvh - 1rem);max-height:none!important;overflow:visible!important;
+  margin:0 auto;border:1px solid #263347;border-radius:17px;
+  background:linear-gradient(180deg,#0b1019 0%,#080c13 62%,#070a10 100%);
+  color:#e8eef8;font-family:"Segoe UI",system-ui,sans-serif;box-shadow:0 18px 60px rgba(0,0,0,.42)
+}
+.synth.mode-adv>.top-bar{order:0;display:flex;align-items:center;flex-wrap:wrap;gap:.65rem .85rem;padding:.65rem 1rem!important;min-height:66px!important;background:linear-gradient(180deg,#101724 0%,#0c121d 100%);border:0;border-bottom:1px solid #29364a}
+.synth.mode-adv .brand-mark{display:flex;align-items:center;gap:.65rem;min-width:174px;flex:none;white-space:nowrap}
+.synth.mode-adv .brand-copy{display:flex;flex-direction:column;gap:.1rem;line-height:1.05}
+.synth.mode-adv .brand-copy strong{font:800 1.28rem/1.1 "Oxanium","Segoe UI",sans-serif;letter-spacing:.07em;color:#eef5ff}
+.synth.mode-adv .brand-copy small{font:600 .66rem/1.2 "Oxanium","Segoe UI",sans-serif;letter-spacing:.16em;color:#8ea3bf}
+.synth.mode-adv .top-bar .status{display:flex;align-items:center;gap:.5rem;max-width:250px;margin-left:auto;padding:.47rem .72rem;border:1px solid #273449;border-radius:999px;background:rgba(4,8,14,.55);font-size:.82rem;line-height:1.25;color:#b4c2d6;white-space:nowrap}
+.synth.mode-adv .top-bar .status span{display:inline!important;overflow:hidden;text-overflow:ellipsis}
+.synth.mode-adv .top-bar .row{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+.synth.mode-adv .top-bar .presets-row{display:flex!important}
+.synth.mode-adv .top-bar .btn{min-height:42px!important;padding:.4rem .8rem!important;border-radius:9px;border:1px solid #304057;font:700 .82rem/1.15 "Oxanium","Segoe UI",sans-serif;background:linear-gradient(180deg,#1a2637,#121b29);color:#dce8f8}
+.synth.mode-adv .top-bar select{min-height:40px!important;font:600 .82rem/1.2 "Oxanium","Segoe UI",sans-serif;color:#dce8f8;background:#101a28;border:1px solid #304057;border-radius:8px;padding:.4rem .6rem}
+.synth.mode-adv>.sound-designer{order:1;display:grid;grid-template-columns:minmax(0,1fr);gap:.5rem;padding:.8rem 1rem .72rem!important;background:radial-gradient(ellipse at 12% 0%,rgba(33,94,132,.13),transparent 56%),linear-gradient(180deg,#0f1723 0%,#0c131d 100%);border:0;border-bottom:1px solid #263449;border-radius:0}
+.synth.mode-adv .sd-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:.55rem;color:#a5eaf5;font:700 .88rem/1.35 "Oxanium","Segoe UI",sans-serif;letter-spacing:.12em}
+.synth.mode-adv .sd-heading span{font:500 .82rem/1.4 "Oxanium","Segoe UI",sans-serif;letter-spacing:0;color:#a6b5c9}
+.synth.mode-adv .sd-main{display:flex;align-items:stretch;gap:.6rem;width:100%}
+.synth.mode-adv .sd-main>.sd-suggest-host{flex:1 1 auto;min-width:0;width:auto}
+.synth.mode-adv .sd-suggest-host .sd-input{width:100%;min-width:0}
+.synth.mode-adv .sd-input{min-width:0;min-height:54px!important;height:54px!important;max-height:54px!important;padding:.7rem 1rem;font:500 1rem/1.35 "Oxanium","Segoe UI",sans-serif;letter-spacing:.015em;color:#edf5ff;background:#080d15;border:1px solid #304259;border-radius:11px}
+.synth.mode-adv .sd-btn,.synth.mode-adv #rndBtn{display:inline-flex;justify-content:center;align-items:center;flex:0 0 clamp(148px,13vw,190px);min-width:148px;min-height:54px!important;height:54px;padding:.65rem .8rem!important;border:1px solid rgba(114,231,245,.65);border-radius:11px;font:750 .82rem/1.2 "Oxanium","Segoe UI",sans-serif;letter-spacing:.045em;color:#f8fdff;white-space:nowrap;background:linear-gradient(135deg,#1c9cb5 0%,#376fe2 62%,#5a62dd 100%)}
+.synth.mode-adv #rndBtn{border-color:rgba(255,189,120,.6)!important;background:linear-gradient(135deg,#744a32 0%,#6a4d38 45%,#435879 100%)!important;color:#ffe1bd!important}
+.synth.mode-adv .sd-result{min-height:1.1em;font-size:.82rem;line-height:1.4;color:#aabbd0}
+.synth.mode-adv .sd-chip{min-height:32px;padding:.35rem .72rem;border:1px solid #29394f;border-radius:999px;background:#111c2a;color:#c0cede;font:600 .76rem/1.2 "Oxanium","Segoe UI",sans-serif}
+.synth.mode-adv>.scope{order:2;display:block!important;position:relative!important;height:clamp(112px,16vh,148px)!important;min-height:105px!important;max-height:148px!important;padding:.35rem .95rem .5rem!important;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,rgba(31,97,135,.12),transparent 65%),linear-gradient(180deg,#080f18 0%,#080b12 100%);border:0;border-bottom:1px solid #273449}
+.synth.mode-adv>.scope::after{content:"LIVE OSCILLATORS";position:absolute;right:5.6rem;top:.62rem;z-index:2;color:#8298b4;font:650 .66rem/1.2 "Oxanium","Segoe UI",sans-serif;letter-spacing:.15em;pointer-events:none}
+.synth.mode-adv>.scope .ovl{position:absolute!important;left:.9rem!important;top:.42rem!important;right:5.6rem;display:flex;align-items:center;gap:.35rem;z-index:4}
+.synth.mode-adv>.scope .ovl .btn,.synth.mode-adv>.scope #specBtn{min-height:30px!important;padding:.25rem .6rem!important;border:1px solid #2a394c!important;border-radius:7px!important;background:#101a28!important;color:#c1cede!important;font:600 .72rem/1.2 "Oxanium","Segoe UI",sans-serif}
+.synth.mode-adv>.scope .ovl select{min-height:30px!important;background:#101a28;color:#c1cede;border-color:#2a394c;font:600 .72rem/1.2 "Oxanium","Segoe UI",sans-serif}
+.synth.mode-adv>.kb-sec{order:3;display:flex!important;align-items:stretch;gap:.8rem;width:100%;min-width:0;min-height:160px!important;height:clamp(160px,24vh,210px)!important;max-height:210px!important;padding:.6rem .9rem!important;overflow:hidden!important;flex-direction:row!important;background:linear-gradient(180deg,#0d131d 0%,#090d14 100%);border:0;border-bottom:1px solid #273449}
+.synth.mode-adv .wheels{order:0;display:flex!important;align-self:stretch;align-items:stretch;gap:.5rem;flex:none;width:100px;height:100%;padding:0}
+.synth.mode-adv .wheel{width:45px!important;min-height:0!important;height:100%!important;flex:1 1 0;border:1px solid #324159;border-radius:10px;background:linear-gradient(90deg,rgba(0,0,0,.72),rgba(255,255,255,.065) 50%,rgba(0,0,0,.72)),repeating-linear-gradient(0deg,#111722 0 4px,#283448 4px 5px);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.synth.mode-adv .wheel .wt{height:19px;border:1px solid #60718a;border-radius:6px;background:linear-gradient(180deg,#d2e0ee,#758ca8)}
+.synth.mode-adv .wheel b{font:650 .68rem/1.2 "Oxanium","Segoe UI",sans-serif;letter-spacing:.06em;color:#cad6e5}
+.synth.mode-adv .morph-readout{min-width:60px;padding:.25rem .2rem;align-self:flex-end}
+.synth.mode-adv .morph-readout .mr-val{font:800 .94rem/1.1 "Oxanium","Segoe UI",sans-serif;color:#e7f2ff}
+.synth.mode-adv .morph-readout .mr-mode{font:700 .68rem/1.2 "Oxanium","Segoe UI",sans-serif;letter-spacing:.1em}
+.synth .keyboard .key:not(.black){height:100%!important;min-height:0!important;padding-bottom:.65rem;font:600 .76rem/1.1 "Oxanium","Segoe UI",sans-serif;color:#35465d!important;background:linear-gradient(180deg,#fbfdff 0%,#e7edf5 72%,#cad5e3 100%)!important;border-color:#a9b9cb;border-radius:0 0 7px 7px;box-shadow:inset 0 -3px 0 rgba(77,99,127,.2)}
+.synth .keyboard .key.black{height:63%!important;font:600 .65rem/1.1 "Oxanium","Segoe UI",sans-serif;color:#d0dcee!important;background:linear-gradient(180deg,#27374c 0%,#101722 72%,#070b11 100%)!important;border-color:#05080d;border-radius:0 0 5px 5px;box-shadow:0 4px 8px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.11)}
+.synth .keyboard .key.active,.synth .keyboard .key.black.active{color:#fff!important;background:linear-gradient(180deg,#2c7693 0%,#14445d 100%)!important;border-color:#6feaff!important;box-shadow:inset 0 0 0 2px #69dcf2,0 0 14px rgba(89,223,242,.35)!important}
+.synth.mode-adv .keyboard{order:1;display:flex;flex:1 1 auto;align-self:stretch;align-items:stretch;width:100%!important;min-width:0!important;min-height:0!important;max-height:none!important;height:100%!important;gap:0;position:relative;padding:0}
+.synth.mode-adv .pair-strip{order:4;display:flex;align-items:center;gap:.65rem;padding:.55rem .9rem!important;background:#0b111a;border:0}
+.synth.mode-adv .pair-strip .ps-label{font:700 .75rem/1.2 "Oxanium","Segoe UI",sans-serif;letter-spacing:.14em;color:#9aadc7}
+.synth.mode-adv .pair-strip .ps-item{min-height:36px;max-width:220px;padding:.4rem .75rem;border:1px solid #2b3a4f;border-radius:9px;background:#101a27;color:#d0dceb;font:600 .78rem/1.2 "Oxanium","Segoe UI",sans-serif}
+.synth.mode-adv>.layer-mixer{order:5;background:#0b111a;border-color:#263449;padding:.7rem .9rem}
+.synth.mode-adv .lm-title{font:700 .75rem/1.35 "Oxanium","Segoe UI",sans-serif;letter-spacing:.13em;color:#91a7c1}
+.synth.mode-adv .layer-strip,.synth.mode-adv .layer-knob{background:#101a27;border-color:#2b3a4f;color:#d0dceb}
+.synth.mode-adv>.perf-bar{order:6;background:#0b111a;border-color:#263449;padding:.55rem .9rem;gap:.5rem}
+.synth.mode-adv .perf-title,.synth.mode-adv .perf-bar span{font:650 .75rem/1.3 "Oxanium","Segoe UI",sans-serif;color:#9aadc7}
+.synth.mode-adv .scene-btn,.synth.mode-adv .perf-save,.synth.mode-adv .help-btn{min-height:36px;padding:.38rem .7rem;border:1px solid #304057;border-radius:8px;background:#121e2d;color:#d4e3f4;font:650 .78rem/1.2 "Oxanium","Segoe UI",sans-serif}
+.synth.mode-adv .tabs{order:7;background:#0a111b;border-color:#29364a;padding:.15rem .7rem}
+.synth.mode-adv .tab{padding:.72rem 1rem;font:700 .8rem/1.2 "Oxanium","Segoe UI",sans-serif;color:#9aadc7}
+.synth.mode-adv .tab.on{color:#6ee6f5;border-bottom-color:#59dff2;text-shadow:0 0 10px rgba(89,223,242,.2)}
+.synth.mode-adv>.panes{order:8;min-height:0;overflow:visible;background:#111b29;border-color:#263449}
+.synth.mode-adv .panes>.tabpane.on{background:#172231;gap:1px}
+.synth.mode-adv .panel{padding:1rem;background:#0d1521;color:#dbe6f4;border-color:#263449}
+.synth.mode-adv .panel h3{font:700 .83rem/1.35 "Oxanium","Segoe UI",sans-serif;letter-spacing:.1em;color:#9feaf3;margin-bottom:.65rem}
+.synth.mode-adv .panel label,.synth.mode-adv .panel .n,.synth.mode-adv .panel .v{font-size:.84rem}
+.synth.mode-adv .panel select,.synth.mode-adv .panel input,.synth.mode-adv .panel button{font-family:"Oxanium","Segoe UI",sans-serif;font-size:.82rem}
+@media(max-width:760px){
+  .synth.mode-adv .sd-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(112px,.38fr);gap:.45rem}
+  .synth.mode-adv .sd-main>.sd-suggest-host{grid-column:1/-1;width:100%}
+  .synth.mode-adv .sd-btn,.synth.mode-adv #rndBtn{min-width:0;min-height:48px!important;height:48px!important;grid-row:2;flex:none;width:100%;font-size:.72rem!important;padding:.35rem .45rem!important}
+  .synth.mode-adv>.kb-sec{height:166px!important;min-height:166px!important;max-height:166px!important;padding:.5rem .35rem!important;gap:.35rem;overflow-x:auto!important;overflow-y:hidden!important}
+  .synth.mode-adv .wheels{position:sticky;left:0;z-index:8;align-self:stretch;width:72px;gap:.3rem;padding-right:.35rem;background:#0b111a}
+  .synth.mode-adv .wheel{width:34px!important;min-width:30px}
+  .synth.mode-adv .keyboard{flex:none;width:690px!important;min-width:690px!important;height:152px!important;min-height:152px!important;max-height:152px!important}
+  .synth.mode-adv .keyboard .key:not(.black){height:152px!important;font-size:.66rem;padding-bottom:.5rem}
+  .synth.mode-adv .keyboard .key.black{height:94px!important;font-size:.56rem}
+  .synth.mode-adv .panes>.tabpane.on{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+}
 </style>
 </head>
 <body>
@@ -1160,7 +1238,7 @@ class AudioRuntime{
 class SynthOslek{
   constructor(){
     this.ctx=null;this.audioRuntime=new AudioRuntime();this.dspBackend=new NativeWebAudioBackend();
-    this._startPromise=null;this._morphRafScheduled=false;this._modWheelUpdateAt=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._audioParamTargets=new WeakMap();
+    this._startPromise=null;this._morphRafScheduled=false;this._morphFlushTimer=0;this._lastMorphFlushAt=0;this._modWheelUpdateAt=null;this.modWheel=0;this._voiceCleanupTimers=new Map();this._paramCache=new Map();this._audioParamTargets=new WeakMap();
     this._morphCache=new Map();this.monoHeld=[[],[]];this.voices=new Map();this.tailVoices=new Map();
     this.sustained=new Set();this.sustain=false;this.started=false;
     this.mobileAudio=/Android/i.test(navigator.userAgent);
@@ -1203,7 +1281,7 @@ class SynthOslek{
       this._voiceCleanupTimers.clear();
       this.voicePool?.clear();
       this.voices.clear();this.tailVoices.clear();this.sustained.clear();
-      this._morphCache.clear();this._morphRafScheduled=false;
+      this._morphCache.clear();this._morphRafScheduled=false;if(this._morphFlushTimer)clearTimeout(this._morphFlushTimer);this._morphFlushTimer=0;this._lastMorphFlushAt=0;
       try{this.dspBackend?.dispose();}catch(e){}
       this.audioRuntime.ctx=null;this.ctx=null;
     }
@@ -1283,8 +1361,8 @@ class SynthOslek{
     return out;
   }
   _morphAmount(){
-    const raw=this.modMatrix?this.modMatrix.value("morph",0):this.modWheel;
-    const x=Math.max(0,Math.min(1,Number(raw)||0));
+    // modWheel is the authoritative live value from UI, Bluetooth MIDI, and CC1.
+    const x=Math.max(0,Math.min(1,Number(this.modWheel)||0));
     return x*x*(3-2*x);
   }
   getMorphMode(){
@@ -1337,30 +1415,16 @@ class SynthOslek{
   _voiceMorphProfile(v){
     const base=v?.rawA||v?.params||this.params;
     if(this.getMorphMode()==="xfade")return base;
-    if(v?.rawB){
-      const amount=this._morphAmount();
-      const P=interpolateProfile(base,v.rawB,amount);
-      // Continuous parameters blend; categorical timbre choices cross over at midpoint.
-      const discrete=["osc1Wave","osc2Wave","filterType","lfoWave","lfoDest","filterEnvPolarity"];
-      for(const key of discrete)if(key in v.rawB)P[key]=amount<.5?(base[key]??v.rawB[key]):v.rawB[key];
-      return P;
-    }
+    if(v?.rawB)return interpolateProfile(base,v.rawB,this._morphAmount());
     return this._morphParams(v?.params||this.params);
   }
   _applyMorphToVoice(v,at=null){
     if(!this.started||!v||!this.ctx||this.ctx.state==="closed")return;
-    const wheel=Number(this.modWheel)||0;
-    const bRev=this._bRevision?.[v.layer]||0,rev=this._layerParamRevision?.[v.layer]||0;
-    const cacheKey="L"+(v.layer??0)+":"+rev+":B"+bRev+":"+(this.getMorphMode()==="xfade"?"D":"S");
-    const letKey=cacheKey+":"+wheel;
-    let P=this._morphCache.get(letKey);
-    if(!P){
-      P=this._voiceMorphProfile(v);
-      this._morphCache.set(letKey,P);
-      if(this._morphCache.size>48)this._morphCache.delete(this._morphCache.keys().next().value);
-    }
+    // Recalculate from the latest wheel value for this voice; do not reuse a stale
+    // per-frame profile cache. Only automate connected AudioParams here.
+    const P=this._voiceMorphProfile(v);
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
-    const T=(a,x,tc=.035,eps=.002)=>this._smoothParamTarget(a,x,t,tc,eps);
+    const T=(a,x,tc=.045,eps=.003)=>this._smoothParamTarget(a,x,t,tc,eps);
     const rCut=this._routeValue("cutoff",0,v),rRes=this._routeValue("resonance",0,v);
     const rO1=this._routeValue("osc1Level",0,v),rO2=this._routeValue("osc2Level",0,v);
     const keyTrack=Number(P.filterKeyTrack)||0;
@@ -1368,134 +1432,74 @@ class SynthOslek{
     const routeRes=Math.max(.0001,Math.min(18,(Number(P.resonance)||0)+rRes*8));
     const routeOsc1=Math.max(0,Math.min(1,(Number(P.osc1Level)||0)+rO1));
     const routeOsc2=Math.max(0,Math.min(1,(Number(P.osc2Level)||0)+rO2));
-    T(v.vf?.frequency,routeCutoff,.035,.5);T(v.vf2?.frequency,routeCutoff,.035,.5);
-    T(v.vf?.Q,routeRes,.04,.025);T(v.vf2?.Q,routeRes,.04,.025);
-    T(v.g1?.gain,routeOsc1,.045,.001);T(v.g2?.gain,routeOsc2,.045,.001);
-    T(v.gs?.gain,Math.max(0,Math.min(1,Number(P.subLevel)||0)),.05,.001);
-    T(v.gn?.gain,Math.max(0,Math.min(1,Number(P.noiseLevel)||0)),.05,.001);
-    if(v.lm)T(v.lm.gain,this._lfoScale(P),.04,.002);
-    T(v.fxDelay?.gain,Math.max(0,Math.min(1,Number(P.delayMix)||0)),.045,.001);
-    T(v.fxReverb?.gain,Math.max(0,Math.min(1,Number(P.reverbMix)||0)),.045,.001);
-    T(v.fxChorus?.gain,Math.max(0,Math.min(1,Number(P.chorusMix)||0)),.045,.001);
-    T(v.fxFlanger?.gain,Math.max(0,Math.min(1,Number(P.flangerMix)||0)),.04,.001);
-    // These effect oscillators/nodes are shared, so follow the selected layer's profile.
-    if(v.layer===this.activeLayer){
-      T(this.lfo?.frequency,Math.max(.05,Math.min(20,Number(P.lfoRate)||2)),.04,.01);
-      const lfoWave=["triangle","square","sawtooth"].includes(P.lfoWave)?P.lfoWave:"sine";
-      if(this.lfo&&this.lfo.type!==lfoWave)try{this.lfo.type=lfoWave;}catch(e){}
-      T(this.delay?.delayTime,Math.max(.01,Math.min(1.5,Number(P.delayTime)||.25)),.045,.003);
-      T(this.delayFeedback?.gain,Math.max(0,Math.min(.85,Number(P.delayFb)||0)),.04,.002);
-      T(this.flangerLfo?.frequency,Math.max(.05,Math.min(5,Number(P.flangerRate)||.25)),.04,.005);
-      T(this.flangerDepth?.gain,Math.max(.0002,Math.min(.008,Number(P.flangerDepth)||.002)),.04,.0001);
-    }
 
-    const waveOk=new Set(["sine","triangle","sawtooth","square"]);
-    for(const osc of v.oscs||[]){
-      if(osc.kind==="sub"||!osc.w)continue;
-      const wave=P["osc"+osc.w+"Wave"];
-      if(waveOk.has(wave)&&osc.o?.type!==wave)try{osc.o.type=wave;}catch(e){}
-    }
-    const nativeType=P.filterType==="lowpass24"||P.filterType==="lowpass"?"lowpass":
-      P.filterType==="highpass24"||P.filterType==="highpass"?"highpass":
-      P.filterType==="notch"?"notch":P.filterType==="bandpass"?"bandpass":"lowpass";
-    if(v.vf&&v.vf.type!==nativeType)try{v.vf.type=nativeType;}catch(e){}
-    if(v.vf2&&v.vf2.type!==nativeType)try{v.vf2.type=nativeType;}catch(e){}
-    const needs24=P.filterType==="lowpass24"||P.filterType==="highpass24";
-    if(v.vf&&needs24&&!v.vf2&&!v._filter24Unavailable){
-      let stage=null;
-      try{
-        stage=this.ctx.createBiquadFilter();stage.type=nativeType;
-        stage.frequency.setValueAtTime(routeCutoff,t);stage.Q.setValueAtTime(routeRes,t);
-        v.vf2=stage;v.voiceNodes?.add(stage);
-        if(v.lm&&v._lfoDest==="cutoff")v.lm.connect(stage.frequency);
-      }catch(err){
-        try{stage?.disconnect();}catch(e){}
-        v._filter24Unavailable=true;
-        console.warn("[SynthOslek] live 24 dB filter stage could not be created",err);
-      }
-    }
-    if(v.vf&&v.vf2&&v._filter24Active!==needs24){
-      try{
-        v.vf.disconnect();v.vf2.disconnect();
-        if(needs24){v.vf.connect(v.vf2);v.vf2.connect(v.va);}
-        else v.vf.connect(v.va);
-        v._filter24Active=needs24;
-      }catch(err){console.warn("[SynthOslek] live filter topology update failed",err);}
-    }
+    // Stable, continuous morph targets for the currently sounding voice.
+    T(v.vf?.frequency,routeCutoff,.055,.35);
+    T(v.vf2?.frequency,routeCutoff,.055,.35);
+    T(v.vf?.Q,routeRes,.055,.025);
+    T(v.vf2?.Q,routeRes,.055,.025);
+    T(v.g1?.gain,routeOsc1,.055,.0015);
+    T(v.g2?.gain,routeOsc2,.055,.0015);
+    T(v.gs?.gain,Math.max(0,Math.min(1,Number(P.subLevel)||0)),.06,.0015);
+    T(v.gn?.gain,Math.max(0,Math.min(1,Number(P.noiseLevel)||0)),.06,.0015);
+    if(v.lm)T(v.lm.gain,this._lfoScale(P),.055,.002);
+    T(v.fxDelay?.gain,Math.max(0,Math.min(1,Number(P.delayMix)||0)),.06,.0015);
+    T(v.fxReverb?.gain,Math.max(0,Math.min(1,Number(P.reverbMix)||0)),.06,.0015);
+    T(v.fxChorus?.gain,Math.max(0,Math.min(1,Number(P.chorusMix)||0)),.06,.0015);
+    T(v.fxFlanger?.gain,Math.max(0,Math.min(1,Number(P.flangerMix)||0)),.06,.0015);
 
-    if(v.lm&&P.lfoDest&&v._lfoDest!==P.lfoDest){
-      try{v.lm.disconnect();}catch(e){}
-      if(P.lfoDest==="cutoff"){
-        if(v.vf)v.lm.connect(v.vf.frequency);
-        if(v.vf2)v.lm.connect(v.vf2.frequency);
-      }else if(P.lfoDest==="amp"){
-        if(v.va?.gain)v.lm.connect(v.va.gain);
-      }else if(P.lfoDest==="pitch"){
-        for(const osc of v.oscs||[])if(osc.o?.detune)v.lm.connect(osc.o.detune);
-      }
-      v._lfoDest=P.lfoDest;
-    }
-
-    // Add an FM path to a sounding voice if Sound B introduces FM, then automate it.
-    const fmAmount=Math.max(0,Math.min(3000,Number(P.fmAmount)||0));
-    const fmRatio=Math.max(.125,Math.min(16,Number(P.fmRatio)||2));
-    const baseFreq=440*Math.pow(2,(Number(v.midi??60)-69)/12);
-    if(fmAmount>.001&&!v.fmMod){
-      let fmMod=null,fmGain=null;
-      try{
-        const wave=waveOk.has(P.osc2Wave)?P.osc2Wave:"sine";
-        fmMod=this.dspBackend.createVoiceOscillator(this.ctx,wave);
-        fmGain=this._G(0);fmMod.type=wave;
-        fmMod.frequency.setValueAtTime(Math.max(1,baseFreq*fmRatio),t);
-        fmGain.gain.setValueAtTime(0,t);fmMod.connect(fmGain);
-        for(const carrier of v.oscs||[])if(carrier.w===1)fmGain.connect(carrier.o.frequency);
-        fmMod.start(t);v.fmMod=fmMod;v.fmGain=fmGain;
-        v.voiceNodes?.add(fmMod);v.voiceNodes?.add(fmGain);
-        if(Array.isArray(v.all))v.all.push(fmMod);
-      }catch(err){
-        try{fmMod?.stop();}catch(e){}try{fmMod?.disconnect();}catch(e){}try{fmGain?.disconnect();}catch(e){}
-        console.warn("[SynthOslek] live FM morph path could not be created",err);
-      }
-    }
+    // Keep the current voice graph topology stable during a held note:
+    // changing OscillatorNode.type, rewiring LFOs, adding FM nodes, or swapping
+    // filter stages mid-cycle can create phase discontinuities and audible thumps.
+    // An FM path created at note-on can still morph smoothly.
     if(v.fmMod){
-      const wave=waveOk.has(P.osc2Wave)?P.osc2Wave:"sine";
-      if(v.fmMod.type!==wave)try{v.fmMod.type=wave;}catch(e){}
-      T(v.fmMod.frequency,Math.max(1,baseFreq*fmRatio),.04,.1);
-      T(v.fmGain?.gain,fmAmount*Math.max(.05,Number(v.velocity)||0),.04,.05);
+      const ratio=Math.max(.125,Math.min(16,Number(P.fmRatio)||2));
+      const fmAmount=Math.max(0,Math.min(3000,Number(P.fmAmount)||0));
+      const baseFreq=440*Math.pow(2,(Number(v.midi??60)-69)/12);
+      T(v.fmMod.frequency,Math.max(1,baseFreq*ratio),.055,.2);
+      T(v.fmGain?.gain,fmAmount*Math.max(.05,Number(v.velocity)||0),.06,.08);
     }
+    v._lastMorphAmount=this._morphAmount();
   }
   setModWheel(v,at=null){
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
     this._modWheelUpdateAt=at;
-    // Coalesce fast MIDI/USB/Bluetooth/UI/gyro events in every morph mode.
-    // Previously X-FADE bypassed rAF and scheduled gain changes for every CC event.
     if(this._morphRafScheduled)return;
     this._morphRafScheduled=true;
     const self=this;
     const flush=()=>{
-      self._morphRafScheduled=false;
-      if(!self.started||!self.ctx||self.ctx.state==="closed")return;
+      if(!self.started||!self.ctx||self.ctx.state==="closed"){
+        self._morphRafScheduled=false;self._morphFlushTimer=0;return;
+      }
+      // Cap graph automation to ~36 updates/sec. MIDI/UI input still updates the
+      // target immediately; this coalesces bursty BLE events and prevents automation storms.
+      const nowMs=performance.now(),elapsed=nowMs-(self._lastMorphFlushAt||0),wait=28-elapsed;
+      if(wait>0){
+        self._morphFlushTimer=setTimeout(()=>{self._morphFlushTimer=0;flush();},wait);
+        return;
+      }
+      self._morphRafScheduled=false;self._morphFlushTimer=0;self._lastMorphFlushAt=nowMs;
       const t=self.ctx.currentTime;
       let failed=0;
       try{
         if(self.getMorphMode()==="xfade"){
           try{refreshLayerGains(t);}catch(err){failed++;}
         }else{
-          for(const voice of [...self.voices.values()]){
+          for(const voice of self.voices.values()){
             try{self._applyMorphToVoice(voice,t);}catch(err){failed++;}
           }
-          try{self._det(.035,t);}catch(err){failed++;}
+          try{self._det(.045,t);}catch(err){failed++;}
         }
       }catch(err){failed++;}
-      if(failed)console.warn("[SynthOslek] skipped "+failed+" morph update(s); scheduler remains active");
+      if(failed)console.warn("[SynthOslek] skipped "+failed+" live morph update(s)",failed);
     };
     try{
       if(typeof requestAnimationFrame==="function")requestAnimationFrame(flush);
-      else setTimeout(flush,16);
+      else setTimeout(flush,28);
     }catch(err){
       self._morphRafScheduled=false;
-      setTimeout(flush,16);
+      setTimeout(flush,28);
     }
   }
   _det(tc=.01,at=null){
@@ -2792,8 +2796,6 @@ for(let m=KEY_START;m<=KEY_END;m++){
   k.tabIndex=-1;k.setAttribute("role","button");k.setAttribute("aria-label",midiToNote(m));
   k.addEventListener("mousedown",e=>{e.preventDefault();k.blur();});
   k.addEventListener("pointerdown",()=>k.blur());
-  k.style.setProperty("background-color",isBlack?"#ff7a00":"#080808","important");
-  k.style.setProperty("color",isBlack?"#1b0b00":"#aeb6c7","important");
   k.style.setProperty("outline","none","important");
   k.style.setProperty("appearance","none","important");
   k.style.setProperty("-webkit-appearance","none","important");
@@ -3022,6 +3024,7 @@ class SynthOslekGyro{
   const apply=(mode)=>{
     synthEl.classList.toggle("mode-adv",mode==="adv");
     synthEl.classList.toggle("mode-min",mode==="min");
+    document.body.classList.toggle("so-adv-open",mode==="adv");
     btn.classList.toggle("on",mode==="adv");
     btn.textContent=mode==="adv"?"◀ MIN":"⚙ ADV";
     btn.title=mode==="adv"
