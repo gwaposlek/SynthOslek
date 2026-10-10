@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.67-feel-patch">
-<title>SynthOslek v16.67 — Feel Patch & Synonym Morph</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.68-panic-sustain-clear">
+<title>SynthOslek v16.68 — Panic Sustain Clear</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1841,6 +1841,9 @@ synth.panic=function(){
   let out;
   try{out=_panic0();}
   finally{
+    /* v16.68: Panic must release the pedal state as well as its held-note set.
+       Otherwise the next note-off can be latched by a stale sustain boolean. */
+    this.sustain=false;
     for(const key of [...this.tailVoices.keys()]){
       try{this._forceStop(key,2);}catch(e){}
     }
@@ -1848,6 +1851,9 @@ synth.panic=function(){
     try{this.voices.clear();}catch(e){}
     try{this.tailVoices.clear();}catch(e){}
     this.voicePool.clear();
+    const led=document.getElementById("sustainLed");
+    if(led){led.classList.remove("on");led.textContent="SUSTAIN OFF";}
+    try{syncSynthState(false);}catch(e){}
   }
   return out;
 };
@@ -3485,7 +3491,7 @@ syncSynthState(false);
   window.SynthOslekPerformance={snapshot:()=>({audioState:synth?.ctx?.state||"uninitialized",bpm:SO.clock.bpm,activeVoices:synth?.voices?.size||0,tailVoices:synth?.tailVoices?.size||0,sampleRate:synth?.ctx?.sampleRate||0})};
 
   window.SynthOslekRoadmap={version:"16.65",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.67 engine ready · feel patch · rAF morph · synonym chains · wheel recall");
+  setStatus("v16.68 engine ready · panic sustain clear · rAF morph · voice stress tests");
 })();
 
 /* ========================= WELCOME + START ========================= */
