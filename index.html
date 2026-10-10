@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-10-v16.79-live-morph-direction-balance">
-<title>SynthOslek v16.79 — SynthOslek</title>
+<meta name="synthoslek-build" content="2026-10-10-v16.80-layer-authoritative-morph">
+<title>SynthOslek v16.80 — Morph Instrument</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -600,6 +600,9 @@ header{display:none!important}
 @media(orientation:portrait){#so67{overflow:visible}.so-steps{flex:none}#so67Panel{font-size:.6rem}#so67 .so-main-row{width:100%}#so67 .so-music-row{width:100%;display:grid;grid-template-columns:auto auto 1fr auto 1fr auto 1fr;align-items:center}#so67 .so-music-row .so-label{white-space:nowrap}#so67 .so-music-row select{width:100%;min-width:0}}
 
 #panels{display:none!important}
+/* v16.80: remove tab strip for controls intentionally hidden in this build. */
+.synth .tabs,
+.synth.mode-adv .tabs{display:none!important}
 
 .welcome-features{display:flex;justify-content:center;gap:.45rem;flex-wrap:wrap;margin:-.45rem 0 1.35rem}
 .welcome-features span{padding:.28rem .55rem;border:1px solid #263247;border-radius:999px;color:#a9c9ff;font-size:.58rem;font-weight:800;letter-spacing:.14em;background:rgba(42,67,105,.12)}
@@ -1023,7 +1026,7 @@ body.so-adv-open{overflow-y:auto!important;overflow-x:hidden!important;align-ite
   <div class="panes" id="panels"></div>
 </div>
 
-<div class="footer">SynthOslek v16.66.1 · Minimal ADV · A/B Morph · Voice-Pool Fix</div>
+<div class="footer">SynthOslek v16.80 · A/B Morph Instrument · Minimalist Performance UI</div>
 <script>
 /* v16.18 startup diagnostics */
 (function(){
@@ -1458,21 +1461,40 @@ class SynthOslek{
     }
   }
   _voiceMorphProfile(v){
-    const base=v?.rawA||v?.params||this.params;
-    if(this.getMorphMode()==="xfade")return base;
-    if(v?.rawB){
-      // Match note-on initialization exactly: both paths must apply the same
-      // macro shaping after A/B interpolation or held-note morph can feel
-      // asymmetric depending on which wheel position the note started at.
-      return this._morphParams(interpolateProfile(base,v.rawB,this._morphAmount()));
+    const layer=Number(v?.layer??this.activeLayer);
+    const mode=this.getMorphMode();
+    const wheel=Number(this.modWheel)||0;
+    const revA=this._layerParamRevision?.[layer]||0;
+    const revB=this._bRevision?.[layer]||0;
+    const key=layer+":"+mode+":"+revA+":"+revB+":"+String(wheel);
+    if(this._morphCache.has(key)){
+      const cached=this._morphCache.get(key);
+      this._morphCache.delete(key);
+      this._morphCache.set(key,cached);
+      return cached;
     }
-    return this._morphParams(v?.params||this.params);
+    const layerA=this.layerProfiles[layer]||this.params;
+    const layerB=this.layerProfilesB?.[layer]||null;
+    let P;
+    if(mode==="xfade")P=layerA;
+    else if(layerB)P=this._morphParams(interpolateProfile(layerA,layerB,this._morphAmount()));
+    else P=this._morphParams(layerA);
+    this._morphCache.set(key,P);
+    if(this._morphCache.size>96)this._morphCache.delete(this._morphCache.keys().next().value);
+    return P;
   }
   _applyMorphToVoice(v,at=null){
     if(!this.started||!v||!this.ctx||this.ctx.state==="closed")return;
     // Recalculate from the latest wheel value for this voice; do not reuse a stale
     // per-frame profile cache. Only automate connected AudioParams here.
     const P=this._voiceMorphProfile(v);
+    /* Release uses v.params; keep release/filter-return values aligned with
+       the current effective morph while the note remains held. */
+    if(v.params){
+      if(P.release!==undefined)v.params.release=P.release;
+      if(P.fRelease!==undefined)v.params.fRelease=P.fRelease;
+      if(P.cutoff!==undefined)v.params.cutoff=P.cutoff;
+    }
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
     const T=(a,x,tc=.045,eps=.003)=>this._smoothParamTarget(a,x,t,tc,eps);
     const rCut=this._routeValue("cutoff",0,v),rRes=this._routeValue("resonance",0,v);
@@ -1675,7 +1697,7 @@ class SynthOslek{
       if(P.lfoDest==="cutoff"){lm.connect(vf.frequency);if(vf2)lm.connect(vf2.frequency);}
       else if(P.lfoDest==="amp")lm.connect(va.gain);
     }
-    const v={env,vf,vf2,va,lm,lfoSource:lm?this.lfo:null,_lfoDest:P.lfoDest,_filter24Active:!!vf2,voiceNodes,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,fxFlanger,layer,midi,params:{...baseP},rawA:{...rawA},rawB:rawB?{...rawB}:null,oscs:[],all:[],fmMod:null,fmGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,vf2,va,lm,lfoSource:lm?this.lfo:null,_lfoDest:P.lfoDest,_filter24Active:!!vf2,voiceNodes,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,fxFlanger,layer,midi,params:{...baseP},oscs:[],all:[],fmMod:null,fmGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     const maxUnison=this.mobileAudio
       ?(this.voices.size>=6?1:2)
@@ -1826,12 +1848,29 @@ class SynthOslek{
   allNotesOff(){if(!this.started)return;for(const key of[...this.voices.keys()]){const[layer,midi]=key.split(":");this.noteOff(Number(midi),Number(layer));}this.sustained.clear();}
   _nativePanic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
   updateParam(k,x,at=null){
-    const cacheKey=this.activeLayer+":"+k,prev=this._paramCache.get(cacheKey);
-    if(Object.is(prev,x)){this.params[k]=x;return;}
+    const layer=this.activeLayer;
+    const profile=this.layerProfiles[layer];
+    const cacheKey=layer+":"+k,prev=this._paramCache.get(cacheKey);
+    const paramValue=this.params?.[k],profileValue=profile?.[k];
+    const sourceMismatch=!!profile&&this.params!==profile;
+    const needsSync=sourceMismatch||!Object.is(paramValue,x)||(!!profile&&!Object.is(profileValue,x));
+    if(Object.is(prev,x)&&!needsSync)return;
+
     this._paramCache.set(cacheKey,x);
-    this._layerParamRevision[this.activeLayer]=(this._layerParamRevision[this.activeLayer]||0)+1;
-    this.params[k]=x;
-    if(this.layerProfiles[this.activeLayer])this.layerProfiles[this.activeLayer][k]=x;
+    if(profile){
+      this.params=profile;
+      profile[k]=x;
+    }else if(this.params){
+      this.params[k]=x;
+    }
+    if(needsSync)markLayerProfileChanged(layer,false);
+
+    /* Preserve fields consumed by note-off and voice-lifecycle paths. */
+    for(const v of this.voices.values()){
+      if(v.layer!==layer)continue;
+      if(v.params)v.params[k]=x;
+    }
+
     if(!this.started)return;
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
     const T=(a,v,tc)=>{try{a.setTargetAtTime(v,t,tc);}catch(e){}};
@@ -1839,7 +1878,7 @@ class SynthOslek{
       volume:()=>T(this.masterGain.gain,Math.min(.8,Math.max(0,Number.isFinite(Number(x))?Number(x):0)),.015),
       delayTime:()=>T(this.delay.delayTime,x,.02),
       delayFb:()=>T(this.delayFeedback.gain,x,.02),
-      flangerMix:()=>{const target=Math.max(0,Math.min(1,Number(x)||0));for(const v of this.voices.values())if(v.layer===this.activeLayer){v.params.flangerMix=target;if(v.rawA)v.rawA.flangerMix=target;this._smoothParamTarget(v.fxFlanger?.gain,target,t,.045,.003);}},
+      flangerMix:()=>{const target=Math.max(0,Math.min(1,Number(x)||0));for(const v of this.voices.values())if(v.layer===layer){if(v.params)v.params.flangerMix=target;this._smoothParamTarget(v.fxFlanger?.gain,target,t,.045,.003);}},
       flangerRate:()=>T(this.flangerLfo.frequency,x,.02),
       flangerDepth:()=>T(this.flangerDepth.gain,x,.02),
       voiceMode:()=>{},legato:()=>{},
@@ -1847,13 +1886,20 @@ class SynthOslek{
       lfoWave:()=>{const w=x==="triangle"||x==="square"||x==="sawtooth"?x:"sine";try{this.lfo.type=w;}catch(e){}},
       lfoDelay:()=>{},filterKeyTrack:()=>{},filterEnvPolarity:()=>{}
     };
-    if(A[k])return A[k]();
+    if(A[k]){
+      A[k]();
+      if(k==="filterKeyTrack"){
+        for(const v of this.voices.values())if(v.layer===layer)this._applyMorphToVoice(v,t);
+      }
+      return;
+    }
     const detuneParam=k==="osc1Detune"||k==="osc2Detune"||k==="osc1Coarse"||k==="osc2Coarse"||k==="spread";
     for(const v of this.voices.values()){
-      if(v.layer!==this.activeLayer)continue;
-      v.params[k]=x;
+      if(v.layer!==layer)continue;
       if(k==="filterType"){
         const nt=x==="lowpass24"||x==="lowpass"?"lowpass":x==="highpass24"||x==="highpass"?"highpass":x==="notch"?"notch":x==="bandpass"?"bandpass":"lowpass";
+        /* Keep existing explicit-control behavior; profile refresh does not
+           hot-swap topology during a held note. */
         if(v.vf)v.vf.type=nt;if(v.vf2)v.vf2.type=nt;
       }else if(k==="resonance"){
         if(v.vf)v.vf.Q.value=Math.max(.0001,Math.min(18,Number(x)||0));
@@ -2096,6 +2142,48 @@ Object.assign(PRESETS.keys,{chorusMix:.35});
 const LAYER_COUNT=2;
 const synth=new SynthOslek();
 window.synth=synth;
+
+/* v16.80 — canonical layer profiles and safe held-voice refresh. */
+function refreshLayerMorphVoices(layer,at=null){
+  layer=Number(layer);
+  if(!Number.isInteger(layer)||layer<0||layer>=synth.layerProfiles.length)return;
+  const matching=[];
+  for(const v of synth.voices.values())if(v.layer===layer)matching.push(v);
+  if(!matching.length)return;
+  for(const v of matching){
+    const P=synth._voiceMorphProfile(v);
+    if(P&&v.params)Object.assign(v.params,P);
+    if(synth.started&&synth.ctx&&synth.ctx.state!=="closed"){
+      try{synth._applyMorphToVoice(v,at);}catch(err){console.warn("[SynthOslek] layer profile refresh failed",err);}
+    }
+  }
+  if(synth.started&&synth.ctx&&synth.ctx.state!=="closed"){
+    try{synth._det(.045,at);}catch(err){console.warn("[SynthOslek] layer detune refresh failed",err);}
+  }
+}
+function markLayerProfileChanged(layer,refresh=true){
+  layer=Number(layer);
+  if(!Number.isInteger(layer)||layer<0||layer>=synth.layerProfiles.length)return;
+  synth._layerParamRevision[layer]=(synth._layerParamRevision[layer]||0)+1;
+  synth._morphCache.clear();
+  if(layer===synth.activeLayer&&synth.layerProfiles[layer])synth.params=synth.layerProfiles[layer];
+  if(refresh)refreshLayerMorphVoices(layer);
+}
+function replaceLayerProfile(layer,profile,refresh=true){
+  layer=Number(layer);
+  if(!Number.isInteger(layer)||layer<0||layer>=synth.layerProfiles.length)return null;
+  synth.layerProfiles[layer]={...(profile||{})};
+  if(layer===synth.activeLayer)synth.params=synth.layerProfiles[layer];
+  markLayerProfileChanged(layer,refresh);
+  return synth.layerProfiles[layer];
+}
+function markLayerBChanged(layer,refresh=true){
+  layer=Number(layer);
+  if(!Number.isInteger(layer)||layer<0||layer>=synth.layerProfiles.length)return;
+  synth._bRevision[layer]=(synth._bRevision[layer]||0)+1;
+  synth._morphCache.clear();
+  if(refresh)refreshLayerMorphVoices(layer);
+}
 window.__synthOslekBooted=true;
 
 document.addEventListener("visibilitychange",()=>{
@@ -2323,7 +2411,7 @@ const PANELS=[
 ["Oscillator 1",["osc1Wave","osc1Detune","osc1Level"]],["Oscillator 2",["osc2Wave","osc2Detune","osc2Level"]],
 ["Filter",["filterType","cutoff","resonance","filterKeyTrack","filterEnvPolarity"]],["Amp Envelope",["attack","decay","sustain","release"]],
 ["Filter Envelope",["fEnvAmt","fAttack","fDecay","fSustain","fRelease"]],["LFO",["lfoDest","lfoWave","lfoRate","lfoDepth","lfoDelay"]],
-["Voice",["voiceMode","legato","unison","spread","subLevel","noiseLevel","glide"]],["Effects",["delayTime","delaySync","delayFb","delayMix","reverbMix","flangerMix","flangerRate","flangerDepth","chorusMix"]]
+["Voice",["unison","spread","subLevel","noiseLevel","glide"]],["Effects",["delayTime","delaySync","delayFb","delayMix","reverbMix","flangerMix","flangerRate","flangerDepth","chorusMix"]]
 ];
 
 const TABMAP={"Oscillator 1":"Osc","Oscillator 2":"Osc","Voice":"Osc","Filter":"Filter","LFO":"Filter","Amp Envelope":"Env","Filter Envelope":"Env","Effects":"FX"};
@@ -2339,7 +2427,6 @@ if(soundDesigner){
   const architecture=soundDesigner.querySelector(".sd-architecture");
   if(architecture)architecture.style.display="none";
 }
-PANES.Layers.appendChild(document.getElementById("layerMixer"));
 
 (function(){
   const tb=document.querySelector(".top-bar"),h=document.querySelector("header h1");
@@ -2405,8 +2492,8 @@ function buildLayerMixer(){
     const bBtn=d.querySelector('.layer-b');
     if(bBtn){
       let pressTimer=0,longPress=false;
-      const clearB=()=>{synth.layerProfilesB[i]=null;synth._bRevision[i]=(synth._bRevision[i]||0)+1;synth._morphCache.clear();bBtn.textContent='B';bBtn.classList.remove('on')};
-      const captureB=()=>{synth.layerProfilesB[i]={...synth.layerProfiles[i]};synth._bRevision[i]=(synth._bRevision[i]||0)+1;synth._morphCache.clear();bBtn.textContent='B✓';bBtn.classList.add('on')};
+      const clearB=()=>{synth.layerProfilesB[i]=null;markLayerBChanged(i);bBtn.textContent='B';bBtn.classList.remove('on')};
+      const captureB=()=>{synth.layerProfilesB[i]={...synth.layerProfiles[i]};markLayerBChanged(i);bBtn.textContent='B✓';bBtn.classList.add('on')};
       bBtn.addEventListener('pointerdown',()=>{longPress=false;clearTimeout(pressTimer);pressTimer=setTimeout(()=>{longPress=true;clearB()},520)});
       bBtn.addEventListener('pointerup',()=>{clearTimeout(pressTimer);if(!longPress)captureB()});
       bBtn.addEventListener('pointercancel',()=>clearTimeout(pressTimer));
@@ -2427,15 +2514,22 @@ function setActiveLayer(i){
 
 function loadLayerPreset(i,name){
   const base=PRESETS[name]||PRESETS.init;
-  synth.layerProfiles[i]={...base,osc1Coarse:base.osc1Coarse??0,osc2Coarse:base.osc2Coarse??0,unison:base.unison??1,spread:base.spread??12,subLevel:base.subLevel??0,noiseLevel:base.noiseLevel??0,chorusMix:base.chorusMix??0};
-  if(synth.layerProfilesB?.[i]){synth.layerProfilesB[i]=null;synth._bRevision[i]=(synth._bRevision[i]||0)+1;synth._morphCache.clear();}
+  replaceLayerProfile(i,{...base,osc1Coarse:base.osc1Coarse??0,osc2Coarse:base.osc2Coarse??0,unison:base.unison??1,spread:base.spread??12,subLevel:base.subLevel??0,noiseLevel:base.noiseLevel??0,chorusMix:base.chorusMix??0},false);
+  if(synth.layerProfilesB?.[i]){synth.layerProfilesB[i]=null;markLayerBChanged(i,false);}
   layerState[i].preset=name;
   if(i===synth.activeLayer)setActiveLayer(i);else syncSynthState(false);
+  refreshLayerMorphVoices(i);
 }
 
 function applyParams(p){
   for(const[k,v]of Object.entries(p))if(UI[k])UI[k].set(v);
-  for(const k of["osc1Coarse","osc2Coarse"])if(p[k]!==undefined){synth.params[k]=p[k];if(synth.layerProfiles[synth.activeLayer])synth.layerProfiles[synth.activeLayer][k]=p[k];}
+  let coarseChanged=false;
+  for(const k of["osc1Coarse","osc2Coarse"])if(p[k]!==undefined){
+    synth.params[k]=p[k];
+    if(synth.layerProfiles[synth.activeLayer])synth.layerProfiles[synth.activeLayer][k]=p[k];
+    coarseChanged=true;
+  }
+  if(coarseChanged)markLayerProfileChanged(synth.activeLayer,true);
   synth.started&&synth._det?.();
 }
 
@@ -2653,15 +2747,14 @@ const PairMemory=(()=>{
   const recall=(i)=>{
     const e=entries[i];if(!e)return false;
     const layer=synth.activeLayer;
-    synth.layerProfiles[layer]={...e.A};
-    if(synth.layerProfilesB)synth.layerProfilesB[layer]={...e.B};
-    synth._bRevision[layer]=(synth._bRevision[layer]||0)+1;
-    synth._morphCache?.clear();
+    replaceLayerProfile(layer,e.A,false);
+    if(synth.layerProfilesB){synth.layerProfilesB[layer]={...e.B};markLayerBChanged(layer,false);}
     applyParams(e.A);
     // v16.67: restore the morph position captured with this saved A/B pair.
     const restoreWheel=Number.isFinite(e.wheel)?Math.max(0,Math.min(1,e.wheel)):0;
     synth.setModWheel(restoreWheel);
     if(typeof setModWheelVisual==="function")setModWheelVisual($("modWheel"),restoreWheel);
+    refreshLayerMorphVoices(layer);
     render(i);
     const st=document.getElementById("stxt");
     if(st)st.textContent="Recalled · "+e.label+" ("+e.family+") @ "+restoreWheel.toFixed(2);
@@ -2765,13 +2858,13 @@ window.SynthOslekPairMemory=PairMemory;
     const prompt=text||input.value;if(!prompt)return;
     const pair=SD.pair(prompt);
     const {A,B,family,tags,engine,confidence}=pair;
-    synth.layerProfiles[synth.activeLayer]={...A};
-    if(synth.layerProfilesB)synth.layerProfilesB[synth.activeLayer]={...B};
-    synth._bRevision[synth.activeLayer]=(synth._bRevision[synth.activeLayer]||0)+1;
-    synth._morphCache?.clear();
+    const layer=synth.activeLayer;
+    replaceLayerProfile(layer,A,false);
+    if(synth.layerProfilesB){synth.layerProfilesB[layer]={...B};markLayerBChanged(layer,false);}
     applyParams(A);
     synth.setModWheel(0);
     if(typeof setModWheelVisual==="function")setModWheelVisual($("modWheel"),0);
+    refreshLayerMorphVoices(layer);
     if(window.SynthOslekPairMemory)window.SynthOslekPairMemory.push(pair,prompt);
     if(eng&&eng.value==='auto')eng.value=engine;
     if(conf)conf.textContent="• "+family+" • "+confidence+" • A/B pair";
@@ -2793,14 +2886,14 @@ document.getElementById("rndBtn").addEventListener("click",()=>{
   const lockedVolume=Number.isFinite(Number(UI.volume?.v))?Number(UI.volume.v):(Number.isFinite(Number(synth.params.volume))?Number(synth.params.volume):PRESETS.init.volume);
   const {A,B,family,extreme}=SD.surprisePair();
   A.volume=lockedVolume;B.volume=lockedVolume;
-  synth.layerProfiles[synth.activeLayer]={...A};
-  if(synth.layerProfilesB)synth.layerProfilesB[synth.activeLayer]={...B};
-  synth._bRevision[synth.activeLayer]=(synth._bRevision[synth.activeLayer]||0)+1;
-  synth._morphCache?.clear();
+  const layer=synth.activeLayer;
+  replaceLayerProfile(layer,A,false);
+  if(synth.layerProfilesB){synth.layerProfilesB[layer]={...B};markLayerBChanged(layer,false);}
   applyParams(A);
   if(UI.volume){UI.volume.set(lockedVolume,true);synth.updateParam("volume",lockedVolume);}
   synth.setModWheel(0);
   if(typeof setModWheelVisual==="function")setModWheelVisual($("modWheel"),0);
+  refreshLayerMorphVoices(layer);
   if(window.SynthOslekPairMemory)window.SynthOslekPairMemory.push({A,B,family},null);
   const ps=document.getElementById("presetSelect");if(ps)ps.value="";
   btn.classList.remove("flash-green","flash-red");
@@ -3571,10 +3664,11 @@ function saveScenes(){try{localStorage.setItem("so-scenes-v14",JSON.stringify(sc
 function captureScene(){return {profiles:synth.layerProfiles.map(x=>({...x})),layers:layerState.map(x=>({...x})),activeLayer:synth.activeLayer};}
 function recallScene(i){
   const sc=scenes[i];if(!sc)return;
-  sc.profiles.forEach((p,n)=>{synth.layerProfiles[n]={...p};});
+  sc.profiles.forEach((p,n)=>{replaceLayerProfile(n,p,false);});
   sc.layers.forEach((x,n)=>{if(layerState[n])Object.assign(layerState[n],x);});
   setActiveLayer(Math.max(0,Math.min(3,sc.activeLayer||0)));
   buildLayerMixer();refreshLayerGains();applyParams(synth.layerProfiles[synth.activeLayer]);
+  for(let n=0;n<sc.profiles.length;n++)refreshLayerMorphVoices(n);
   selectedScene=i;refreshSceneButtons();syncSynthState(false);
 }
 document.querySelectorAll(".scene-btn").forEach((b,i)=>b.addEventListener("click",()=>{
@@ -3861,9 +3955,12 @@ syncSynthState(false);
     if(p.mod)Object.assign(SO.mod,p.mod);
     if(p.params)try{applyParams(p.params)}catch(e){}
     if(Array.isArray(p.layers))p.layers.forEach((x,i)=>layerState[i]&&Object.assign(layerState[i],x));
-    if(Array.isArray(p.profiles)&&synth.layerProfiles)p.profiles.forEach((x,i)=>synth.layerProfiles[i]={...x});
-    if(Array.isArray(p.layerProfilesB)&&synth.layerProfilesB)p.layerProfilesB.forEach((x,i)=>{synth.layerProfilesB[i]=x?{...x}:null;});
-    try{buildLayerMixer();syncSynthState(false)}catch(e){}
+    if(Array.isArray(p.profiles)&&synth.layerProfiles)p.profiles.forEach((x,i)=>replaceLayerProfile(i,x,false));
+    if(Array.isArray(p.layerProfilesB)&&synth.layerProfilesB)p.layerProfilesB.forEach((x,i)=>{synth.layerProfilesB[i]=x?{...x}:null;markLayerBChanged(i,false);});
+    try{
+      buildLayerMixer();syncSynthState(false);
+      if(Array.isArray(p.profiles)||Array.isArray(p.layerProfilesB))for(let i=0;i<LAYER_COUNT;i++)refreshLayerMorphVoices(i);
+    }catch(e){}
   }
   $$("#so67Share")?.addEventListener("click",async()=>{const u=location.href.split("#")[0]+"#so67="+encode(presetState());try{await navigator.clipboard.writeText(u);setStatus("Preset link copied");}catch(e){prompt("Copy preset link",u);}});
   $$("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.65-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
@@ -3913,8 +4010,8 @@ syncSynthState(false);
   };
   window.SynthOslekPerformance={snapshot:()=>({audioState:synth?.ctx?.state||"uninitialized",bpm:SO.clock.bpm,activeVoices:synth?.voices?.size||0,tailVoices:synth?.tailVoices?.size||0,sampleRate:synth?.ctx?.sampleRate||0})};
 
-  window.SynthOslekRoadmap={version:"16.65",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.73 ready · fast MIDI response · readable minimalist UI");
+  window.SynthOslekRoadmap={version:"16.80",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
+  setStatus("v16.80 ready · layer-authoritative morph · readable performance UI");
 })();
 
 /* ========================= WELCOME + START ========================= */
