@@ -152,8 +152,12 @@ async function main() {
 
     // Verify the named chord readout agrees with the notes actually generated.
     await page.select('#so67ChordType', 'maj7');
-    await page.click('#so67Chord');
     const chordResult = await page.evaluate(() => {
+      const button = document.querySelector('#so67Chord');
+      if (!button) throw new Error('Chord toggle is missing.');
+      // DOM click exercises the real handler without relying on the control's
+      // current layout/viewport position in a headless browser.
+      if (window.SynthOslekRoadmap.state.music.chord === 'off') button.click();
       const synth = window.synth;
       synth.panic();
       synth.noteOn(60, 0.7, 0);
@@ -161,6 +165,7 @@ async function main() {
       const activeVoices = synth.voices.size;
       synth.noteOff(60, 0);
       synth.panic();
+      if (window.SynthOslekRoadmap.state.music.chord !== 'off') button.click();
       return { display, activeVoices };
     });
     requireCheck(/C maj7/.test(chordResult.display),
@@ -169,7 +174,6 @@ async function main() {
       'Chord readout does not list the exact C maj7 notes: ' + chordResult.display);
     requireCheck(chordResult.activeVoices >= 3,
       'C maj7 did not create multiple voices: ' + chordResult.activeVoices);
-    await page.click('#so67Chord');
     pass('Named chord display', chordResult.display + ' (' + chordResult.activeVoices + ' voices)');
 
     const noteResult = await page.evaluate(() => {
