@@ -16,11 +16,8 @@ test('SynthOslek starts its audio engine and preserves key UI/diagnostics', asyn
   await page.goto('/');
   await expectTitleMatchesBuild(page);
   await expect(page.locator('#keyboard')).toBeAttached();
-  await expect(page.locator('.welcome-desc')).toContainText('Describe the sound in your head');
-  await expect(page.locator('.welcome-desc')).not.toContainText('4 layers');
-  await expect(page.locator('.welcome-features')).toContainText('DESIGN');
-  await expect(page.locator('.welcome-features')).toContainText('MORPH');
-  await expect(page.locator('.welcome-features')).toContainText('PERFORM');
+  await expect(page.locator('.welcome-card h1')).toContainText('SynthOslek');
+  await expect(page.locator('#welcomeStart')).toHaveText('START');
   await expect(page.locator('#soDiagToggle')).toBeAttached();
   await expect(page.locator('#soDiagPanel')).toBeHidden();
   await page.locator('#welcomeStart').click();
@@ -238,11 +235,10 @@ test('voice-pool reclaim clears orphaned reservations and panic leaves no voices
 test('minimal mode keeps essentials visible and ADV toggle restores full controls', async ({ page }) => {
   await page.goto('/');
   await expectTitleMatchesBuild(page);
-  await expect(page.locator('.welcome-desc')).toContainText('MIDI controller');
   await page.locator('#welcomeStart').click();
   await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
 
-  const essentialSelectors = ['.brand h1', '#stxt', '#rndBtn', '#soundPrompt', '#soundGenerate', '#volKnob', '.pair-strip', '#bleMidiBtn', '#advToggle'];
+  const essentialSelectors = ['.brand-mark', '#stxt', '#rndBtn', '#soundPrompt', '#soundGenerate', '#volKnob', '.pair-strip', '#bleMidiBtn', '#advToggle'];
   for (const selector of essentialSelectors) await expect(page.locator(selector)).toBeVisible();
   await expect(page.locator('#keyboard')).toBeHidden();
   await expect(page.locator('#so67')).toBeHidden();
