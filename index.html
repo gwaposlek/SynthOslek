@@ -33,6 +33,8 @@ header p{color:var(--muted);font-size:.8rem;margin-top:.2rem}
 .tempo-row .tempo-label{font-size:.62rem;font-weight:800;letter-spacing:.08em;color:var(--muted)}
 .bpm-wheel{position:relative;width:42px;height:54px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scroll-snap-type:y mandatory;scrollbar-width:none;border:1px solid var(--border);border-radius:8px;background:var(--panel);touch-action:pan-y;outline-offset:2px}
 .bpm-wheel::-webkit-scrollbar{display:none}
+.bpm-wheel{cursor:grab;overscroll-behavior-y:contain}
+.bpm-wheel.is-dragging{cursor:grabbing;scroll-snap-type:none;user-select:none}
 .bpm-wheel::after{content:"";position:absolute;left:2px;right:2px;top:18px;height:18px;border-radius:4px;background:var(--accent);opacity:.14;pointer-events:none}
 .bpm-wheel-list{padding:18px 0}
 .bpm-wheel-item{height:18px;line-height:18px;scroll-snap-align:center;text-align:center;font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums;user-select:none;cursor:pointer}
@@ -3925,6 +3927,8 @@ syncSynthState(false);
     topBpmList.innerHTML=Array.from({length:BPM_MAX-BPM_MIN+1},(_,i)=>'<div class="bpm-wheel-item" data-bpm="'+(BPM_MIN+i)+'">'+(BPM_MIN+i)+'</div>').join("");
     const bpmItems=Array.from(topBpmList.children);
     let wheelFrame=0,lastWheelBpm=SO.clock.bpm;
+    let dragY=0,dragDistance=0,dragVelocity=0,dragTime=0,dragging=false,inertiaFrame=0,suppressWheelClick=false;
+    const stopWheelInertia=()=>{if(inertiaFrame){cancelAnimationFrame(inertiaFrame);inertiaFrame=0;}};
     const paintBpmWheel=(bpm,scroll=true)=>{
       bpm=clamp(Math.round(Number(bpm)||120),BPM_MIN,BPM_MAX);
       topBpmWheel.setAttribute("aria-valuenow",String(bpm));
@@ -3944,8 +3948,51 @@ syncSynthState(false);
     topBpmWheel.addEventListener("scroll",()=>{
       if(!wheelFrame)wheelFrame=requestAnimationFrame(applyWheelBpm);
     },{passive:true});
+    // Desktop roulette: allow a real mouse drag, then let the wheel coast to a stop.
+    topBpmWheel.addEventListener("pointerdown",e=>{
+      if(e.pointerType!=="mouse"||e.button!==0)return;
+      stopWheelInertia();
+      dragging=true;dragY=e.clientY;dragDistance=0;dragVelocity=0;dragTime=performance.now();
+      topBpmWheel.classList.add("is-dragging");
+      topBpmWheel.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    topBpmWheel.addEventListener("pointermove",e=>{
+      if(!dragging||e.pointerType!=="mouse")return;
+      const now=performance.now(),dy=e.clientY-dragY,dt=Math.max(1,now-dragTime);
+      dragDistance+=Math.abs(dy);
+      topBpmWheel.scrollTop-=dy;
+      dragVelocity=(-dy/dt)*16.67;
+      dragY=e.clientY;dragTime=now;
+      e.preventDefault();
+    });
+    const finishWheelDrag=e=>{
+      if(!dragging)return;
+      dragging=false;
+      if(dragDistance>4){
+        suppressWheelClick=true;
+        setTimeout(()=>{suppressWheelClick=false;},0);
+        let velocity=Math.max(-36,Math.min(36,dragVelocity));
+        let previous=performance.now();
+        const coast=now=>{
+          const dt=Math.min(32,now-previous);previous=now;
+          topBpmWheel.scrollTop+=velocity*dt;
+          velocity*=Math.pow(.92,dt/16.67);
+          if(Math.abs(velocity)>.12&&topBpmWheel.scrollTop>0&&topBpmWheel.scrollTop<(BPM_MAX-BPM_MIN)*BPM_ROW){
+            inertiaFrame=requestAnimationFrame(coast);
+          }else{inertiaFrame=0;topBpmWheel.scrollTop=Math.max(0,Math.min((BPM_MAX-BPM_MIN)*BPM_ROW,topBpmWheel.scrollTop));topBpmWheel.classList.remove("is-dragging");}
+        };
+        if(Math.abs(velocity)>.12)inertiaFrame=requestAnimationFrame(coast);
+        else topBpmWheel.classList.remove("is-dragging");
+      }else topBpmWheel.classList.remove("is-dragging");
+      if(e&&topBpmWheel.hasPointerCapture?.(e.pointerId))topBpmWheel.releasePointerCapture(e.pointerId);
+    };
+    topBpmWheel.addEventListener("pointerup",finishWheelDrag);
+    topBpmWheel.addEventListener("pointercancel",finishWheelDrag);
+    topBpmWheel.addEventListener("lostpointercapture",()=>{if(dragging){dragging=false;topBpmWheel.classList.remove("is-dragging");}});
     topBpmWheel.addEventListener("wheel",e=>{
       e.preventDefault();
+      stopWheelInertia();
       topBpmWheel.scrollTop+=Math.sign(e.deltaY||e.deltaX)*BPM_ROW;
     },{passive:false});
     topBpmWheel.addEventListener("keydown",e=>{
@@ -3964,6 +4011,7 @@ syncSynthState(false);
       setStatus("Tempo "+SO.clock.bpm+" BPM");
     });
     topBpmList.addEventListener("click",e=>{
+      if(suppressWheelClick)return;
       const item=e.target.closest("[data-bpm]");
       if(item){SO.clock.setBpm(Number(item.dataset.bpm));paintBpmWheel(SO.clock.bpm);lastWheelBpm=SO.clock.bpm;setStatus("Tempo "+SO.clock.bpm+" BPM");}
     });
