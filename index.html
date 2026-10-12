@@ -3839,7 +3839,7 @@ syncSynthState(false);
   SO.clock.divisionSeconds=(division)=>60/Math.max(20,SO.clock.bpm)*(SO_DIVISIONS[division]??.25);
   SO.clock.setBpm=(value)=>{const bpm=clamp(Number(value)||120,20,300);SO.clock.bpm=bpm;SO.seq.bpm=bpm;if(synth?.ctx)SO.clock.startedAt=synth.ctx.currentTime;try{synth?.setTempoBpm?.(bpm);}catch(e){}return bpm;};
   SO.clock.setBpm(SO.clock.bpm);
-  const topBpmSelect=$("#soTopBpm");
+  const topBpmSelect=document.getElementById("soTopBpm");
   if(topBpmSelect){
     topBpmSelect.value=String(SO.clock.bpm);
     topBpmSelect.addEventListener("change",()=>{const bpm=SO.clock.setBpm(topBpmSelect.value);setStatus("Tempo "+bpm+" BPM");});
