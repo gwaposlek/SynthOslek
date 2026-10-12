@@ -30,7 +30,7 @@ async function main() {
     const title = html.match(/<title>([\s\S]*?)<\/title>/i);
     const footer = html.match(/<div class=["']footer["']>([\s\S]*?)<\/div>/i);
     const version = html.match(/SynthOslek v(\d+\.\d+)/);
-    requireCheck(build && /v16\.85/.test(build[1]), 'Build metadata must identify v16.86.');
+    requireCheck(build && /v16\.86/.test(build[1]), 'Build metadata must identify v16.86.');
     requireCheck(title && title[1].includes('v16.86'), 'Browser title must show v16.86.');
     requireCheck(footer && footer[1].includes('v16.86'), 'Visible footer must show v16.86.');
     requireCheck(version && version[1] === '16.86', 'Visible page version must be consistent.');
