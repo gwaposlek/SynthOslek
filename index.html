@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-12-v16.81-audio-control-reliability">
-<title>SynthOslek v16.81 — Morph Instrument</title>
+<meta name="synthoslek-build" content="2026-10-12-v16.82-mod-wheel-mode-repair">
+<title>SynthOslek v16.82 — Morph Instrument</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -600,7 +600,7 @@ header{display:none!important}
 @media(orientation:portrait){#so67{overflow:visible}.so-steps{flex:none}#so67Panel{font-size:.6rem}#so67 .so-main-row{width:100%}#so67 .so-music-row{width:100%;display:grid;grid-template-columns:auto auto 1fr auto 1fr auto 1fr;align-items:center}#so67 .so-music-row .so-label{white-space:nowrap}#so67 .so-music-row select{width:100%;min-width:0}}
 
 #panels{display:none!important}
-/* v16.81: remove tab strip for controls intentionally hidden in this build. */
+/* v16.82: remove tab strip for controls intentionally hidden in this build. */
 .synth .tabs,
 .synth.mode-adv .tabs{display:none!important}
 
@@ -1026,7 +1026,7 @@ body.so-adv-open{overflow-y:auto!important;overflow-x:hidden!important;align-ite
   <div class="panes" id="panels"></div>
 </div>
 
-<div class="footer">SynthOslek v16.81 · A/B Morph Instrument · Minimalist Performance UI</div>
+<div class="footer">SynthOslek v16.82 · A/B Morph Instrument · Minimalist Performance UI</div>
 <script>
 /* v16.18 startup diagnostics */
 (function(){
@@ -1413,15 +1413,31 @@ class SynthOslek{
     const x=Math.max(0,Math.min(1,Number(this.modWheel)||0));
     return x*x*(3-2*x);
   }
-  getMorphMode(){
-    if(this.layerProfilesB&&this.layerProfilesB[this.activeLayer])return "ab";
+  getMorphMode(layer=this.activeLayer){
+    layer=Math.max(0,Math.min((this.layerProfiles?.length||1)-1,Number(layer)||0));
+    if(this.layerProfilesB?.[layer])return "ab";
     const dual=typeof layerState!=="undefined"&&layerState.length>=2&&
       typeof layerAudible==="function"&&layerAudible(0)&&layerAudible(1)&&
       Number(layerState[0]?.vol)>0.02&&Number(layerState[1]?.vol)>0.02;
-    return dual?"xfade":"macro";
+    if(!dual)return "macro";
+    const a=this.layerProfiles?.[0],b=this.layerProfiles?.[1];
+    if(!a||!b)return "macro";
+    // Two enabled layers that use the same sound are not a useful crossfade.
+    // Fall back to a macro morph in that case so the MOD wheel still has an audible job.
+    const keys=["osc1Wave","osc2Wave","osc1Detune","osc2Detune","osc1Coarse","osc2Coarse",
+      "osc1Level","osc2Level","filterType","cutoff","resonance","attack","decay","sustain","release",
+      "fEnvAmt","fAttack","fDecay","fSustain","fRelease","lfoRate","lfoDepth","lfoDelay","lfoDest","lfoWave",
+      "subLevel","noiseLevel","spread","unison","fmAmount","fmRatio","fmEnv","delayTime","delayFb","delayMix",
+      "reverbMix","chorusMix","flangerMix","flangerRate","flangerDepth"];
+    const distinct=keys.some(k=>{
+      const av=a[k],bv=b[k];
+      if(typeof av==="number"&&typeof bv==="number")return Math.abs(av-bv)>1e-4;
+      return String(av??"")!==String(bv??"");
+    });
+    return distinct?"xfade":"macro";
   }
-  _morphParams(P){
-    if(this.getMorphMode()!=="macro")return P;
+  _morphParams(P,layer=this.activeLayer){
+    if(this.getMorphMode(layer)!=="macro")return P;
     const m=this._morphAmount();
     if(m<=0)return P;
     const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
@@ -1462,7 +1478,7 @@ class SynthOslek{
   }
   _voiceMorphProfile(v){
     const layer=Number(v?.layer??this.activeLayer);
-    const mode=this.getMorphMode();
+    const mode=this.getMorphMode(layer);
     const wheel=Number(this.modWheel)||0;
     const revA=this._layerParamRevision?.[layer]||0;
     const revB=this._bRevision?.[layer]||0;
@@ -1477,8 +1493,8 @@ class SynthOslek{
     const layerB=this.layerProfilesB?.[layer]||null;
     let P;
     if(mode==="xfade")P=layerA;
-    else if(layerB)P=this._morphParams(interpolateProfile(layerA,layerB,this._morphAmount()));
-    else P=this._morphParams(layerA);
+    else if(layerB)P=interpolateProfile(layerA,layerB,this._morphAmount());
+    else P=this._morphParams(layerA,layer);
     this._morphCache.set(key,P);
     if(this._morphCache.size>96)this._morphCache.delete(this._morphCache.keys().next().value);
     return P;
@@ -1536,6 +1552,7 @@ class SynthOslek{
   setModWheel(v,at=null){
     this.modWheel=Math.max(0,Math.min(1,Number(v)||0));
     this.modMatrix?.setSource("modWheel",this.modWheel);
+    this._morphCache?.clear();
     this._modWheelUpdateAt=at;
     if(this._morphRafScheduled)return;
     this._morphRafScheduled=true;
@@ -1555,7 +1572,7 @@ class SynthOslek{
       const t=self.ctx.currentTime;
       let failed=0;
       try{
-        if(self.getMorphMode()==="xfade"){
+        if(self.getMorphMode(self.activeLayer)==="xfade"){
           try{refreshLayerGains(t);}catch(err){failed++;}
         }else{
           for(const voice of self.voices.values()){
@@ -1639,10 +1656,10 @@ class SynthOslek{
     };
     const rawA=cleanProfile(this.layerProfiles[layer]||this.params);
     const rawB=this.layerProfilesB?.[layer]?cleanProfile(this.layerProfilesB[layer]):null;
-    const morphT=this.getMorphMode()==="xfade"?0:this._morphAmount();
+    const morphT=this.getMorphMode(layer)==="xfade"?0:this._morphAmount();
     const rawP=rawB?interpolateProfile(rawA,rawB,morphT):rawA;
     const baseP=cleanProfile({...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0});
-    const P=cleanProfile(this._morphParams(baseP)),G=v=>trackVoiceNode(this._G(v));
+    const P=cleanProfile(this._morphParams(baseP,layer)),G=v=>trackVoiceNode(this._G(v));
     const now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime);
     const freq=440*Math.pow(2,(midi-69)/12);
     const workletPath=false; // Native oscillator path is the stable, fully enveloped/filtering path.
@@ -2166,7 +2183,7 @@ const LAYER_COUNT=2;
 const synth=new SynthOslek();
 window.synth=synth;
 
-/* v16.81 — canonical layer profiles and safe held-voice refresh. */
+/* v16.82 — canonical layer profiles and safe held-voice refresh. */
 function refreshLayerMorphVoices(layer,at=null){
   layer=Number(layer);
   if(!Number.isInteger(layer)||layer<0||layer>=synth.layerProfiles.length)return;
@@ -3035,9 +3052,10 @@ function setModWheelVisual(el,amt){
     if(valEl)valEl.textContent=amt.toFixed(2);
     if(modeEl){
       let mode="MC",modeClass="on-mc";
-      if(typeof synth!=="undefined"){
-        if(synth.layerProfilesB&&synth.layerProfilesB[synth.activeLayer]){mode="A/B";modeClass="on-ab";}
-        else if(typeof layerState!=="undefined"&&layerState.length>=2&&typeof layerAudible==="function"&&layerAudible(0)&&layerAudible(1)){mode="X-FADE";modeClass="on-xf";}
+      if(typeof synth!=="undefined"&&typeof synth.getMorphMode==="function"){
+        const activeMode=synth.getMorphMode(synth.activeLayer);
+        if(activeMode==="ab"){mode="A/B";modeClass="on-ab";}
+        else if(activeMode==="xfade"){mode="X-FADE";modeClass="on-xf";}
       }
       modeEl.textContent=mode;modeEl.className="mr-mode "+modeClass;
     }
@@ -4053,8 +4071,8 @@ syncSynthState(false);
     pressure:()=>typeof _soPerformancePressure==="function"?_soPerformancePressure():0
   };
 
-  window.SynthOslekRoadmap={version:"16.81",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.81 ready · layer-authoritative morph · readable performance UI");
+  window.SynthOslekRoadmap={version:"16.82",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
+  setStatus("v16.82 ready · layer-authoritative morph · readable performance UI");
 })();
 
 /* ========================= WELCOME + START ========================= */
