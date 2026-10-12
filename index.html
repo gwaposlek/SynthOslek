@@ -3969,7 +3969,6 @@ syncSynthState(false);
     const finishWheelDrag=e=>{
       if(!dragging)return;
       dragging=false;
-      topBpmWheel.classList.remove("is-dragging");
       if(dragDistance>4){
         suppressWheelClick=true;
         setTimeout(()=>{suppressWheelClick=false;},0);
@@ -3977,15 +3976,15 @@ syncSynthState(false);
         let previous=performance.now();
         const coast=now=>{
           const dt=Math.min(32,now-previous);previous=now;
-          topBpmWheel.scrollTop-=0; // Keep the scroll position browser-owned between frames.
           topBpmWheel.scrollTop+=velocity*dt;
           velocity*=Math.pow(.92,dt/16.67);
           if(Math.abs(velocity)>.12&&topBpmWheel.scrollTop>0&&topBpmWheel.scrollTop<(BPM_MAX-BPM_MIN)*BPM_ROW){
             inertiaFrame=requestAnimationFrame(coast);
-          }else{inertiaFrame=0;topBpmWheel.scrollTop=Math.max(0,Math.min((BPM_MAX-BPM_MIN)*BPM_ROW,topBpmWheel.scrollTop));}
+          }else{inertiaFrame=0;topBpmWheel.scrollTop=Math.max(0,Math.min((BPM_MAX-BPM_MIN)*BPM_ROW,topBpmWheel.scrollTop));topBpmWheel.classList.remove("is-dragging");}
         };
         if(Math.abs(velocity)>.12)inertiaFrame=requestAnimationFrame(coast);
-      }
+        else topBpmWheel.classList.remove("is-dragging");
+      }else topBpmWheel.classList.remove("is-dragging");
       if(e&&topBpmWheel.hasPointerCapture?.(e.pointerId))topBpmWheel.releasePointerCapture(e.pointerId);
     };
     topBpmWheel.addEventListener("pointerup",finishWheelDrag);
