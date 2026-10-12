@@ -128,7 +128,7 @@ test('filter envelope changes the actual synth output spectrum', async ({ page }
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto('/');
   await page.locator('#welcomeStart').click();
-  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  await expect.poll(() => page.evaluate(() => !!window.synth?.started && window.synth?.ctx?.state === 'running'), { timeout: 10000 }).toBe(true);
 
   const result = await page.evaluate(async () => {
     const synth = window.synth;
@@ -197,7 +197,7 @@ test('A/B morph allocates optional sources required by endpoint B', async ({ pag
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto('/');
   await page.locator('#welcomeStart').click();
-  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  await expect.poll(() => page.evaluate(() => !!window.synth?.started && window.synth?.ctx?.state === 'running'), { timeout: 10000 }).toBe(true);
   const result = await page.evaluate(async () => {
     const synth = window.synth;
     if (!synth?.noteOn || !synth?.setModWheel) return { unsupported: true };
