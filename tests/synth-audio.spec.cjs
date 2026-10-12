@@ -321,7 +321,18 @@ test('rapid lead-note and morph sweep stress leaves the synth healthy', async ({
     if (typeof SO !== 'undefined' && SO.arp.on && arpButton) arpButton.click();
     synth.panic();
 
-    const data = new Float32Array(synth.analyser.fftSize);
+    if (!synth.limiter || !synth.analyser) throw new Error('Desktop output limiter/analyser is unavailable');
+    // The normal analyser is upstream of the compressor; this probe taps the
+    // compressor output and uses a zero-gain sink so it can observe the real
+    // limiter path without adding audible signal to the output.
+    const outputProbe = synth.ctx.createAnalyser();
+    outputProbe.fftSize = synth.analyser.fftSize;
+    const probeSink = synth.ctx.createGain();
+    probeSink.gain.value = 0;
+    synth.limiter.connect(outputProbe);
+    outputProbe.connect(probeSink);
+    probeSink.connect(synth.ctx.destination);
+    const data = new Float32Array(outputProbe.fftSize);
     const samples = [];
     const start = performance.now();
     let accepted = 0, rejected = 0, noteCount = 360;
@@ -335,7 +346,7 @@ test('rapid lead-note and morph sweep stress leaves the synth healthy', async ({
       else accepted++;
       setTimeout(() => { try { synth.noteOff(midi, 0); } catch (e) {} }, 12);
       if (i % 30 === 0) {
-        synth.analyser.getFloatTimeDomainData(data);
+        outputProbe.getFloatTimeDomainData(data);
         let sum = 0, peak = 0, invalid = 0;
         for (const v of data) {
           if (!Number.isFinite(v)) invalid++;
@@ -364,6 +375,8 @@ test('rapid lead-note and morph sweep stress leaves the synth healthy', async ({
       rmsMax: Math.max(0, ...samples.map(x => x.rms)),
       finalPeak, finalRms: Math.sqrt(finalRms / data.length), invalidFinal
     };
+    outputProbe.disconnect();
+    probeSink.disconnect();
     synth.panic();
     await sleep(35);
     return {
@@ -383,9 +396,9 @@ test('rapid lead-note and morph sweep stress leaves the synth healthy', async ({
   expect(result.beforePanic.samplesFinite).toBeTruthy();
   expect(result.beforePanic.invalidFinal).toBe(0);
   expect(result.beforePanic.peakMax).toBeGreaterThan(0.00001);
-  // The test analyser taps the internal mix bus before the desktop limiter.
-  // Permit realistic summed-voice transients while still detecting runaway levels.
-  expect(result.beforePanic.peakMax).toBeLessThan(1.6);
+  // This peak measurement is post-compressor and before master volume.
+  // Fail if the output protection allows severe over-range peaks.
+  expect(result.beforePanic.peakMax).toBeLessThan(1.25);
   expect(result.beforePanic.pool.occupied).toBeLessThanOrEqual(result.beforePanic.pool.max);
   expect(result.afterPanic.active).toBe(0);
   expect(result.afterPanic.tails).toBe(0);
