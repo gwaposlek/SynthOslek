@@ -109,12 +109,31 @@ async function main() {
     }
     pass('Page/UI initialization', 'Runtime API and required controls are present');
 
+    const browserConsoleErrors = [];
+    page.on('console', message => {
+      if (message.type() === 'error') browserConsoleErrors.push(message.text());
+    });
     await page.click('#welcomeStart');
-    await page.waitForFunction(() => (
-      !!window.synth?.started &&
-      window.synth.ctx?.state === 'running' &&
-      (document.querySelector('#stxt')?.textContent || '').includes('Audio ready')
-    ), { timeout: 8000 });
+    await page.waitForFunction(() => {
+      const status = document.querySelector('#stxt')?.textContent || '';
+      return (
+        (!!window.synth?.started && window.synth.ctx?.state === 'running' && status.includes('Audio ready')) ||
+        status.includes('Audio start failed') ||
+        document.querySelector('#errorScreen')?.style.display === 'block'
+      );
+    }, { timeout: 6500 }).catch(() => {});
+    const startup = await page.evaluate(() => ({
+      started: !!window.synth?.started,
+      audioState: window.synth?.ctx?.state || 'missing',
+      statusText: document.querySelector('#stxt')?.textContent || '',
+      errorText: document.querySelector('#errorText')?.textContent || '',
+      errorDetail: document.querySelector('#errorDetail')?.textContent || '',
+      errorScreenVisible: document.querySelector('#errorScreen')?.style.display === 'block'
+    }));
+    const startupReady = startup.started && startup.audioState === 'running' && startup.statusText.includes('Audio ready');
+    if (!startupReady) {
+      throw new Error('Audio startup did not reach ready state: ' + JSON.stringify({ startup, pageErrors, browserConsoleErrors }));
+    }
     requireCheck(pageErrors.length === 0, 'Browser runtime errors after startup: ' + pageErrors.join(' | '));
     pass('Audio engine startup', 'AudioContext is running and the UI reports ready');
 
