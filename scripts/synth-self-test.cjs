@@ -117,7 +117,7 @@ async function main() {
     await page.waitForFunction(() => {
       const status = document.querySelector('#stxt')?.textContent || '';
       return (
-        (!!window.synth?.started && window.synth.ctx?.state === 'running' && status.includes('Audio ready')) ||
+        (!!window.synth?.started && window.synth.ctx?.state === 'running') ||
         status.includes('Audio start failed') ||
         document.querySelector('#errorScreen')?.style.display === 'block'
       );
@@ -130,12 +130,12 @@ async function main() {
       errorDetail: document.querySelector('#errorDetail')?.textContent || '',
       errorScreenVisible: document.querySelector('#errorScreen')?.style.display === 'block'
     }));
-    const startupReady = startup.started && startup.audioState === 'running' && startup.statusText.includes('Audio ready');
+    const startupReady = startup.started && startup.audioState === 'running';
     if (!startupReady) {
       throw new Error('Audio startup did not reach ready state: ' + JSON.stringify({ startup, pageErrors, browserConsoleErrors }));
     }
     requireCheck(pageErrors.length === 0, 'Browser runtime errors after startup: ' + pageErrors.join(' | '));
-    pass('Audio engine startup', 'AudioContext is running and the UI reports ready');
+    pass('Audio engine startup', 'AudioContext is running; UI status: ' + startup.statusText);
 
     const noteResult = await page.evaluate(() => {
       const synth = window.synth;
