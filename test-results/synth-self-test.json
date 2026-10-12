@@ -1,0 +1,47 @@
+{
+  "status": "SUCCESS",
+  "version": "16.85",
+  "testedCommit": "b8ea44abeeb65b11006500b71f0cd44294654a71",
+  "checks": [
+    {
+      "name": "Build/version labels",
+      "status": "PASS",
+      "detail": "2026-10-12-v16.85-load-aware-polyphony-arp-gate"
+    },
+    {
+      "name": "Inline JavaScript syntax",
+      "status": "PASS",
+      "detail": "3 script blocks compile"
+    },
+    {
+      "name": "Page/UI initialization",
+      "status": "PASS",
+      "detail": "Runtime API and required controls are present"
+    },
+    {
+      "name": "Audio engine startup",
+      "status": "PASS",
+      "detail": "AudioContext is running; UI status: MIDI permission unavailable — tap Start, then reconnect MIDI"
+    },
+    {
+      "name": "Note-on/note-off lifecycle",
+      "status": "PASS",
+      "detail": "voices 1 → 0"
+    },
+    {
+      "name": "Polyphony pressure/panic",
+      "status": "PASS",
+      "detail": "24/24 active voices; panic cleared"
+    },
+    {
+      "name": "ARP scheduler smoke test",
+      "status": "PASS",
+      "detail": "2 scheduler timing sample(s)"
+    },
+    {
+      "name": "Test cleanup",
+      "status": "PASS",
+      "detail": "Audio engine remains running; no active voices left"
+    }
+  ]
+}
