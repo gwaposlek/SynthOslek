@@ -1,12 +1,12 @@
 {
   "status": "SUCCESS",
-  "version": "16.85",
-  "testedCommit": "fa307d885f64ec3398b355f89a20ec00b0eec059",
+  "version": "16.86",
+  "testedCommit": "7edbeccd0d59852f6e33ea039ed3945ce71f3400",
   "checks": [
     {
       "name": "Build/version labels",
       "status": "PASS",
-      "detail": "2026-10-12-v16.85-load-aware-polyphony-arp-gate"
+      "detail": "2026-10-12-v16.86-morph-chord-bpm-arp-balance"
     },
     {
       "name": "Inline JavaScript syntax",
@@ -24,6 +24,16 @@
       "detail": "AudioContext is running; UI status: MIDI permission unavailable — tap Start, then reconnect MIDI"
     },
     {
+      "name": "Top-bar BPM control",
+      "status": "PASS",
+      "detail": "128 BPM reached the shared clock"
+    },
+    {
+      "name": "Named chord display",
+      "status": "PASS",
+      "detail": "CHORD C maj7 · C4 · E4 · G4 · B4 (4 voices)"
+    },
+    {
       "name": "Note-on/note-off lifecycle",
       "status": "PASS",
       "detail": "voices 1 → 0"
@@ -36,7 +46,7 @@
     {
       "name": "ARP scheduler smoke test",
       "status": "PASS",
-      "detail": "2 scheduler timing sample(s)"
+      "detail": "3 scheduler timing sample(s)"
     },
     {
       "name": "Test cleanup",
