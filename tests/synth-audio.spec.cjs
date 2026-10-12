@@ -232,7 +232,7 @@ test('voice-pool reclaim clears orphaned reservations and panic leaves no voices
   expect(pageErrors).toEqual([]);
 });
 
-test('minimal mode keeps essentials visible and ADV toggle restores full controls', async ({ page }) => {
+test('minimal mode shows essentials and ADV reveals performance controls', async ({ page }) => {
   await page.goto('/');
   await expectTitleMatchesBuild(page);
   await page.locator('#welcomeStart').click();
@@ -248,7 +248,8 @@ test('minimal mode keeps essentials visible and ADV toggle restores full control
   await expect(page.locator('#advToggle')).toHaveText('◀ MIN');
   await expect(page.locator('#keyboard')).toBeVisible();
   await expect(page.locator('#so67')).toBeVisible();
-  await expect(page.locator('#tabs')).toBeVisible();
+  // Legacy tab strip is intentionally hidden in this UI, including ADV mode.
+  await expect(page.locator('#tabs')).toBeHidden();
 
   await page.locator('#advToggle').click();
   await expect(page.locator('#advToggle')).toHaveText('⚙ ADV');
