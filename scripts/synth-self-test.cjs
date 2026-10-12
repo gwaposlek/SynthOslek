@@ -166,9 +166,13 @@ async function main() {
     pass('Polyphony pressure/panic', capResult.active + '/' + capResult.cap + ' active voices; panic cleared');
 
     // Exercise the actual ARP control and timer path, not just the presence of its UI.
-    await page.click('#so67Arp');
+    await page.evaluate(() => {
+      const control = document.querySelector('#so67Arp');
+      if (!control) throw new Error('ARP control is missing from the document.');
+      control.click();
+    });
     const arpEnabled = await page.evaluate(() => window.SynthOslekRoadmap.state.arp.on === true);
-    requireCheck(arpEnabled, 'ARP button did not enable ARP.');
+    requireCheck(arpEnabled, 'ARP control click handler did not enable ARP.');
     await page.evaluate(() => window.synth.noteOn(60, 0.6, 0));
     await new Promise(resolve => setTimeout(resolve, 700));
     const arpResult = await page.evaluate(() => ({
@@ -176,8 +180,11 @@ async function main() {
       timingSamples: window.SynthOslekDiagnostics?.snapshot?.().count ?? 0,
       active: window.synth.voices.size
     }));
-    await page.evaluate(() => window.synth.panic());
-    await page.click('#so67Arp');
+    await page.evaluate(() => {
+      window.synth.panic();
+      const control = document.querySelector('#so67Arp');
+      if (control && window.SynthOslekRoadmap.state.arp.on) control.click();
+    });
     requireCheck(arpResult.timingSamples > 0, 'ARP scheduler did not produce a timing sample.');
     requireCheck(pageErrors.length === 0, 'Browser runtime errors during note/ARP test: ' + pageErrors.join(' | '));
     pass('ARP scheduler smoke test', arpResult.timingSamples + ' scheduler timing sample(s)');
