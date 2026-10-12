@@ -1,0 +1,37 @@
+name: Synth Self-Test & Auto-Commit
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Puppeteer for Headless Testing
+        run: npm install --no-save --no-package-lock puppeteer
+
+      - name: Run Headless Self-Test
+        run: node scripts/synth-self-test.cjs
+
+      - name: Auto-Commit Passing Test Report
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "CI: Record passing SynthOslek self-test [skip ci]"
+          file_pattern: test-results/synth-self-test.json
