@@ -2833,11 +2833,84 @@ const SD={
   },
 
   surprisePair(){
-    const A=this._randomBase();
-    const family=soDetectFamily(A);
+    // Surprise Me 2.0: create an intentional family hybrid instead of a
+    // parameter-only random patch. Keep this isolated from the voice/DSP path.
+    const pick=a=>a[Math.floor(Math.random()*a.length)];
+    const rand=(a,b)=>a+Math.random()*(b-a);
+    const families=["ORGAN","PIANO","E-PIANO","BRASS","STRINGS","BASS","PLUCK","PAD","LEAD"];
+    const prompts={
+      "ORGAN":"organ","PIANO":"acoustic piano","E-PIANO":"electric piano",
+      "BRASS":"synth brass","STRINGS":"orchestral strings","BASS":"bass",
+      "PLUCK":"bell pluck","PAD":"cinematic pad","LEAD":"synth lead"
+    };
+    const family=pick(families);
+    const accents=families.filter(f=>f!==family);
+    // Weight unlike pairings toward useful hybrids, while still exploring all families.
+    const preferred={
+      "ORGAN":["STRINGS","PAD","E-PIANO"],"PIANO":["PAD","STRINGS","BRASS"],
+      "E-PIANO":["BELL","PAD","ORGAN"],"BRASS":["STRINGS","LEAD","PAD"],
+      "STRINGS":["BRASS","PAD","PIANO"],"BASS":["LEAD","PLUCK","BRASS"],
+      "PLUCK":["E-PIANO","BELL","PAD"],"PAD":["PIANO","STRINGS","BRASS"],
+      "LEAD":["BRASS","PLUCK","STRINGS"]
+    };
+    const preferredList=(preferred[family]||[]).filter(f=>families.includes(f));
+    const accent=preferredList.length&&Math.random()<.72?pick(preferredList):pick(accents);
+    const A0=this._randomBase();
+    const main=(typeof SD!=="undefined"&&SD.analyze)?SD.analyze(prompts[family]).patch:{};
+    const second=(typeof SD!=="undefined"&&SD.analyze)?SD.analyze(prompts[accent]||"bell").patch:{};
+    const A={...A0,...main};
+    // Borrow a few clearly audible traits from the accent, not every parameter.
+    A.osc2Wave=second.osc1Wave||A.osc2Wave;
+    A.osc2Level=SO_CLAMP(Math.max(.38,Number(second.osc1Level)||.5)*rand(.82,1.08),.2,.9);
+    A.osc2Detune=SO_CLAMP((Number(second.osc1Detune)||0)+rand(-9,9),-35,35);
+    if(Math.random()<.48)A.filterType=second.filterType||A.filterType;
+    A.cutoff=SO_CLAMP(Math.sqrt(Math.max(100,Number(A.cutoff)||2000)*Math.max(100,Number(second.cutoff)||2000))*rand(.78,1.28),180,12000);
+    A.resonance=SO_CLAMP((Number(A.resonance)||1)*rand(.82,1.35),.25,10);
+    if(Math.random()<.55){
+      A.chorusMix=SO_CLAMP(Math.max(Number(A.chorusMix)||0,Number(second.chorusMix)||0)+rand(.04,.16),0,.72);
+      A.reverbMix=SO_CLAMP(Math.max(Number(A.reverbMix)||0,Number(second.reverbMix)||0)+rand(.02,.12),0,.82);
+    }
+    if(Math.random()<.42){
+      A.lfoDest=pick(["cutoff","cutoff","pitch","amp"]);
+      A.lfoRate=rand(.12,5.8);
+      A.lfoDepth=SO_CLAMP(Math.max(Number(A.lfoDepth)||0,rand(.08,.26)),0,.48);
+    }
+    if(family==="PAD"||accent==="PAD"||family==="STRINGS"||accent==="STRINGS"){
+      A.attack=Math.max(Number(A.attack)||0,rand(.06,.32));
+      A.release=Math.max(Number(A.release)||0,rand(.65,1.55));
+      A.unison=Math.max(2,Math.min(5,Math.round(Number(A.unison)||2)));
+      A.spread=Math.max(Number(A.spread)||0,rand(14,34));
+    }
+    // Master volume is user-owned: never randomize it or normalize it per surprise.
+    const volume=Number.isFinite(Number(synth?.params?.volume))?Number(synth.params.volume):(PRESETS.init.volume||.6);
+    A.volume=volume;
     const B=expandPatch(A,family);
-    const extreme=(A.unison>=4)||(A.resonance>8)||(A.noiseLevel>.045)||(A.filterType!=="lowpass"&&A.cutoff<700);
-    return {A,B,family,extreme};
+    // Push B toward a genuinely different destination. Changes remain within
+    // existing morphable parameters and preserve the current master volume.
+    const bWave=["sawtooth","square","triangle","sine"].filter(w=>w!==A.osc2Wave);
+    B.osc1Wave=pick(["sawtooth","square","triangle","sine"].filter(w=>w!==A.osc1Wave));
+    B.osc2Wave=pick(bWave.length?bWave:["sawtooth","triangle"]);
+    B.osc1Level=SO_CLAMP((Number(A.osc1Level)||.65)*rand(.78,1.12),.25,.95);
+    B.osc2Level=SO_CLAMP(Math.max(.42,(Number(A.osc2Level)||.45)*rand(1.08,1.42)),.25,.95);
+    B.cutoff=SO_CLAMP((Number(A.cutoff)||2000)*rand(.48,1.85),180,14000);
+    B.resonance=SO_CLAMP((Number(A.resonance)||1)*rand(.72,1.55),.25,12);
+    B.fEnvAmt=SO_CLAMP((Number(A.fEnvAmt)||.2)+rand(-.18,.32),0,.9);
+    B.lfoDest=pick(["cutoff","cutoff","pitch","amp"]);
+    B.lfoRate=rand(.16,6.2);
+    B.lfoDepth=SO_CLAMP(Math.max(Number(A.lfoDepth)||0,rand(.12,.34)),0,.52);
+    B.delayMix=SO_CLAMP(Math.max(Number(A.delayMix)||0,rand(.08,.24)),0,.62);
+    B.reverbMix=SO_CLAMP(Math.max(Number(A.reverbMix)||0,rand(.18,.5)),0,.85);
+    B.chorusMix=SO_CLAMP(Math.max(Number(A.chorusMix)||0,rand(.12,.42)),0,.78);
+    if(Math.random()<.58){
+      B.attack=SO_CLAMP(Math.max(Number(A.attack)||.01,rand(.08,.42)),.005,4);
+      B.release=SO_CLAMP(Math.max(Number(A.release)||.2,rand(.65,1.8)),.05,5);
+      B.unison=SO_CLAMP(Math.max(Number(A.unison)||1,Math.round(rand(3,5))),1,6);
+      B.spread=SO_CLAMP(Math.max(Number(A.spread)||0,rand(18,42)),0,48);
+    }
+    B.volume=volume;
+    B.__expanded=true;B.__family=family;B.__hybrid=accent;
+    const extreme=(B.unison>=4)||(B.resonance>8)||(B.filterType!=="lowpass"&&B.cutoff<700);
+    return {A,B,family,accent,extreme,hybrid:true};
   }
 };
 
