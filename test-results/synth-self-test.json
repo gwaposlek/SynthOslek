@@ -1,7 +1,7 @@
 {
   "status": "SUCCESS",
   "version": "16.86",
-  "testedCommit": "78cc20be0e5b8462313afc9e8843b5c53d3cdcef",
+  "testedCommit": "4ab683bf87d9b2ee569054da8658e4a2ce3b8ce8",
   "checks": [
     {
       "name": "Build/version labels",
@@ -24,9 +24,9 @@
       "detail": "AudioContext is running; UI status: MIDI permission unavailable — tap Start, then reconnect MIDI"
     },
     {
-      "name": "Top-bar BPM control",
+      "name": "Top-bar BPM wheel",
       "status": "PASS",
-      "detail": "128 BPM reached the shared clock"
+      "detail": "One-BPM keyboard step and 128 BPM wheel selection reached the shared clock"
     },
     {
       "name": "Named chord display",
