@@ -1,12 +1,12 @@
 {
   "status": "SUCCESS",
-  "version": "16.86",
-  "testedCommit": "786b8d7f601f44ca660df89ee92f91774111aa15",
+  "version": "16.87",
+  "testedCommit": "15c1af2727875df54e2de49adbb204dedddf4772",
   "checks": [
     {
       "name": "Build/version labels",
       "status": "PASS",
-      "detail": "2026-10-12-v16.86-morph-chord-bpm-arp-balance"
+      "detail": "2026-10-12-v16.87-filter-envelope-morph-sources"
     },
     {
       "name": "Inline JavaScript syntax",
