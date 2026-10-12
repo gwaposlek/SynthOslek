@@ -125,7 +125,9 @@ test('actual SynthOslek note path produces analyser energy and releases cleanly'
 
 test('filter envelope changes the actual synth output spectrum', async ({ page }) => {
   const pageErrors = [];
+  const runtimeWarnings = [];
   page.on('pageerror', e => pageErrors.push(e.message));
+  page.on('console', msg => { if (msg.type() === 'warning' || msg.type() === 'error') runtimeWarnings.push(msg.text()); });
   await page.goto('/');
   await page.locator('#welcomeStart').click();
   await expect.poll(() => page.evaluate(() => !!window.synth?.started && window.synth?.ctx?.state === 'running'), { timeout: 10000 }).toBe(true);
@@ -157,7 +159,12 @@ test('filter envelope changes the actual synth output spectrum', async ({ page }
       profile.fEnvAmt = amount;
       synth._morphCache.clear();
       const ok = synth.noteOn(48, 0.95, 0);
-      if (!ok) return { ok: false, highBandPower: 0, voiceRoute: false };
+      if (!ok) return {
+        ok: false, highBandPower: 0, voiceRoute: false,
+        started: synth.started, contextState: synth.ctx?.state,
+        activeVoices: synth.voices?.size, pool: synth.voicePool?.stats(),
+        cutoff: profile.cutoff, filterType: profile.filterType, fEnvAmt: amount
+      };
       const voice = synth.voices.get('0:48');
       await sleep(140);
       const bins = new Float32Array(synth.analyser.frequencyBinCount);
@@ -183,6 +190,7 @@ test('filter envelope changes the actual synth output spectrum', async ({ page }
     synth.panic();
     return { unsupported: false, closed, open };
   });
+  console.log('Filter-envelope regression diagnostics:', JSON.stringify({ result, runtimeWarnings }));
   test.skip(result.unsupported, 'Synth analyser unavailable');
   expect(result.closed.ok).toBeTruthy();
   expect(result.open.ok).toBeTruthy();
@@ -194,7 +202,9 @@ test('filter envelope changes the actual synth output spectrum', async ({ page }
 
 test('A/B morph allocates optional sources required by endpoint B', async ({ page }) => {
   const pageErrors = [];
+  const runtimeWarnings = [];
   page.on('pageerror', e => pageErrors.push(e.message));
+  page.on('console', msg => { if (msg.type() === 'warning' || msg.type() === 'error') runtimeWarnings.push(msg.text()); });
   await page.goto('/');
   await page.locator('#welcomeStart').click();
   await expect.poll(() => page.evaluate(() => !!window.synth?.started && window.synth?.ctx?.state === 'running'), { timeout: 10000 }).toBe(true);
@@ -213,6 +223,11 @@ test('A/B morph allocates optional sources required by endpoint B', async ({ pag
     const ok = synth.noteOn(60, 0.8, 0);
     const voice = synth.voices.get('0:60');
     const sourcesAtA = !!voice && !!voice.subOsc && !!voice.noiseSource && !!voice.fmMod && !!voice.fmGain;
+    if (!ok) {
+      const debug = { started: synth.started, contextState: synth.ctx?.state, activeVoices: synth.voices?.size, pool: synth.voicePool?.stats(), profileA: { osc1Wave: A.osc1Wave, osc2Wave: A.osc2Wave, subLevel: A.subLevel, noiseLevel: A.noiseLevel, fmAmount: A.fmAmount } };
+      synth.panic();
+      return { ok: false, sourcesAtA, debug };
+    }
     synth.setModWheel(1);
     await new Promise(resolve => setTimeout(resolve, 100));
     const stateAtB = voice ? synth._voiceMorphProfile(voice) : {};
@@ -233,6 +248,7 @@ test('A/B morph allocates optional sources required by endpoint B', async ({ pag
     synth.panic();
     return result;
   });
+  console.log('A/B optional-source regression diagnostics:', JSON.stringify({ result, runtimeWarnings }));
   test.skip(result.unsupported, 'Synth morph API unavailable');
   expect(result.ok).toBeTruthy();
   expect(result.sourcesAtA).toBeTruthy();
