@@ -240,7 +240,7 @@ test('minimal mode shows essentials and ADV reveals performance controls', async
 
   const essentialSelectors = ['.brand-mark', '#stxt', '#rndBtn', '#soundPrompt', '#soundGenerate', '#volKnob', '.pair-strip', '#bleMidiBtn', '#advToggle'];
   for (const selector of essentialSelectors) await expect(page.locator(selector)).toBeVisible();
-  await expect(page.locator('#keyboard')).toBeHidden();
+  await expect(page.locator('#keyboard')).toBeVisible();
   await expect(page.locator('#so67')).toBeHidden();
   await expect(page.locator('#perfBar')).toBeHidden();
 
@@ -253,7 +253,7 @@ test('minimal mode shows essentials and ADV reveals performance controls', async
 
   await page.locator('#advToggle').click();
   await expect(page.locator('#advToggle')).toHaveText('⚙ ADV');
-  await expect(page.locator('#keyboard')).toBeHidden();
+  await expect(page.locator('#keyboard')).toBeVisible();
 });
 
 
