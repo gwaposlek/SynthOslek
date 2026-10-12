@@ -140,15 +140,24 @@ async function main() {
     requireCheck(pageErrors.length === 0, 'Browser runtime errors after startup: ' + pageErrors.join(' | '));
     pass('Audio engine startup', 'AudioContext is running; UI status: ' + startup.statusText);
 
-    // The new top-bar BPM selector must update the same clock used by the ARP/sequencer.
-    await page.select('#soTopBpm', '128');
+    // The top-bar BPM roulette must change by one BPM per arrow key and
+    // keep the shared clock used by the ARP/sequencer in sync.
+    await page.focus('#soTopBpm');
+    await page.keyboard.press('ArrowUp');
+    const oneStepResult = await page.evaluate(() => ({
+      selected: document.querySelector('#soTopBpm')?.getAttribute('aria-valuenow') || '',
+      clock: Number(window.SynthOslekTiming?.bpm)
+    }));
+    requireCheck(oneStepResult.selected === '121' && oneStepResult.clock === 121,
+      'BPM roulette did not increment exactly one BPM: ' + JSON.stringify(oneStepResult));
+    await page.evaluate(() => document.querySelector('#soTopBpmList [data-bpm="128"]')?.click());
     const bpmResult = await page.evaluate(() => ({
-      selected: document.querySelector('#soTopBpm')?.value || '',
+      selected: document.querySelector('#soTopBpm')?.getAttribute('aria-valuenow') || '',
       clock: Number(window.SynthOslekTiming?.bpm)
     }));
     requireCheck(bpmResult.selected === '128' && bpmResult.clock === 128,
-      'BPM selector and shared clock disagree: ' + JSON.stringify(bpmResult));
-    pass('Top-bar BPM control', bpmResult.clock + ' BPM reached the shared clock');
+      'BPM roulette and shared clock disagree: ' + JSON.stringify(bpmResult));
+    pass('Top-bar BPM wheel', 'One-BPM keyboard step and 128 BPM wheel selection reached the shared clock');
 
     // Verify the named chord readout agrees with the notes actually generated.
     await page.select('#so67ChordType', 'maj7');

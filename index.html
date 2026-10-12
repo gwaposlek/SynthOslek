@@ -31,7 +31,13 @@ header p{color:var(--muted);font-size:.8rem;margin-top:.2rem}
 .status{display:flex;align-items:center;gap:.45rem;font-size:.78rem;color:var(--muted)}
 .tempo-row{display:flex;align-items:center;gap:.32rem;flex:0 0 auto}
 .tempo-row .tempo-label{font-size:.62rem;font-weight:800;letter-spacing:.08em;color:var(--muted)}
-.tempo-row select{width:72px;min-width:68px;padding:.25rem .3rem;font-size:.72rem}
+.bpm-wheel{position:relative;width:42px;height:54px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scroll-snap-type:y mandatory;scrollbar-width:none;border:1px solid var(--border);border-radius:8px;background:var(--panel);touch-action:pan-y;outline-offset:2px}
+.bpm-wheel::-webkit-scrollbar{display:none}
+.bpm-wheel::after{content:"";position:absolute;left:2px;right:2px;top:18px;height:18px;border-radius:4px;background:var(--accent);opacity:.14;pointer-events:none}
+.bpm-wheel-list{padding:18px 0}
+.bpm-wheel-item{height:18px;line-height:18px;scroll-snap-align:center;text-align:center;font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums;user-select:none;cursor:pointer}
+.bpm-wheel-item.is-current{font-size:.78rem;font-weight:850;color:var(--text)}
+@media(max-width:520px){.bpm-wheel{width:40px;height:50px}.bpm-wheel::after{top:16px;height:18px}.bpm-wheel-list{padding:16px 0}}
 .dot{width:8px;height:8px;border-radius:50%;background:#333}
 .dot.on{background:#4ade80;box-shadow:0 0 10px #4ade80}
 .btn{background:var(--accent);color:#fff;border:none;padding:.42rem .95rem;border-radius:7px;font-size:.8rem;font-weight:600;cursor:pointer}
@@ -887,7 +893,7 @@ body.so-adv-open{overflow-y:auto!important;overflow-x:hidden!important;align-ite
   <div class="top-bar">
     <div class="brand-mark" aria-label="SynthOslek"><span class="brand-copy"><strong>SynthOslek</strong><small>MORPH SYNTH</small></span></div>
     <div class="status"><div class="dot" id="dot"></div><span id="stxt">Ready — play keys or MIDI</span></div>
-    <div class="row tempo-row" title="Tempo for arpeggiator and sequencer"><span class="tempo-label">BPM</span><select id="soTopBpm" aria-label="Tempo in beats per minute"><option value="60">60</option><option value="70">70</option><option value="80">80</option><option value="90">90</option><option value="100">100</option><option value="110">110</option><option value="115">115</option><option value="120" selected>120</option><option value="125">125</option><option value="128">128</option><option value="130">130</option><option value="135">135</option><option value="140">140</option><option value="145">145</option><option value="150">150</option><option value="160">160</option><option value="170">170</option><option value="180">180</option><option value="190">190</option><option value="200">200</option></select></div>
+    <div class="row tempo-row" title="Scroll the BPM wheel one beat at a time (20–300 BPM)"><span class="tempo-label">BPM</span><div id="soTopBpm" class="bpm-wheel" role="spinbutton" aria-label="Tempo in beats per minute" aria-valuemin="20" aria-valuemax="300" aria-valuenow="120" tabindex="0"><div id="soTopBpmList" class="bpm-wheel-list"></div></div></div>
     <div class="row presets-row">
       <select id="presetSelect" class="adv-only"><option value="">— Presets —</option><option value="init">Init</option><option value="bass">Deep Bass</option><option value="lead">Bright Lead</option><option value="pad">Warm Pad</option><option value="pluck">Pluck</option><option value="keys">Electric Keys</option><option value="acid">Acid</option></select>
       <button class="btn sm sec adv-only" id="saveBtn">Save</button>
@@ -3912,10 +3918,57 @@ syncSynthState(false);
   SO.clock.divisionSeconds=(division)=>60/Math.max(20,SO.clock.bpm)*(SO_DIVISIONS[division]??.25);
   SO.clock.setBpm=(value)=>{const bpm=clamp(Number(value)||120,20,300);SO.clock.bpm=bpm;SO.seq.bpm=bpm;if(synth?.ctx)SO.clock.startedAt=synth.ctx.currentTime;try{synth?.setTempoBpm?.(bpm);}catch(e){}return bpm;};
   SO.clock.setBpm(SO.clock.bpm);
-  const topBpmSelect=document.getElementById("soTopBpm");
-  if(topBpmSelect){
-    topBpmSelect.value=String(SO.clock.bpm);
-    topBpmSelect.addEventListener("change",()=>{const bpm=SO.clock.setBpm(topBpmSelect.value);setStatus("Tempo "+bpm+" BPM");});
+  const topBpmWheel=document.getElementById("soTopBpm");
+  const topBpmList=document.getElementById("soTopBpmList");
+  if(topBpmWheel&&topBpmList){
+    const BPM_MIN=20,BPM_MAX=300,BPM_ROW=18;
+    topBpmList.innerHTML=Array.from({length:BPM_MAX-BPM_MIN+1},(_,i)=>'<div class="bpm-wheel-item" data-bpm="'+(BPM_MIN+i)+'">'+(BPM_MIN+i)+'</div>').join("");
+    const bpmItems=Array.from(topBpmList.children);
+    let wheelFrame=0,lastWheelBpm=SO.clock.bpm;
+    const paintBpmWheel=(bpm,scroll=true)=>{
+      bpm=clamp(Math.round(Number(bpm)||120),BPM_MIN,BPM_MAX);
+      topBpmWheel.setAttribute("aria-valuenow",String(bpm));
+      bpmItems.forEach((el,i)=>el.classList.toggle("is-current",i===bpm-BPM_MIN));
+      if(scroll)topBpmWheel.scrollTop=(bpm-BPM_MIN)*BPM_ROW;
+    };
+    const applyWheelBpm=()=>{
+      wheelFrame=0;
+      const bpm=clamp(BPM_MIN+Math.round(topBpmWheel.scrollTop/BPM_ROW),BPM_MIN,BPM_MAX);
+      if(bpm!==SO.clock.bpm){
+        SO.clock.setBpm(bpm);
+        topBpmWheel.setAttribute("aria-valuenow",String(bpm));
+        bpmItems.forEach((el,i)=>el.classList.toggle("is-current",i===bpm-BPM_MIN));
+        if(bpm!==lastWheelBpm){setStatus("Tempo "+bpm+" BPM");lastWheelBpm=bpm;}
+      }
+    };
+    topBpmWheel.addEventListener("scroll",()=>{
+      if(!wheelFrame)wheelFrame=requestAnimationFrame(applyWheelBpm);
+    },{passive:true});
+    topBpmWheel.addEventListener("wheel",e=>{
+      e.preventDefault();
+      topBpmWheel.scrollTop+=Math.sign(e.deltaY||e.deltaX)*BPM_ROW;
+    },{passive:false});
+    topBpmWheel.addEventListener("keydown",e=>{
+      let next=SO.clock.bpm;
+      if(e.key==="ArrowUp"||e.key==="ArrowRight")next++;
+      else if(e.key==="ArrowDown"||e.key==="ArrowLeft")next--;
+      else if(e.key==="PageUp")next++;
+      else if(e.key==="PageDown")next--;
+      else if(e.key==="Home")next=BPM_MIN;
+      else if(e.key==="End")next=BPM_MAX;
+      else return;
+      e.preventDefault();
+      SO.clock.setBpm(clamp(next,BPM_MIN,BPM_MAX));
+      paintBpmWheel(SO.clock.bpm);
+      lastWheelBpm=SO.clock.bpm;
+      setStatus("Tempo "+SO.clock.bpm+" BPM");
+    });
+    topBpmList.addEventListener("click",e=>{
+      const item=e.target.closest("[data-bpm]");
+      if(item){SO.clock.setBpm(Number(item.dataset.bpm));paintBpmWheel(SO.clock.bpm);lastWheelBpm=SO.clock.bpm;setStatus("Tempo "+SO.clock.bpm+" BPM");}
+    });
+    paintBpmWheel(SO.clock.bpm);
+    window.SynthOslekTimingWheelSync=()=>paintBpmWheel(SO.clock.bpm);
   }
 
   /* Build the performance bar DOM */
