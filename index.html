@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-12-v16.83-held-morph-arp-continuity">
-<title>SynthOslek v16.83 — Morph Instrument</title>
+<meta name="synthoslek-build" content="2026-10-12-v16.84-low-latency-wheels">
+<title>SynthOslek v16.84 — Morph Instrument</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -346,7 +346,8 @@ header{display:none!important}
 .wheel{position:relative;width:30px;min-height:60px;border-radius:7px;border:1px solid #2a2a2a;overflow:hidden;touch-action:none;cursor:ns-resize;background:linear-gradient(90deg,rgba(0,0,0,.65),rgba(255,255,255,.07) 50%,rgba(0,0,0,.65)),repeating-linear-gradient(0deg,#101010 0 3px,#232323 3px 4px)}
 .wheel .wt{position:absolute;left:1px;right:1px;height:14px;bottom:calc((100% - 14px)*.5);border-radius:4px;background:linear-gradient(#7ea2ff,#3f66d8);box-shadow:0 0 10px var(--glow)}
 .wheel.mw .wt{background:linear-gradient(#b79bff,#6a45e6);box-shadow:0 0 10px rgba(124,92,255,.5)}
-.wheel:not(.drag) .wt{transition:bottom .16s}
+.wheel:not(.drag) .wt{transition:bottom .12s}
+.wheel.drag .wt{transition:none}
 .wheel b{position:absolute;left:0;right:0;bottom:2px;text-align:center;font-size:.42rem;letter-spacing:.04em;color:#7a8190;pointer-events:none;z-index:2}
 .wheel.pw::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,.25);pointer-events:none}
 @media(orientation:landscape){.keyboard{min-width:0;width:auto!important}}
@@ -600,7 +601,7 @@ header{display:none!important}
 @media(orientation:portrait){#so67{overflow:visible}.so-steps{flex:none}#so67Panel{font-size:.6rem}#so67 .so-main-row{width:100%}#so67 .so-music-row{width:100%;display:grid;grid-template-columns:auto auto 1fr auto 1fr auto 1fr;align-items:center}#so67 .so-music-row .so-label{white-space:nowrap}#so67 .so-music-row select{width:100%;min-width:0}}
 
 #panels{display:none!important}
-/* v16.83: remove tab strip for controls intentionally hidden in this build. */
+/* v16.84: remove tab strip for controls intentionally hidden in this build. */
 .synth .tabs,
 .synth.mode-adv .tabs{display:none!important}
 
@@ -1026,7 +1027,7 @@ body.so-adv-open{overflow-y:auto!important;overflow-x:hidden!important;align-ite
   <div class="panes" id="panels"></div>
 </div>
 
-<div class="footer">SynthOslek v16.83 · A/B Morph Instrument · Minimalist Performance UI</div>
+<div class="footer">SynthOslek v16.84 · A/B Morph Instrument · Minimalist Performance UI</div>
 <script>
 /* v16.18 startup diagnostics */
 (function(){
@@ -1499,7 +1500,7 @@ class SynthOslek{
     if(this._morphCache.size>96)this._morphCache.delete(this._morphCache.keys().next().value);
     return P;
   }
-  _applyMorphToVoice(v,at=null){
+  _applyMorphToVoice(v,at=null,fastResponse=false){
     if(!this.started||!v||!this.ctx||this.ctx.state==="closed")return;
     // Recalculate from the latest wheel value for this voice; do not reuse a stale
     // per-frame profile cache. Only automate connected AudioParams here.
@@ -1512,7 +1513,7 @@ class SynthOslek{
       if(P.cutoff!==undefined)v.params.cutoff=P.cutoff;
     }
     const t=Math.max(this.ctx.currentTime,Number.isFinite(at)?at:this.ctx.currentTime);
-    const T=(a,x,tc=.045,eps=.003)=>this._smoothParamTarget(a,x,t,tc,eps);
+    const T=(a,x,tc=.045,eps=.003)=>this._smoothParamTarget(a,x,t,fastResponse?Math.min(tc,.012):tc,eps);
     if(v.morphWavePairs?.length){
       const mt=this._morphAmount(),wa=Math.cos(mt*Math.PI*.5),wb=Math.sin(mt*Math.PI*.5);
       for(const pair of v.morphWavePairs){
@@ -1568,34 +1569,31 @@ class SynthOslek{
       if(!self.started||!self.ctx||self.ctx.state==="closed"){
         self._morphRafScheduled=false;self._morphFlushTimer=0;return;
       }
-      // Cap graph automation to ~36 updates/sec. MIDI/UI input still updates the
-      // target immediately; this coalesces bursty BLE events and prevents automation storms.
-      const nowMs=performance.now(),elapsed=nowMs-(self._lastMorphFlushAt||0),wait=28-elapsed;
-      if(wait>0){
-        self._morphFlushTimer=setTimeout(()=>{self._morphFlushTimer=0;flush();},wait);
-        return;
-      }
+      // Coalesce input to one browser frame. The old extra 28ms gate added
+      // a second delay after requestAnimationFrame and made continuous wheel
+      // gestures feel behind the pointer.
+      const nowMs=performance.now();
       self._morphRafScheduled=false;self._morphFlushTimer=0;self._lastMorphFlushAt=nowMs;
       const t=self.ctx.currentTime;
       let failed=0;
       try{
         if(self.getMorphMode(self.activeLayer)==="xfade"){
-          try{refreshLayerGains(t);}catch(err){failed++;}
+          try{refreshLayerGains(t,true);}catch(err){failed++;}
         }else{
           for(const voice of self.voices.values()){
-            try{self._applyMorphToVoice(voice,t);}catch(err){failed++;}
+            try{self._applyMorphToVoice(voice,t,true);}catch(err){failed++;}
           }
-          try{self._det(.045,t);}catch(err){failed++;}
+          try{self._det(.012,t);}catch(err){failed++;}
         }
       }catch(err){failed++;}
       if(failed)console.warn("[SynthOslek] skipped "+failed+" live morph update(s)",failed);
     };
     try{
       if(typeof requestAnimationFrame==="function")requestAnimationFrame(flush);
-      else setTimeout(flush,28);
+      else setTimeout(flush,16);
     }catch(err){
       self._morphRafScheduled=false;
-      setTimeout(flush,28);
+      setTimeout(flush,16);
     }
   }
   _det(tc=.01,at=null){
@@ -1610,7 +1608,7 @@ class SynthOslek{
         const spread=x.kind==="sub"?0:x.off*effectiveSpread;
         const det=base+spread+this.bend+(this.wheel||0)+(v.mpeBend||0);
         if(!Number.isFinite(x.o._lastDetune)||Math.abs(x.o._lastDetune-det)>1e-4){
-          this._smoothParamTarget(x.o.detune,det,t,Math.max(.025,Number(tc)||.01),.2);
+          this._smoothParamTarget(x.o.detune,det,t,Math.max(.006,Number(tc)||.012),.2);
           x.o._lastDetune=det;
         }
       }
@@ -2208,7 +2206,7 @@ const LAYER_COUNT=2;
 const synth=new SynthOslek();
 window.synth=synth;
 
-/* v16.83 — canonical layer profiles and safe held-voice refresh. */
+/* v16.84 — canonical layer profiles and safe held-voice refresh. */
 function refreshLayerMorphVoices(layer,at=null){
   layer=Number(layer);
   if(!Number.isInteger(layer)||layer<0||layer>=synth.layerProfiles.length)return;
@@ -2397,7 +2395,7 @@ function morphGains(m){
   return [Math.cos(m*Math.PI*.5),Math.sin(m*Math.PI*.5)];
 }
 
-function refreshLayerGains(at=null){
+function refreshLayerGains(at=null,fastResponse=false){
   synth._morphCache?.clear();
   const bothOn=layerState.length>=2&&layerAudible(0)&&layerAudible(1)&&
     Number(layerState[0]?.vol)>0.02&&Number(layerState[1]?.vol)>0.02;
@@ -2411,7 +2409,7 @@ function refreshLayerGains(at=null){
   for(const v of synth.voices.values())if(v.layerGain){
     const L=synth.layerMix[v.layer],enabled=layerAudible(v.layer)&&L?.enabled!==false;
     const gainTarget=enabled?(L?.vol??0):0;
-    synth._smoothParamTarget(v.layerGain.gain,gainTarget,t,.045,.002);
+    synth._smoothParamTarget(v.layerGain.gain,gainTarget,t,fastResponse?0.012:.045,.002);
     const panTarget=L?.pan||0;
     if(v.pan)synth._smoothParamTarget(v.pan.pan,panTarget,t,.025,.003);
     const fxTarget=L?.fx||0;
@@ -3096,9 +3094,9 @@ function bindWheel(el,type){
     if(type==="pitch"){synth.setBend(screenPitchCents(amt),.012);setWheelVisual(el,amt,true);}
     else{synth.setModWheel(amt);setModWheelVisual(el,amt);}
   };
-  el.addEventListener("pointerdown",e=>{e.preventDefault();if(window.SynthOslekGyro?.enabled)return;down=true;try{el.setPointerCapture(e.pointerId);}catch(err){}move(e);});
+  el.addEventListener("pointerdown",e=>{e.preventDefault();if(window.SynthOslekGyro?.enabled)return;down=true;el.classList.add("drag");try{el.setPointerCapture(e.pointerId);}catch(err){}move(e);});
   el.addEventListener("pointermove",e=>{if(down)move(e);});
-  const up=e=>{if(!down)return;down=false;if(type==="pitch"){synth.setBend(0,.08);setWheelVisual(el,0,true);}else{setModWheelVisual(el,synth.modWheel);setWheelVisual(el,synth.modWheel,false);}};
+  const up=e=>{if(!down)return;down=false;el.classList.remove("drag");if(type==="pitch"){synth.setBend(0,.08);setWheelVisual(el,0,true);}else{setModWheelVisual(el,synth.modWheel);setWheelVisual(el,synth.modWheel,false);}};
   el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);
 }
 bindWheel($("pitchWheel"),"pitch");bindWheel($("modWheel"),"mod");
@@ -4099,8 +4097,8 @@ syncSynthState(false);
     pressure:()=>typeof _soPerformancePressure==="function"?_soPerformancePressure():0
   };
 
-  window.SynthOslekRoadmap={version:"16.83",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.83 ready · layer-authoritative morph · readable performance UI");
+  window.SynthOslekRoadmap={version:"16.84",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
+  setStatus("v16.84 ready · layer-authoritative morph · readable performance UI");
 })();
 
 /* ========================= WELCOME + START ========================= */
