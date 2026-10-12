@@ -123,6 +123,128 @@ test('actual SynthOslek note path produces analyser energy and releases cleanly'
 });
 
 
+test('filter envelope changes the actual synth output spectrum', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    if (!synth?.analyser || !synth?.ctx || !synth?.noteOn) return { unsupported: true };
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    synth.panic();
+    synth.layerProfilesB[0] = null;
+    synth._bRevision[0] = (synth._bRevision[0] || 0) + 1;
+    synth._morphCache.clear();
+
+    const profile = synth.layerProfiles[0];
+    Object.assign(profile, {
+      osc1Wave: 'sawtooth', osc1Level: 1, osc1Detune: 0, osc1Coarse: 0,
+      osc2Wave: 'sine', osc2Level: 0, osc2Detune: 0, osc2Coarse: 0,
+      cutoff: 350, resonance: 0.4, filterType: 'lowpass', filterEnvPolarity: 'positive',
+      attack: 0.004, decay: 0.8, sustain: 1, release: 0.04,
+      fEnvAmt: 0, fAttack: 0.005, fDecay: 0.8, fSustain: 0.85, fRelease: 0.04,
+      lfoDepth: 0, delayMix: 0, reverbMix: 0, chorusMix: 0, flangerMix: 0,
+      subLevel: 0, noiseLevel: 0, fmAmount: 0, unison: 1, spread: 0
+    });
+    synth.setModWheel(0);
+
+    const measureHighBandPower = async amount => {
+      synth.panic();
+      await sleep(90);
+      profile.fEnvAmt = amount;
+      synth._morphCache.clear();
+      const ok = synth.noteOn(48, 0.95, 0);
+      if (!ok) return { ok: false, highBandPower: 0, voiceRoute: false };
+      const voice = synth.voices.get('0:48');
+      await sleep(140);
+      const bins = new Float32Array(synth.analyser.frequencyBinCount);
+      synth.analyser.getFloatFrequencyData(bins);
+      const nyquist = synth.ctx.sampleRate / 2;
+      const binHz = nyquist / bins.length;
+      let power = 0, count = 0;
+      for (let i = 0; i < bins.length; i++) {
+        const hz = i * binHz;
+        if (hz < 1800 || hz > 10000 || !Number.isFinite(bins[i])) continue;
+        power += Math.pow(10, bins[i] / 10);
+        count++;
+      }
+      const highBandPower = count ? power / count : 0;
+      const voiceRoute = !!(voice?.fEnvGain && voice?.fEnvDepth && voice.fEnvGain.gain.value >= 0);
+      synth.noteOff(48, 0);
+      await sleep(80);
+      return { ok: true, highBandPower, voiceRoute };
+    };
+
+    const closed = await measureHighBandPower(0);
+    const open = await measureHighBandPower(1);
+    synth.panic();
+    return { unsupported: false, closed, open };
+  });
+  test.skip(result.unsupported, 'Synth analyser unavailable');
+  expect(result.closed.ok).toBeTruthy();
+  expect(result.open.ok).toBeTruthy();
+  expect(result.closed.voiceRoute).toBeTruthy();
+  expect(result.open.voiceRoute).toBeTruthy();
+  expect(result.open.highBandPower).toBeGreaterThan(result.closed.highBandPower * 1.8);
+  expect(pageErrors).toEqual([]);
+});
+
+test('A/B morph allocates optional sources required by endpoint B', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    if (!synth?.noteOn || !synth?.setModWheel) return { unsupported: true };
+    synth.panic();
+    const A = { ...synth.layerProfiles[0], osc1Wave: 'sawtooth', osc2Wave: 'sine', subLevel: 0, noiseLevel: 0, fmAmount: 0 };
+    const B = { ...A, subLevel: 0.45, noiseLevel: 0.12, fmAmount: 800 };
+    synth.layerProfiles[0] = A;
+    synth.params = A;
+    synth.layerProfilesB[0] = B;
+    synth._bRevision[0] = (synth._bRevision[0] || 0) + 1;
+    synth._morphCache.clear();
+    synth.setModWheel(0);
+    const ok = synth.noteOn(60, 0.8, 0);
+    const voice = synth.voices.get('0:60');
+    const sourcesAtA = !!voice && !!voice.subOsc && !!voice.noiseSource && !!voice.fmMod && !!voice.fmGain;
+    synth.setModWheel(1);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const stateAtB = voice ? synth._voiceMorphProfile(voice) : {};
+    const result = {
+      ok: !!ok,
+      sourcesAtA,
+      valuesAtB: {
+        sub: Number(stateAtB.subLevel) || 0,
+        noise: Number(stateAtB.noiseLevel) || 0,
+        fm: Number(stateAtB.fmAmount) || 0
+      },
+      gainTargets: {
+        sub: synth._audioParamTargets?.get(voice?.gs?.gain)?.value ?? null,
+        noise: synth._audioParamTargets?.get(voice?.gn?.gain)?.value ?? null,
+        fm: synth._audioParamTargets?.get(voice?.fmGain?.gain)?.value ?? null
+      }
+    };
+    synth.panic();
+    return result;
+  });
+  test.skip(result.unsupported, 'Synth morph API unavailable');
+  expect(result.ok).toBeTruthy();
+  expect(result.sourcesAtA).toBeTruthy();
+  expect(result.valuesAtB.sub).toBeCloseTo(0.45, 2);
+  expect(result.valuesAtB.noise).toBeCloseTo(0.12, 2);
+  expect(result.valuesAtB.fm).toBeCloseTo(800, 1);
+  expect(result.gainTargets.sub).toBeCloseTo(0.45, 2);
+  expect(result.gainTargets.noise).toBeCloseTo(0.12, 2);
+  expect(result.gainTargets.fm).toBeCloseTo(640, 1);
+  expect(pageErrors).toEqual([]);
+});
+
 test('actual ARP stress keeps voices bounded and measures waveform continuity', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
