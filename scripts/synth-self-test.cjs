@@ -30,10 +30,10 @@ async function main() {
     const title = html.match(/<title>([\s\S]*?)<\/title>/i);
     const footer = html.match(/<div class=["']footer["']>([\s\S]*?)<\/div>/i);
     const version = html.match(/SynthOslek v(\d+\.\d+)/);
-    requireCheck(build && /v16\.85/.test(build[1]), 'Build metadata must identify v16.85.');
-    requireCheck(title && title[1].includes('v16.85'), 'Browser title must show v16.85.');
-    requireCheck(footer && footer[1].includes('v16.85'), 'Visible footer must show v16.85.');
-    requireCheck(version && version[1] === '16.85', 'Visible page version must be consistent.');
+    requireCheck(build && /v16\.85/.test(build[1]), 'Build metadata must identify v16.86.');
+    requireCheck(title && title[1].includes('v16.86'), 'Browser title must show v16.86.');
+    requireCheck(footer && footer[1].includes('v16.86'), 'Visible footer must show v16.86.');
+    requireCheck(version && version[1] === '16.86', 'Visible page version must be consistent.');
     pass('Build/version labels', build[1]);
 
     const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
@@ -51,7 +51,10 @@ async function main() {
       '#bleMidiBtn',
       '#so67',
       '#so67Arp',
-      '#so67Gate'
+      '#so67Gate',
+      '#soTopBpm',
+      '#so67Chord',
+      '#so67ChordType'
     ];
     server = http.createServer((request, response) => {
       const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
@@ -101,7 +104,7 @@ async function main() {
         setModWheel: typeof window.synth.setModWheel
       }
     }), requiredSelectors);
-    requireCheck(preflight.version === '16.85', 'Runtime version mismatch: ' + preflight.version + '.');
+    requireCheck(preflight.version === '16.86', 'Runtime version mismatch: ' + preflight.version + '.');
     requireCheck(preflight.selectors && Object.values(preflight.selectors).every(Boolean),
       'Missing UI elements: ' + Object.entries(preflight.selectors).filter(([, exists]) => !exists).map(([key]) => key).join(', '));
     for (const method of ['noteOn', 'noteOff', 'panic']) {
@@ -136,6 +139,38 @@ async function main() {
     }
     requireCheck(pageErrors.length === 0, 'Browser runtime errors after startup: ' + pageErrors.join(' | '));
     pass('Audio engine startup', 'AudioContext is running; UI status: ' + startup.statusText);
+
+    // The new top-bar BPM selector must update the same clock used by the ARP/sequencer.
+    await page.select('#soTopBpm', '128');
+    const bpmResult = await page.evaluate(() => ({
+      selected: document.querySelector('#soTopBpm')?.value || '',
+      clock: Number(window.SynthOslekTiming?.bpm)
+    }));
+    requireCheck(bpmResult.selected === '128' && bpmResult.clock === 128,
+      'BPM selector and shared clock disagree: ' + JSON.stringify(bpmResult));
+    pass('Top-bar BPM control', bpmResult.clock + ' BPM reached the shared clock');
+
+    // Verify the named chord readout agrees with the notes actually generated.
+    await page.select('#so67ChordType', 'maj7');
+    await page.click('#so67Chord');
+    const chordResult = await page.evaluate(() => {
+      const synth = window.synth;
+      synth.panic();
+      synth.noteOn(60, 0.7, 0);
+      const display = document.querySelector('[data-nm="chord"]')?.textContent || '';
+      const activeVoices = synth.voices.size;
+      synth.noteOff(60, 0);
+      synth.panic();
+      return { display, activeVoices };
+    });
+    requireCheck(/C maj7/.test(chordResult.display),
+      'Expected the displayed chord name to be C maj7; received: ' + chordResult.display);
+    requireCheck(['C4', 'E4', 'G4', 'B4'].every(note => chordResult.display.includes(note)),
+      'Chord readout does not list the exact C maj7 notes: ' + chordResult.display);
+    requireCheck(chordResult.activeVoices >= 3,
+      'C maj7 did not create multiple voices: ' + chordResult.activeVoices);
+    await page.click('#so67Chord');
+    pass('Named chord display', chordResult.display + ' (' + chordResult.activeVoices + ' voices)');
 
     const noteResult = await page.evaluate(() => {
       const synth = window.synth;
@@ -194,7 +229,7 @@ async function main() {
       voices: window.synth.voices.size,
       runtimeVersion: String(window.SynthOslekRoadmap.version)
     }));
-    requireCheck(finalStatus.runtimeVersion === '16.85', 'Final runtime version changed unexpectedly.');
+    requireCheck(finalStatus.runtimeVersion === '16.86', 'Final runtime version changed unexpectedly.');
     requireCheck(finalStatus.voices === 0, 'Test cleanup left ' + finalStatus.voices + ' active voices.');
     requireCheck(finalStatus.audioState === 'running', 'Audio context ended in state ' + finalStatus.audioState + '.');
     pass('Test cleanup', 'Audio engine remains running; no active voices left');
@@ -202,7 +237,7 @@ async function main() {
     fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true });
     const report = {
       status: 'SUCCESS',
-      version: '16.85',
+      version: '16.86',
       testedCommit: process.env.GITHUB_SHA || 'local',
       checks
     };
