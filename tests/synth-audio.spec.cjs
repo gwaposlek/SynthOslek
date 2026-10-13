@@ -753,3 +753,44 @@ test('knob SVG stays finite across startup and layer-preset changes', async ({ p
   expect(pageErrors).toEqual([]);
 });
 
+test('MIDI layer-control CCs safely ignore mappings beyond configured layers', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const result = await page.evaluate(() => {
+    if (typeof midiManager === 'undefined' || !Array.isArray(layerState)) {
+      return { supported: false };
+    }
+    const before = layerState.map(layer => ({ ...layer }));
+    const errors = [];
+    // There are two configured layers today, while the MIDI map reserves
+    // four CC numbers for each layer-control group.
+    for (const cc of [20, 21, 22, 23, 28, 29, 30, 31, 36, 37, 38, 39, 44, 45, 46, 47]) {
+      try { midiManager.cc(cc, 127, 1); }
+      catch (error) { errors.push({ cc, message: error?.message || String(error) }); }
+    }
+    return {
+      supported: true,
+      layerCount: layerState.length,
+      errors,
+      volume: layerState.map(layer => layer.vol),
+      pan: layerState.map(layer => layer.pan),
+      fx: layerState.map(layer => layer.fx),
+      enabled: layerState.map(layer => layer.enabled),
+      beforeCount: before.length
+    };
+  });
+  expect(result.supported).toBeTruthy();
+  expect(result.layerCount).toBe(2);
+  expect(result.beforeCount).toBe(2);
+  expect(result.errors).toEqual([]);
+  expect(result.volume).toEqual([1, 1]);
+  expect(result.pan).toEqual([1, 1]);
+  expect(result.fx).toEqual([1, 1]);
+  expect(result.enabled).toEqual([true, true]);
+  expect(pageErrors).toEqual([]);
+});
+
