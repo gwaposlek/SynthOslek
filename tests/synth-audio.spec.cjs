@@ -1300,3 +1300,58 @@ test('Android audio path retains lightweight shared reverb and single-tap delay 
   expect(pageErrors).toEqual([]);
 });
 
+test('e-piano prompts and descriptive synonyms preserve the requested family', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    const family = prompt => SD.pair(prompt).family;
+    return {
+      hyphenated: family('e-piano'),
+      spaced: family('e piano'),
+      explicit: family('electric piano'),
+      abbreviation: family('ep piano'),
+      acoustic: family('acoustic piano'),
+      thickLead: family('thick lead'),
+      naturalLead: family('natural lead'),
+      driftingLead: family('drifting lead')
+    };
+  });
+  expect(result.hyphenated).toBe('E-PIANO');
+  expect(result.spaced).toBe('E-PIANO');
+  expect(result.explicit).toBe('E-PIANO');
+  expect(result.abbreviation).toBe('E-PIANO');
+  expect(result.acoustic).toBe('PIANO');
+  expect(result.thickLead).toBe('LEAD');
+  expect(result.naturalLead).toBe('LEAD');
+  expect(result.driftingLead).toBe('LEAD');
+});
+
+test('cutoff knob preserves the full 16 kHz patch range', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    UI.cutoff.set(16000);
+    return { knobValue: UI.cutoff.v, profileValue: synth.params.cutoff, max: K.cutoff[2] };
+  });
+  expect(result.max).toBe(16000);
+  expect(result.knobValue).toBe(16000);
+  expect(result.profileValue).toBe(16000);
+});
+
+test('pair-memory prompt labels cannot inject attributes through quotes', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    PairMemory.push(
+      { family: 'LEAD', A: { ...PRESETS.init }, B: { ...PRESETS.init } },
+      'test" onmouseover="alert(1)'
+    );
+    const button = document.querySelector('#pairItems .ps-item');
+    return {
+      hasInjectedHandler: button?.hasAttribute('onmouseover') || false,
+      imageCount: document.querySelectorAll('#pairItems img').length,
+      title: button?.getAttribute('title') || ''
+    };
+  });
+  expect(result.hasInjectedHandler).toBeFalsy();
+  expect(result.imageCount).toBe(0);
+  expect(result.title).toContain('test" onmouseover="alert(1)');
+});
+
