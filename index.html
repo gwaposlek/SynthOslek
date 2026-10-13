@@ -1494,16 +1494,16 @@ class SynthOslek{
     const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
     return {
       ...P,
-      cutoff:Math.min(14000,P.cutoff+(14000-P.cutoff)*.72*m),
-      resonance:Math.min(20,P.resonance+3.5*m),
-      osc1Level:clamp(P.osc1Level*(1-.22*m)),
-      osc2Level:clamp(P.osc2Level*(1+.28*m)),
-      osc1Detune:clamp(P.osc1Detune+10*m,-100,100),
-      osc2Detune:clamp(P.osc2Detune-10*m,-100,100),
-      spread:Math.min(65,P.spread+28*m),
-      lfoDepth:clamp(P.lfoDepth+.22*m),
-      subLevel:clamp(P.subLevel+.06*m),
-      noiseLevel:clamp(P.noiseLevel+.025*m),
+      cutoff:Math.min(18000,P.cutoff+(18000-P.cutoff)*.88*m),
+      resonance:Math.min(20,P.resonance+4.5*m),
+      osc1Level:clamp(P.osc1Level*(1-.32*m)),
+      osc2Level:clamp(P.osc2Level*(1+.4*m)),
+      osc1Detune:clamp(P.osc1Detune+18*m,-100,100),
+      osc2Detune:clamp(P.osc2Detune-18*m,-100,100),
+      spread:Math.min(80,P.spread+42*m),
+      lfoDepth:clamp(P.lfoDepth+.32*m),
+      subLevel:clamp(P.subLevel+.08*m),
+      noiseLevel:clamp(P.noiseLevel+.03*m),
       delayMix:clamp(P.delayMix+.18*m),
       reverbMix:clamp(P.reverbMix+.25*m),
       chorusMix:clamp(P.chorusMix+.14*m),
@@ -4303,7 +4303,8 @@ syncSynthState(false);
       noteMonitor.setArpPending(true);monitoredBaseOff(arpLast.midi,arpLast.layer,releaseAt);
     }catch(e){}finally{noteMonitor.setArpPending(false);}
     if(n){
-      const arpVelocity=clamp(n.vel*(1+Math.min(.16,Math.max(0,n.midi-60)*.0045)),0,1);
+      // Compensate for the perceived drop in upper-register arp notes without boosting low notes.
+      const arpVelocity=clamp(n.vel*(1+Math.min(.32,Math.max(0,n.midi-60)*.009)),0,1);
       synth._arpPerformanceNote=true;
       noteMonitor.setArpPending(true);
       try{monitoredBaseOn(n.midi,arpVelocity,n.layer,when);}
