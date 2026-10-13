@@ -1043,3 +1043,108 @@ test('family preset vibrato depths are large enough to be audible', async ({ pag
   expect(result.lead.depth).toBeGreaterThanOrEqual(0.2);
 });
 
+test('incoming MIDI Clock updates tempo from 24 PPQN and tracks transport', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    const periodMs = 60000 / (120 * 24);
+    const startMs = 5000;
+    for (let i = 0; i < 48; i++) {
+      midiManager.dispatch(0xF8, 0, 0, startMs + i * periodMs, 0.75, 'clock-test');
+    }
+    const afterClock = {
+      bpm: window.SynthOslekTiming.bpm,
+      externalClock: window.SynthOslekTiming.externalClock
+    };
+    midiManager.dispatch(0xFA, 0, 0, startMs + 48 * periodMs, 0.75, 'clock-test');
+    const running = window.SynthOslekTiming.transportRunning;
+    midiManager.dispatch(0xFC, 0, 0, startMs + 49 * periodMs, 0.75, 'clock-test');
+    const stopped = window.SynthOslekTiming.transportRunning;
+    return { ...afterClock, running, stopped, finalBpm: window.SynthOslekTiming.bpm };
+  });
+  expect(result.externalClock).toBeTruthy();
+  expect(result.bpm).toBeCloseTo(120, 0);
+  expect(result.running).toBeTruthy();
+  expect(result.stopped).toBeFalsy();
+  expect(result.finalBpm).toBeCloseTo(120, 0);
+});
+
+test('sustain pedal latches arp notes until pedal release', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    const monitor = window.SynthOslekNoteMonitor;
+    const observed = [];
+    const originalGeneratedOn = monitor.generatedOn;
+    monitor.generatedOn = midi => { observed.push(midi); return originalGeneratedOn(midi); };
+    document.getElementById('so67Rate').value = '1/32';
+    document.getElementById('so67Rate').dispatchEvent(new Event('change', { bubbles: true }));
+    const start = performance.now();
+    midiManager.dispatch(0xB0, 64, 127, start, 0.75, 'latch-test');
+    document.getElementById('so67Arp').click();
+    synth.noteOn(64, 0.8, 0);
+    synth.noteOff(64, 0);
+    await new Promise(resolve => setTimeout(resolve, 240));
+    const whilePedalDown = observed.length;
+    midiManager.dispatch(0xB0, 64, 0, performance.now(), 0.75, 'latch-test');
+    await new Promise(resolve => setTimeout(resolve, 240));
+    const afterPedalUp = observed.length;
+    if (document.getElementById('so67Arp').textContent.includes('ON')) {
+      document.getElementById('so67Arp').click();
+    }
+    synth.panic();
+    monitor.generatedOn = originalGeneratedOn;
+    return { whilePedalDown, afterPedalUp, pedalUp: !synth.sustain };
+  });
+  expect(result.pedalUp).toBeTruthy();
+  expect(result.whilePedalDown).toBeGreaterThanOrEqual(3);
+  expect(result.afterPedalUp).toBe(result.whilePedalDown);
+  expect(pageErrors).toEqual([]);
+});
+
+test('sequencer schedules audio-clock steps and releases its notes when stopped', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    const monitor = window.SynthOslekNoteMonitor;
+    const events = [];
+    const originalGeneratedOn = monitor.generatedOn;
+    monitor.generatedOn = midi => { events.push({ midi, at: performance.now() }); return originalGeneratedOn(midi); };
+    window.SynthOslekTiming.setBpm(120);
+    document.querySelectorAll('.so-step').forEach(step => {
+      step.click();
+      if (!step.classList.contains('on')) step.click();
+    });
+    document.getElementById('so67Seq').click();
+    await new Promise(resolve => setTimeout(resolve, 820));
+    document.getElementById('so67Seq').click();
+    const times = events.map(event => event.at);
+    const intervals = times.slice(1).map((time, i) => time - times[i]);
+    const snapshot = {
+      count: events.length,
+      intervals,
+      bpm: window.SynthOslekTiming.bpm,
+      seqButton: document.getElementById('so67Seq').textContent
+    };
+    synth.panic();
+    monitor.generatedOn = originalGeneratedOn;
+    return snapshot;
+  });
+  expect(result.count).toBeGreaterThanOrEqual(5);
+  expect(result.bpm).toBe(120);
+  expect(result.seqButton).toContain('OFF');
+  expect(result.intervals.length).toBeGreaterThanOrEqual(4);
+  expect(result.intervals.every(dt => dt > 70 && dt < 190)).toBeTruthy();
+  const meanInterval = result.intervals.reduce((sum, x) => sum + x, 0) / result.intervals.length;
+  expect(meanInterval).toBeGreaterThan(95);
+  expect(meanInterval).toBeLessThan(160);
+  expect(pageErrors).toEqual([]);
+});
+
