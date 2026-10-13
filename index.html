@@ -2275,7 +2275,7 @@ keys:{osc1Wave:"sine",osc1Detune:0,osc1Level:.6,osc2Wave:"triangle",osc2Detune:3
 acid:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.9,osc2Wave:"square",osc2Detune:0,osc2Level:0,filterType:"lowpass",cutoff:600,resonance:14,attack:.005,decay:.12,sustain:.3,release:.12,fEnvAmt:.85,fAttack:.005,fDecay:.18,fSustain:.1,fRelease:.15,lfoRate:.5,lfoDepth:.15,lfoDest:"cutoff",delayTime:.18,delayFb:.4,delayMix:.2,reverbMix:.05,volume:.55,glide:25}
 };
 
-Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0});
+Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0,lfoDelay:0,flangerMix:0,flangerRate:.25,flangerDepth:.002});
 Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});
 Object.assign(PRESETS.lead,{unison:3,spread:10,chorusMix:.15});
 Object.assign(PRESETS.bass,{subLevel:.5});
@@ -2523,7 +2523,9 @@ function makeKnob(k){
   const el=document.createElement("div");el.className="knob";
   el.innerHTML=`<svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="13" fill="#141414" stroke="#222"/><path d="${arc(0,1)}" fill="none" stroke="#1f1f1f" stroke-width="3" stroke-linecap="round"/><path class="val" fill="none" stroke="#5b8cff" stroke-width="3" stroke-linecap="round"/><line class="ptr" stroke="#e8ecf4" stroke-width="2" stroke-linecap="round"/></svg><div class="v"></div><div class="n">${label}</div>`;
   const val=el.querySelector(".val"),ptr=el.querySelector(".ptr"),vd=el.querySelector(".v");
-  const o={k,v:def,set(v,silent){
+  const fallback=Number.isFinite(def)?def:(Number.isFinite(PRESETS.init[k])?PRESETS.init[k]:mn);
+  const o={k,v:fallback,set(v,silent){
+    v=Number(v);if(!Number.isFinite(v))v=Number.isFinite(o.v)?o.v:fallback;
     v=Math.min(mx,Math.max(mn,v));o.v=v;
     const t=toT(k,v),a=-135+270*t,[x0,y0]=pt(a,6),[x1,y1]=pt(a,12);
     val.setAttribute("d",arc(0,t));
@@ -2607,7 +2609,7 @@ function makeLayerKnob(label,value,min,max,step,unit,onInput){
   const arc2=(t0,t1)=>{if(t1-t0<.002)return '';const a0=-135+270*t0,a1=-135+270*t1,[x0,y0]=pt2(a0,18),[x1,y1]=pt2(a1,18);return`M${x0} ${y0}A18 18 0 ${(a1-a0)>180?1:0} 1 ${x1} ${y1}`};
   el.innerHTML=`<svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="13" fill="#141414" stroke="#222"/><path d="${arc2(0,1)}" fill="none" stroke="#1f1f1f" stroke-width="3" stroke-linecap="round"/><path class="lk-arc" fill="none" stroke="#5b8cff" stroke-width="3" stroke-linecap="round"/><line class="lk-ptr" stroke="#e8ecf4" stroke-width="2" stroke-linecap="round"/></svg><div class="lk-v"></div><div class="lk-n">${label}</div>`;
   const arcE=el.querySelector('.lk-arc'),ptr=el.querySelector('.lk-ptr'),val=el.querySelector('.lk-v');
-  const set=v=>{v=Math.min(max,Math.max(min,v));el.dataset.value=v;const t=norm(v),a=-135+270*t,[x0,y0]=pt2(a,6),[x1,y1]=pt2(a,12);arcE.setAttribute('d',arc2(0,t));ptr.setAttribute('x1',x0);ptr.setAttribute('y1',y0);ptr.setAttribute('x2',x1);ptr.setAttribute('y2',y1);val.textContent=fmt(v);onInput(v)};
+  const set=v=>{v=Number(v);if(!Number.isFinite(v))v=Number.isFinite(Number(el.dataset.value))?Number(el.dataset.value):(min+max)/2;v=Math.min(max,Math.max(min,v));el.dataset.value=v;const t=norm(v),a=-135+270*t,[x0,y0]=pt2(a,6),[x1,y1]=pt2(a,12);arcE.setAttribute('d',arc2(0,t));ptr.setAttribute('x1',x0);ptr.setAttribute('y1',y0);ptr.setAttribute('x2',x1);ptr.setAttribute('y2',y1);val.textContent=fmt(v);onInput(v)};
   let sy=0,sv=value;
   el.addEventListener('pointerdown',e=>{e.preventDefault();el.setPointerCapture(e.pointerId);sy=e.clientY;sv=+el.dataset.value});
   el.addEventListener('pointermove',e=>{if(!el.hasPointerCapture(e.pointerId))return;const t=norm(sv)+(sy-e.clientY)/(e.shiftKey?500:180);set(min+Math.min(1,Math.max(0,t))*(max-min))});
@@ -2657,7 +2659,7 @@ function setActiveLayer(i){
 
 function loadLayerPreset(i,name){
   const base=PRESETS[name]||PRESETS.init;
-  replaceLayerProfile(i,{...base,osc1Coarse:base.osc1Coarse??0,osc2Coarse:base.osc2Coarse??0,unison:base.unison??1,spread:base.spread??12,subLevel:base.subLevel??0,noiseLevel:base.noiseLevel??0,chorusMix:base.chorusMix??0},false);
+  replaceLayerProfile(i,{...PRESETS.init,...base,osc1Coarse:base.osc1Coarse??PRESETS.init.osc1Coarse??0,osc2Coarse:base.osc2Coarse??PRESETS.init.osc2Coarse??0,unison:base.unison??PRESETS.init.unison??1,spread:base.spread??PRESETS.init.spread??12,subLevel:base.subLevel??PRESETS.init.subLevel??0,noiseLevel:base.noiseLevel??PRESETS.init.noiseLevel??0,chorusMix:base.chorusMix??PRESETS.init.chorusMix??0},false);
   if(synth.layerProfilesB?.[i]){synth.layerProfilesB[i]=null;markLayerBChanged(i,false);}
   layerState[i].preset=name;
   if(i===synth.activeLayer)setActiveLayer(i);else syncSynthState(false);
