@@ -409,7 +409,8 @@ test('synonym chains map descriptive prompts to known sound-design rules', async
       noirTags: noir.tags
     };
   });
-  expect(result.cathedralTags).toContain('ORGAN');
+  expect(result.cathedralTags).toContain('PAD');
+  expect(result.cathedralTags).not.toContain('ORGAN');
   expect(result.crystallineTags).toContain('GLASSY');
   expect(result.noirTags).toContain('CINEMATIC-CONTEXT');
 });
