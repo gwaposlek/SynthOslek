@@ -4263,14 +4263,19 @@ syncSynthState(false);
     const ints=CHORD_INTERVALS[chord]||CHORD_INTERVALS.off;
     return ints.map(iv=>effectiveRoot+iv);
   };
-  const transformNote=midi=>{const out=chordNotes(midi);return[...new Set(out.map(Number))].sort((a,b)=>a-b);};
+  const transformNote=(midi,layer=synth.activeLayer)=>{
+    const out=[...new Set(chordNotes(midi).map(Number))].sort((a,b)=>a-b);
+    const profile=synth.layerProfiles?.[Number(layer)]||synth.params;
+    // A mono synth emits one pitch per played key even if chord mode is armed.
+    return String(profile?.voiceMode||"poly").toLowerCase()==="mono"?out.slice(0,1):out;
+  };
 
   function arpCandidates(){
     const held=[...arpHeld.values()];
     if(SO.arp.mode!=="order")held.sort((x,y)=>x.midi-y.midi);
     if(!held.length)return [];
     const out=[],octaves=Math.max(1,Number(SO.arp.oct)||1);
-    for(let o=0;o<octaves;o++){for(const n of held){const notes=transformNote(n.midi+12*o);for(const midi of notes)out.push({...n,midi});}}
+    for(let o=0;o<octaves;o++){for(const n of held){const notes=transformNote(n.midi+12*o,n.layer);for(const midi of notes)out.push({...n,midi});}}
     // Order mode keeps key-arrival order; sorted modes retain a globally ascending
     // candidate pool so extensions never fall below the next octave root.
     if(SO.arp.mode!=="order")out.sort((a,b)=>a.midi-b.midi);
@@ -4344,7 +4349,7 @@ syncSynthState(false);
   synth.noteOn=function(midi,vel=.85,layer=synth.activeLayer,when=null){
     noteMonitor.inputOn(midi);
     if(SO.arp.on){const key=layer+":"+midi;arpHeld.set(key,{midi,vel,layer,releasedWhileHeld:false});if(!arpTimer)startArp();return;}
-    const notes=transformNote(midi);
+    const notes=transformNote(midi,layer);
     const key=layer+":"+midi;
     musicHeld.set(key,{midi,layer,notes});
     // Keep chord RMS closer to single-note loudness as the voicing grows.
@@ -4365,7 +4370,7 @@ syncSynthState(false);
     [...musicHeld].forEach(([k,n])=>{if(n.midi===midi&&(layer==null||n.layer===layer)){for(const out of n.notes)try{monitoredBaseOff(out,n.layer,when)}catch(e){}musicHeld.delete(k);}});
   };
   synth.panic=function(){stopArp();stopSequence();musicHeld.clear();noteMonitor.clear();return basePanic();};
-  if(baseAllOff)synth.allNotesOff=function(){stopArp();stopSequence();musicHeld.clear();return baseAllOff();};
+  if(baseAllOff)synth.allNotesOff=function(){stopArp();stopSequence();musicHeld.clear();const result=baseAllOff();this.monoHeld?.forEach(stack=>{if(Array.isArray(stack))stack.length=0;});this.lastFreqByLayer?.fill(0);return result;};
 
   $$("#so67Arp")?.addEventListener("click",()=>{SO.arp.on=!SO.arp.on;if(!SO.arp.on)stopArp();updateBtn("#so67Arp",SO.arp.on,"ARP ON","ARP OFF");setStatus(SO.arp.on?"ARP armed":"ARP bypassed");});
   $$("#so67Mode")?.addEventListener("change",e=>SO.arp.mode=e.target.value);
