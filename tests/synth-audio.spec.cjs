@@ -241,6 +241,7 @@ test('A/B morph allocates optional sources required by endpoint B', async ({ pag
         noise: Number(stateAtB.noiseLevel) || 0,
         fm: Number(stateAtB.fmAmount) || 0
       },
+      expectedFmDepth: synth._fmDepthHz(stateAtB, 60, 0.8),
       gainTargets: {
         sub: synth._audioParamTargets?.get(voice?.gs?.gain)?.value ?? null,
         noise: synth._audioParamTargets?.get(voice?.gn?.gain)?.value ?? null,
@@ -258,7 +259,7 @@ test('A/B morph allocates optional sources required by endpoint B', async ({ pag
   expect(result.valuesAtB.fm).toBeCloseTo(800, 1);
   expect(result.gainTargets.sub).toBeCloseTo(0.45, 2);
   expect(result.gainTargets.noise).toBeCloseTo(0.12, 2);
-  expect(result.gainTargets.fm).toBeCloseTo(640, 1);
+  expect(result.gainTargets.fm).toBeCloseTo(result.expectedFmDepth, 1);
   expect(pageErrors).toEqual([]);
 });
 
