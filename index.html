@@ -2865,7 +2865,7 @@ const SD={
     // v16.67: canonicalize descriptive near-synonyms before existing rules run.
     let raw=(text||"").toLowerCase();
     const familyWords=new Set(["organ","church","piano","acoustic piano","grand piano","electric piano","e piano","ep","rhodes","wurlitzer","keys","brass","trumpet","trombone","horn","string","strings","violin","cello","orchestra","bass","sub bass","808","moog","bell","mallet","marimba","vibraphone","pluck","pad","ambient","texture","drone","lead","solo","synth lead"]);
-    const hasExplicitFamily=/(^|[^a-z0-9])(organ|church|piano|rhodes|wurlitzer|keys|brass|trumpet|trombone|horn|string|strings|violin|cello|orchestra|bass|moog|bell|mallet|marimba|vibraphone|pluck|pad|ambient|texture|drone|lead|solo)([^a-z0-9]|$)/.test(raw);
+    const hasExplicitFamily=/(^|[^a-z0-9])(organ|church|piano|acoustic\s+piano|grand\s+piano|electric[\s-]+piano|e[\s-]+piano|ep|rhodes|wurlitzer|keys|brass|trumpet|trombone|horn|string|strings|violin|cello|orchestra|bass|sub\s+bass|808|moog|bell|mallet|marimba|vibraphone|pluck|pad|ambient|texture|drone|lead|solo|synth[\s-]+lead)([^a-z0-9]|$)/.test(raw);
     for(const [word,aliases] of Object.entries(SO_SYNONYMS)){
       const re=new RegExp("\\b"+word+"\\b","g");
       if(re.test(raw)){
