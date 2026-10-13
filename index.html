@@ -4102,6 +4102,8 @@ syncSynthState(false);
     const absoluteIntervals=[...new Set(notes.map(n=>Number(n)-base))].sort((a,b)=>a-b);
     const absoluteSignature=absoluteIntervals.join(",");
     if(absoluteSignature==="0,7,10,14,17")return rootName+" 11";
+    if(absoluteSignature==="0,4,7,10,14,21")return rootName+" 13";
+    if(absoluteSignature==="0,4,7,11,14,18,21")return rootName+" maj13";
     const intervals=[...new Set(notes.map(n=>((Number(n)-base)%12+12)%12))].sort((a,b)=>a-b);
     const signature=intervals.join(",");
     const qualities={
