@@ -1405,6 +1405,14 @@ class SynthOslek{
     const dest=({cutoff:1800,pitch:50,amp:.35})[P?.lfoDest];
     return (Number.isFinite(dest)?dest:0)*(Number(P?.lfoDepth)||0);
   }
+  _fmDepthHz(P=this.params,midi=69,velocity=1){
+    // fmAmount remains calibrated as peak deviation at A4; scaling by carrier
+    // pitch keeps the modulation index steady across the keyboard for a fixed ratio.
+    const amount=Math.max(0,Math.min(3000,Number(P?.fmAmount)||0));
+    const freq=440*Math.pow(2,(Number(midi??69)-69)/12);
+    const vel=Math.max(.05,Math.min(1,Number(velocity)||0));
+    return amount*(freq/440)*vel;
+  }
   _routeValue(destination,base=0,voice=null,excludeSource=null){
     const mm=this.modMatrix;if(!mm)return Number(base)||0;
     let out=Number(base)||0;
@@ -1570,7 +1578,7 @@ class SynthOslek{
       const fmAmount=Math.max(0,Math.min(3000,Number(P.fmAmount)||0));
       const baseFreq=440*Math.pow(2,(Number(v.midi??60)-69)/12);
       T(v.fmMod.frequency,Math.max(1,baseFreq*ratio),.055,.2);
-      T(v.fmGain?.gain,fmAmount*Math.max(.05,Number(v.velocity)||0),.06,.08);
+      T(v.fmGain?.gain,this._fmDepthHz(P,v.midi,v.velocity),.06,.08);
     }
     v._lastMorphAmount=this._morphAmount();
   }
@@ -1772,7 +1780,7 @@ class SynthOslek{
       if(P.lfoDest==="cutoff"){lm.connect(vf.frequency);if(vf2)lm.connect(vf2.frequency);}
       else if(P.lfoDest==="amp")lm.connect(va.gain);
     }
-    const v={env,vf,vf2,va,lm,fEnvGain,fEnvDepth,lfoSource:lm?this.lfo:null,subOsc:null,noiseSource:null,_lfoDest:P.lfoDest,_filter24Active:!!vf2,voiceNodes,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,fxFlanger,layer,midi,params:{...baseP},oscs:[],all:[],morphAProfile:hasMorphB?rawA:null,morphBProfile:hasMorphB?rawB:null,morphWavePairs:[],fmMod:null,fmGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),bornAt:now,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,vf2,va,lm,fEnvGain,fEnvDepth,lfoSource:lm?this.lfo:null,subOsc:null,noiseSource:null,_lfoDest:P.lfoDest,_filter24Active:!!vf2,voiceNodes,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,fxFlanger,layer,midi,params:{...baseP},oscs:[],all:[],morphAProfile:hasMorphB?rawA:null,morphBProfile:hasMorphB?rawB:null,morphWavePairs:[],fmMod:null,fmGain:null,fmEnvGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),bornAt:now,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     if(fEnvSource){fEnvSource.start(now);v.all.push(fEnvSource);}
     // A fading voice still costs oscillators, filters and gain nodes. Reduce
@@ -1816,13 +1824,19 @@ class SynthOslek{
     const fmAmount=Math.max(0,Math.min(3000,Number(P.fmAmount)||0)),fmRatio=Math.max(.125,Math.min(16,Number(P.fmRatio)||2));
     const needsFM=fmAmount>.001||(hasMorphB&&(Number(rawB.fmAmount)||0)>.001);
     if(needsFM){
-      const fmMod=trackVoiceNode(this.dspBackend.createVoiceOscillator(c,P.osc2Wave||"sine")),fmGain=G(0);
+      const fmMod=trackVoiceNode(this.dspBackend.createVoiceOscillator(c,P.osc2Wave||"sine"));
+      const fmGain=G(this._fmDepthHz(P,midi,vel)),fmEnvGain=G(1);
       fmMod.type=P.osc2Wave||"sine";
       fmMod.frequency.setValueAtTime(Math.max(1,freq*fmRatio),now);
-      fmGain.gain.setValueAtTime(fmAmount*Math.max(.05,vel),now);
-      fmMod.connect(fmGain);
-      for(const carrier of v.oscs)if(carrier.w===1)fmGain.connect(carrier.o.frequency);
-      fmMod.start(now);v.fmMod=fmMod;v.fmGain=fmGain;v.all.push(fmMod);
+      // Keep the depth control separate from its contour, so morphing may change
+      // the FM index while the note's pluck-like FM envelope continues naturally.
+      const fmEnv=Math.max(0,Math.min(1,Number(P.fmEnv)||0));
+      const fmDecay=Math.max(.01,Math.min(10,Number(P.decay)||.2));
+      fmEnvGain.gain.setValueAtTime(1,now);
+      fmEnvGain.gain.exponentialRampToValueAtTime(Math.max(.01,1-fmEnv),now+fmDecay);
+      fmMod.connect(fmGain);fmGain.connect(fmEnvGain);
+      for(const carrier of v.oscs)if(carrier.w===1)fmEnvGain.connect(carrier.o.frequency);
+      fmMod.start(now);v.fmMod=fmMod;v.fmGain=fmGain;v.fmEnvGain=fmEnvGain;v.all.push(fmMod);
     }
     const needsSub=(Number(P.subLevel)||0)>.0005||(hasMorphB&&(Number(rawB.subLevel)||0)>.0005);
     if(needsSub){
@@ -2275,7 +2289,7 @@ keys:{osc1Wave:"sine",osc1Detune:0,osc1Level:.6,osc2Wave:"triangle",osc2Detune:3
 acid:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.9,osc2Wave:"square",osc2Detune:0,osc2Level:0,filterType:"lowpass",cutoff:600,resonance:14,attack:.005,decay:.12,sustain:.3,release:.12,fEnvAmt:.85,fAttack:.005,fDecay:.18,fSustain:.1,fRelease:.15,lfoRate:.5,lfoDepth:.15,lfoDest:"cutoff",delayTime:.18,delayFb:.4,delayMix:.2,reverbMix:.05,volume:.55,glide:25}
 };
 
-Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0,lfoDelay:0,flangerMix:0,flangerRate:.25,flangerDepth:.002});
+Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0,lfoDelay:0,flangerMix:0,flangerRate:.25,flangerDepth:.002,fmEnv:.5});
 Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});
 Object.assign(PRESETS.lead,{unison:3,spread:10,chorusMix:.15});
 Object.assign(PRESETS.bass,{subLevel:.5});
