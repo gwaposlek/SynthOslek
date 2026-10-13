@@ -2036,7 +2036,7 @@ class SynthOslek{
     if(!this.started)return;
     const keys=[...this.sustained];this.sustained.clear();
     this.monoHeld.forEach(stack=>{if(Array.isArray(stack))stack.length=0;});
-    for(const key of keys){}
+    for(const key of keys){
       const v=this.voices.get(key);if(!v)continue;
       const t=this.ctx.currentTime,P=v.params;
       const rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
