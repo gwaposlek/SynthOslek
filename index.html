@@ -2335,7 +2335,7 @@ document.addEventListener("visibilitychange",()=>{
 },{passive:true});
 
 const initialProfiles=Array.from({length:LAYER_COUNT},()=>({...PRESETS.init}));
-const initialLayers=Array.from({length:LAYER_COUNT},(_,i)=>({vol:i===0?.8:.65,mute:false,solo:false,enabled:true,pan:0,fx:.2,preset:"init"}));
+const initialLayers=Array.from({length:LAYER_COUNT},(_,i)=>({vol:i===0?.8:.65,mute:false,solo:false,enabled:i===0,pan:0,fx:.2,preset:"init"}));
 
 const synthState=new SynthStateStore({
   version:"14.4",activeLayer:0,layers:initialLayers,profiles:initialProfiles,
@@ -2477,7 +2477,7 @@ function morphGains(m){
 
 function refreshLayerGains(at=null,fastResponse=false){
   synth._morphCache?.clear();
-  const bothOn=layerState.length>=2&&layerAudible(0)&&layerAudible(1)&&
+  const bothOn=synth.getMorphMode(synth.activeLayer)==="xfade"&&layerState.length>=2&&layerAudible(0)&&layerAudible(1)&&
     Number(layerState[0]?.vol)>0.02&&Number(layerState[1]?.vol)>0.02;
   const [m0,m1]=bothOn?morphGains(synth.modWheel):[1,1];
   synth.layerMix=layerState.map((x,i)=>{
@@ -2744,18 +2744,23 @@ const SD={
   analyze(text){
     // v16.67: canonicalize descriptive near-synonyms before existing rules run.
     let raw=(text||"").toLowerCase();
+    const familyWords=new Set(["organ","church","piano","acoustic piano","grand piano","electric piano","e piano","ep","rhodes","wurlitzer","keys","brass","trumpet","trombone","horn","string","strings","violin","cello","orchestra","bass","sub bass","808","moog","bell","mallet","marimba","vibraphone","pluck","pad","ambient","texture","drone","lead","solo","synth lead"]);
+    const hasExplicitFamily=/(^|[^a-z0-9])(organ|church|piano|rhodes|wurlitzer|keys|brass|trumpet|trombone|horn|string|strings|violin|cello|orchestra|bass|moog|bell|mallet|marimba|vibraphone|pluck|pad|ambient|texture|drone|lead|solo)([^a-z0-9]|$)/.test(raw);
     for(const [word,aliases] of Object.entries(SO_SYNONYMS)){
       const re=new RegExp("\\b"+word+"\\b","g");
-      if(re.test(raw))raw=raw.replace(re,aliases.join(" "));
+      if(re.test(raw)){
+        const safeAliases=hasExplicitFamily?aliases.filter(alias=>!familyWords.has(alias)):aliases;
+        if(safeAliases.length)raw=raw.replace(re,safeAliases.join(" "));
+      }
     }
-    const q=raw.trim();
+        const q=raw.trim();
     let p={...PRESETS.init};const hits=[];
     const norm=(" "+q.replace(/[^a-z0-9]+/g," ")+" ").replace(/\s+/g," ");
     const has=(...w)=>w.some(x=>norm.includes(" "+String(x).toLowerCase()+" "));
     const use=(name,patch)=>{p={...p,...patch};hits.push(name)};
 
     if(has('hammond','organ','tonewheel','church organ','church'))use('ORGAN',{osc1Wave:'sine',osc2Wave:'sine',osc1Level:.72,osc2Level:.68,osc1Detune:0,osc2Detune:1200,filterType:'lowpass',cutoff:8500,resonance:.3,attack:.003,decay:.04,sustain:.98,release:.08,fEnvAmt:.02,fAttack:.002,fDecay:.05,fSustain:1,fRelease:.08,lfoDest:'pitch',lfoRate:5.5,lfoDepth:.018,unison:1,spread:0,subLevel:.32,noiseLevel:.015,chorusMix:.32,delayMix:.04,reverbMix:.18,volume:.72});
-    else if(has('piano','acoustic piano','grand piano'))use('PIANO',{osc1Wave:'triangle',osc2Wave:'sine',osc1Level:.8,osc2Level:.32,osc1Detune:0,osc2Detune:1200,filterType:'lowpass',cutoff:6200,resonance:.5,attack:.001,decay:.85,sustain:.18,release:1.15,fEnvAmt:.42,fAttack:.001,fDecay:.65,fSustain:.08,fRelease:.9,lfoDepth:0,unison:1,spread:0,subLevel:.04,noiseLevel:.012,chorusMix:.04,delayMix:.02,reverbMix:.24,volume:.72});
+    else if(has('piano','acoustic piano','grand piano')&&!has('electric piano','ep','rhodes','wurlitzer'))use('PIANO',{osc1Wave:'triangle',osc2Wave:'sine',osc1Level:.8,osc2Level:.32,osc1Detune:0,osc2Detune:1200,filterType:'lowpass',cutoff:6200,resonance:.5,attack:.001,decay:.85,sustain:.18,release:1.15,fEnvAmt:.42,fAttack:.001,fDecay:.65,fSustain:.08,fRelease:.9,lfoDepth:0,unison:1,spread:0,subLevel:.04,noiseLevel:.012,chorusMix:.04,delayMix:.02,reverbMix:.24,volume:.72});
     else if(has('electric piano','ep','rhodes','wurlitzer','keys'))use('E-PIANO',{osc1Wave:'sine',osc2Wave:'triangle',osc1Level:.8,osc2Level:.5,osc1Detune:0,osc2Detune:700,filterType:'lowpass',cutoff:4200,resonance:1.2,attack:.004,decay:.55,sustain:.45,release:.65,fEnvAmt:.2,fAttack:.002,fDecay:.4,fSustain:.25,fRelease:.5,lfoDest:'pitch',lfoRate:5.2,lfoDepth:.008,unison:1,spread:4,subLevel:.02,noiseLevel:.01,chorusMix:.28,delayMix:.12,reverbMix:.2,volume:.68});
     else if(has('brass','trumpet','trombone','horn','synth brass'))use('BRASS',{osc1Wave:'sawtooth',osc2Wave:'square',osc1Level:.72,osc2Level:.5,osc1Detune:-7,osc2Detune:7,filterType:'lowpass',cutoff:2400,resonance:3.2,attack:.09,decay:.25,sustain:.72,release:.2,fEnvAmt:.55,fAttack:.06,fDecay:.28,fSustain:.42,fRelease:.2,lfoDest:'pitch',lfoRate:5.8,lfoDepth:.012,unison:2,spread:9,subLevel:.08,noiseLevel:.01,chorusMix:.1,delayMix:.04,reverbMix:.16,volume:.7});
     else if(has('string','strings','violin','cello','orchestra'))use('STRINGS',{osc1Wave:'sawtooth',osc2Wave:'triangle',osc1Level:.52,osc2Level:.55,osc1Detune:-9,osc2Detune:9,filterType:'lowpass',cutoff:3000,resonance:1.1,attack:.42,decay:.7,sustain:.78,release:1.3,fEnvAmt:.25,fAttack:.3,fDecay:.7,fSustain:.6,fRelease:1.2,lfoDest:'pitch',lfoRate:5,lfoDepth:.006,unison:3,spread:22,subLevel:.02,noiseLevel:.008,chorusMix:.24,delayMix:.05,reverbMix:.4,volume:.64});
