@@ -1697,6 +1697,19 @@ class SynthOslek{
     midi=Math.round(midi);vel=Math.max(0,Math.min(1,vel));
     if(layer<0||layer>=this.layerProfiles.length)return false;
     const key=layer+":"+midi;
+    const layerProfile=this.layerProfiles[layer]||this.params||{};
+    const monoMode=String(layerProfile.voiceMode||"poly").toLowerCase()==="mono";
+    const legatoEnabled=layerProfile.legato===true||String(layerProfile.legato).toLowerCase()==="true";
+    let monoPreviousVoice=null;
+    if(monoMode){
+      // Only one live voice per layer in mono mode. Remember the previous pitch
+      // before releasing it so the new voice can glide from that frequency.
+      const candidates=[...this.voices.entries()]
+        .filter(([candidateKey,v])=>candidateKey!==key&&v.layer===layer&&Number.isFinite(Number(v.midi)))
+        .sort((a,b)=>(Number(a[1].bornAt)||0)-(Number(b[1].bornAt)||0));
+      monoPreviousVoice=candidates[candidates.length-1]?.[1]||null;
+      for(const [candidateKey,v] of candidates)this._forceStop(candidateKey,6,when);
+    }
     // Retrigger with a slightly longer, held-value-aware fade to avoid hard edges.
     if(this.voices.has(key))this._forceStop(key,8,when);
     // Count release tails as part of renderer pressure: a fast arp can have
@@ -1740,6 +1753,20 @@ class SynthOslek{
     const baseP=cleanProfile({...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0});
     const P=cleanProfile(this._morphParams(baseP,layer)),G=v=>trackVoiceNode(this._G(v));
     const now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime);
+    const glideMs=monoMode&&monoPreviousVoice?Math.max(0,Math.min(500,Number(P.glide)||0)):0;
+    const glideSeconds=glideMs/1000;
+    const targetFreq=440*Math.pow(2,(midi-69)/12);
+    const storedFreq=Number(this.lastFreqByLayer[layer])||0;
+    const fallbackPrevFreq=monoPreviousVoice?440*Math.pow(2,(Number(monoPreviousVoice.midi)-69)/12):0;
+    const glideFromFreq=monoPreviousVoice?(storedFreq>0?storedFreq:fallbackPrevFreq):targetFreq;
+    const legatoTransition=monoMode&&!!monoPreviousVoice&&legatoEnabled;
+    const setPitchFrequency=(param,target,multiplier=1)=>{
+      if(!param)return;
+      if(glideSeconds>0&&glideFromFreq>0){
+        param.setValueAtTime(Math.max(.001,glideFromFreq*multiplier),now);
+        param.exponentialRampToValueAtTime(Math.max(.001,target),now+glideSeconds);
+      }else param.setValueAtTime(target,now);
+    };
     if(layer===this.activeLayer){
       this._smoothParamTarget(this.lfo?.frequency,Math.max(.05,Math.min(20,Number(P.lfoRate)||2)),now,.055,.01);
       if(this.delaySync==="free")this._smoothParamTarget(this.delay?.delayTime,Math.max(.001,Math.min(1.5,Number(P.delayTime)||.25)),now,.055,.002);
@@ -1759,7 +1786,9 @@ class SynthOslek{
     const nativeFilterType=P.filterType==="lowpass24"||P.filterType==="lowpass"?"lowpass":P.filterType==="highpass24"||P.filterType==="highpass"?"highpass":P.filterType==="notch"?"notch":P.filterType==="bandpass"?"bandpass":"lowpass";
     if(vf){vf.type=nativeFilterType;vf.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
     if(vf2){vf2.type=nativeFilterType;vf2.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
-    const atk=Math.max(this.mobileAudio?.015:.008,Math.min(5,Number(P.attack)||.01)),dec=Math.max(.01,Math.min(10,Number(P.decay)||.2));
+    let atk=Math.max(this.mobileAudio?.015:.008,Math.min(5,Number(P.attack)||.01));
+    if(legatoTransition)atk=Math.min(atk,.008);
+    const dec=Math.max(.01,Math.min(10,Number(P.decay)||.2));
     if(!workletPath){
       env.gain.setValueAtTime(0,now);
       env.gain.linearRampToValueAtTime(Math.max(.0001,vel),now+atk);
@@ -1775,7 +1804,8 @@ class SynthOslek{
     const baseCutoff=Math.max(20,Math.min(18000,((Number(P.cutoff)||2000)+keyOffset)*arpPitchComp));
     const rawEnvAmt=Number(P.fEnvAmt||0)*6000*(.4+.6*vel)*envPol;
     const envAmt=Math.max(20-baseCutoff,Math.min(18000-baseCutoff,rawEnvAmt));
-    const fA=Math.max(.018,Math.min(5,Number(P.fAttack)||0));
+    let fA=Math.max(.018,Math.min(5,Number(P.fAttack)||0));
+    if(legatoTransition)fA=Math.min(fA,.018);
     const fD=Math.max(.01,Math.min(10,Number(P.fDecay)||0));
     const fSustain=Math.max(0,Math.min(1,Number(P.fSustain)||0));
     if(!workletPath){
@@ -1824,7 +1854,7 @@ class SynthOslek{
       if(P.lfoDest==="cutoff"){lm.connect(vf.frequency);if(vf2)lm.connect(vf2.frequency);}
       else if(P.lfoDest==="amp")lm.connect(va.gain);
     }
-    const v={env,vf,vf2,va,lm,fEnvGain,fEnvDepth,lfoSource:lm?this.lfo:null,subOsc:null,noiseSource:null,_lfoDest:P.lfoDest,_filter24Active:!!vf2,voiceNodes,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,fxFlanger,layer,midi,params:{...baseP},oscs:[],all:[],morphAProfile:hasMorphB?rawA:null,morphBProfile:hasMorphB?rawB:null,morphWavePairs:[],fmMod:null,fmGain:null,fmEnvGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),bornAt:now,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,vf2,va,lm,fEnvGain,fEnvDepth,lfoSource:lm?this.lfo:null,subOsc:null,noiseSource:null,_lfoDest:P.lfoDest,_filter24Active:!!vf2,voiceNodes,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,fxFlanger,layer,midi,params:{...baseP},oscs:[],all:[],morphAProfile:hasMorphB?rawA:null,morphBProfile:hasMorphB?rawB:null,morphWavePairs:[],fmMod:null,fmGain:null,fmEnvGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),bornAt:now,monoMode,monoLegato:legatoTransition,monoGlideFromFreq:glideSeconds>0?glideFromFreq:targetFreq,monoGlideToFreq:targetFreq,monoGlideSeconds:glideSeconds,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     if(fEnvSource){fEnvSource.start(now);v.all.push(fEnvSource);}
     // A fading voice still costs oscillators, filters and gain nodes. Reduce
@@ -1848,7 +1878,7 @@ class SynthOslek{
       o.type=profileA[waveKey];
       const initialMorph=this._morphAmount(),wa=Math.cos(initialMorph*Math.PI*.5);
       if(waveDiff)ng.gain.setValueAtTime(norm*wa,now);
-      o.frequency.setValueAtTime(freq,now);
+      setPitchFrequency(o.frequency,freq);
       o.detune.setValueAtTime((Number(profileA["osc"+w+"Coarse"])||0)*100+(Number(profileA["osc"+w+"Detune"])||0)+off*(Number(profileA.spread)||0)+this.bend+(this.wheel||0),now);
       o.connect(ng);ng.connect(v["g"+w]);
       if(!workletPath&&lm&&P.lfoDest==="pitch")lm.connect(o.detune);
@@ -1857,7 +1887,7 @@ class SynthOslek{
         const profileB=rawB,wb=Math.sin(initialMorph*Math.PI*.5);
         const ob=trackVoiceNode(this.dspBackend.createVoiceOscillator(c,profileB[waveKey])),ngB=G(norm*wb);
         ob.type=profileB[waveKey];
-        ob.frequency.setValueAtTime(freq,now);
+        setPitchFrequency(ob.frequency,freq);
         ob.detune.setValueAtTime((Number(profileB["osc"+w+"Coarse"])||0)*100+(Number(profileB["osc"+w+"Detune"])||0)+off*(Number(profileB.spread)||0)+this.bend+(this.wheel||0),now);
         ob.connect(ngB);ngB.connect(v["g"+w]);
         if(!workletPath&&lm&&P.lfoDest==="pitch")lm.connect(ob.detune);
@@ -1871,7 +1901,7 @@ class SynthOslek{
       const fmMod=trackVoiceNode(this.dspBackend.createVoiceOscillator(c,P.osc2Wave||"sine"));
       const fmGain=G(this._fmDepthHz(P,midi,vel)),fmEnvGain=G(1);
       fmMod.type=P.osc2Wave||"sine";
-      fmMod.frequency.setValueAtTime(Math.max(1,freq*fmRatio),now);
+      setPitchFrequency(fmMod.frequency,Math.max(1,freq*fmRatio),fmRatio);
       // Keep the depth control separate from its contour, so morphing may change
       // the FM index while the note's pluck-like FM envelope continues naturally.
       const fmEnv=Math.max(0,Math.min(1,Number(P.fmEnv)||0));
@@ -1885,7 +1915,7 @@ class SynthOslek{
     const needsSub=(Number(P.subLevel)||0)>.0005||(hasMorphB&&(Number(rawB.subLevel)||0)>.0005);
     if(needsSub){
       const so=trackVoiceNode(this.dspBackend.createVoiceOscillator(c,"sine"));
-      so.frequency.setValueAtTime(freq/2,now);
+      setPitchFrequency(so.frequency,freq/2,.5);
       so.detune.setValueAtTime(this.bend+(this.wheel||0),now);
       so.connect(v.gs);
       if(lm&&P.lfoDest==="pitch")lm.connect(so.detune);
@@ -1895,7 +1925,14 @@ class SynthOslek{
     if(needsNoise){
       const ns=trackVoiceNode(c.createBufferSource());ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.noiseSource=ns;v.all.push(ns);
     }
-    this.lastFreqByLayer[layer]=freq;this.voices.set(key,v);return true;
+    this.lastFreqByLayer[layer]=freq;
+    if(monoMode){
+      const held=this.monoHeld[layer]||(this.monoHeld[layer]=[]);
+      const duplicateIndex=held.findIndex(entry=>entry.midi===midi);
+      if(duplicateIndex>=0)held.splice(duplicateIndex,1);
+      held.push({midi,velocity:vel});
+    }else if(this.monoHeld[layer])this.monoHeld[layer].length=0;
+    this.voices.set(key,v);return true;
     }catch(err){
       try{if(lfoTarget)this.lfo?.disconnect(lfoTarget);}catch(e){}
       for(const node of voiceNodes){
