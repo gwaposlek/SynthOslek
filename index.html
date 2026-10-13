@@ -2772,15 +2772,15 @@ const SD={
     const has=(...w)=>w.some(x=>norm.includes(" "+String(x).toLowerCase()+" "));
     const use=(name,patch)=>{p={...p,...patch};hits.push(name)};
 
-    if(has('hammond','organ','tonewheel','church organ','church'))use('ORGAN',{osc1Wave:'sine',osc2Wave:'sine',osc1Level:.72,osc2Level:.68,osc1Detune:0,osc2Detune:1200,filterType:'lowpass',cutoff:8500,resonance:.3,attack:.003,decay:.04,sustain:.98,release:.08,fEnvAmt:.02,fAttack:.002,fDecay:.05,fSustain:1,fRelease:.08,lfoDest:'pitch',lfoRate:5.5,lfoDepth:.018,unison:1,spread:0,subLevel:.32,noiseLevel:.015,chorusMix:.32,delayMix:.04,reverbMix:.18,volume:.72});
+    if(has('hammond','organ','tonewheel','church organ','church'))use('ORGAN',{osc1Wave:'sine',osc2Wave:'sine',osc1Level:.72,osc2Level:.68,osc1Detune:0,osc2Detune:1200,filterType:'lowpass',cutoff:8500,resonance:.3,attack:.003,decay:.04,sustain:.98,release:.08,fEnvAmt:.02,fAttack:.002,fDecay:.05,fSustain:1,fRelease:.08,lfoDest:'pitch',lfoRate:5.5,lfoDepth:.24,unison:1,spread:0,subLevel:.32,noiseLevel:.015,chorusMix:.32,delayMix:.04,reverbMix:.18,volume:.72});
     else if(has('piano','acoustic piano','grand piano')&&!has('electric piano','ep','rhodes','wurlitzer'))use('PIANO',{osc1Wave:'triangle',osc2Wave:'sine',osc1Level:.8,osc2Level:.32,osc1Detune:0,osc2Detune:1200,filterType:'lowpass',cutoff:6200,resonance:.5,attack:.001,decay:.85,sustain:.18,release:1.15,fEnvAmt:.42,fAttack:.001,fDecay:.65,fSustain:.08,fRelease:.9,lfoDepth:0,unison:1,spread:0,subLevel:.04,noiseLevel:.012,chorusMix:.04,delayMix:.02,reverbMix:.24,volume:.72});
-    else if(has('electric piano','ep','rhodes','wurlitzer','keys'))use('E-PIANO',{osc1Wave:'sine',osc2Wave:'triangle',osc1Level:.8,osc2Level:.5,osc1Detune:0,osc2Detune:700,filterType:'lowpass',cutoff:4200,resonance:1.2,attack:.004,decay:.55,sustain:.45,release:.65,fEnvAmt:.2,fAttack:.002,fDecay:.4,fSustain:.25,fRelease:.5,lfoDest:'pitch',lfoRate:5.2,lfoDepth:.008,unison:1,spread:4,subLevel:.02,noiseLevel:.01,chorusMix:.28,delayMix:.12,reverbMix:.2,volume:.68});
-    else if(has('brass','trumpet','trombone','horn','synth brass'))use('BRASS',{osc1Wave:'sawtooth',osc2Wave:'square',osc1Level:.72,osc2Level:.5,osc1Detune:-7,osc2Detune:7,filterType:'lowpass',cutoff:2400,resonance:3.2,attack:.09,decay:.25,sustain:.72,release:.2,fEnvAmt:.55,fAttack:.06,fDecay:.28,fSustain:.42,fRelease:.2,lfoDest:'pitch',lfoRate:5.8,lfoDepth:.012,unison:2,spread:9,subLevel:.08,noiseLevel:.01,chorusMix:.1,delayMix:.04,reverbMix:.16,volume:.7});
-    else if(has('string','strings','violin','cello','orchestra'))use('STRINGS',{osc1Wave:'sawtooth',osc2Wave:'triangle',osc1Level:.52,osc2Level:.55,osc1Detune:-9,osc2Detune:9,filterType:'lowpass',cutoff:3000,resonance:1.1,attack:.42,decay:.7,sustain:.78,release:1.3,fEnvAmt:.25,fAttack:.3,fDecay:.7,fSustain:.6,fRelease:1.2,lfoDest:'pitch',lfoRate:5,lfoDepth:.006,unison:3,spread:22,subLevel:.02,noiseLevel:.008,chorusMix:.24,delayMix:.05,reverbMix:.4,volume:.64});
+    else if(has('electric piano','ep','rhodes','wurlitzer','keys'))use('E-PIANO',{osc1Wave:'sine',osc2Wave:'triangle',osc1Level:.8,osc2Level:.5,osc1Detune:0,osc2Detune:700,filterType:'lowpass',cutoff:4200,resonance:1.2,attack:.004,decay:.55,sustain:.45,release:.65,fEnvAmt:.2,fAttack:.002,fDecay:.4,fSustain:.25,fRelease:.5,lfoDest:'pitch',lfoRate:5.2,lfoDepth:.2,unison:1,spread:4,subLevel:.02,noiseLevel:.01,chorusMix:.28,delayMix:.12,reverbMix:.2,volume:.68});
+    else if(has('brass','trumpet','trombone','horn','synth brass'))use('BRASS',{osc1Wave:'sawtooth',osc2Wave:'square',osc1Level:.72,osc2Level:.5,osc1Detune:-7,osc2Detune:7,filterType:'lowpass',cutoff:2400,resonance:3.2,attack:.09,decay:.25,sustain:.72,release:.2,fEnvAmt:.55,fAttack:.06,fDecay:.28,fSustain:.42,fRelease:.2,lfoDest:'pitch',lfoRate:5.8,lfoDepth:.22,unison:2,spread:9,subLevel:.08,noiseLevel:.01,chorusMix:.1,delayMix:.04,reverbMix:.16,volume:.7});
+    else if(has('string','strings','violin','cello','orchestra'))use('STRINGS',{osc1Wave:'sawtooth',osc2Wave:'triangle',osc1Level:.52,osc2Level:.55,osc1Detune:-9,osc2Detune:9,filterType:'lowpass',cutoff:3000,resonance:1.1,attack:.42,decay:.7,sustain:.78,release:1.3,fEnvAmt:.25,fAttack:.3,fDecay:.7,fSustain:.6,fRelease:1.2,lfoDest:'pitch',lfoRate:5,lfoDepth:.3,unison:3,spread:22,subLevel:.02,noiseLevel:.008,chorusMix:.24,delayMix:.05,reverbMix:.4,volume:.64});
     else if(has('bass','sub bass','808','moog'))use('BASS',{osc1Wave:'sawtooth',osc2Wave:'sine',osc1Level:.65,osc2Level:.7,osc1Detune:-5,osc2Detune:-1200,filterType:'lowpass',cutoff:700,resonance:4.5,attack:.002,decay:.35,sustain:.55,release:.22,fEnvAmt:.65,fAttack:.001,fDecay:.3,fSustain:.12,fRelease:.18,lfoDepth:0,unison:1,spread:0,subLevel:.6,noiseLevel:0,chorusMix:0,delayMix:.02,reverbMix:.06,volume:.78});
     else if(has('bell','mallet','marimba','vibraphone','pluck'))use('PLUCK',{osc1Wave:'sine',osc2Wave:'triangle',osc1Level:.8,osc2Level:.42,osc1Detune:1200,osc2Detune:1900,filterType:'lowpass',cutoff:6500,resonance:2,attack:.001,decay:.32,sustain:.04,release:.45,fEnvAmt:.72,fAttack:.001,fDecay:.25,fSustain:.02,fRelease:.4,lfoDepth:0,unison:1,spread:2,subLevel:.02,noiseLevel:.015,chorusMix:.08,delayMix:.16,reverbMix:.28,volume:.66});
     else if(has('pad','ambient','texture','drone'))use('PAD',{osc1Wave:'sawtooth',osc2Wave:'triangle',osc1Level:.48,osc2Level:.52,osc1Detune:-14,osc2Detune:14,filterType:'lowpass',cutoff:2200,resonance:.9,attack:1.1,decay:1.4,sustain:.82,release:2.5,fEnvAmt:.22,fAttack:.8,fDecay:1.2,fSustain:.7,fRelease:2.2,lfoDest:'cutoff',lfoRate:.22,lfoDepth:.18,unison:5,spread:38,subLevel:.08,noiseLevel:.012,chorusMix:.42,delayMix:.22,reverbMix:.58,volume:.55});
-    else if(has('lead','solo','synth lead'))use('LEAD',{osc1Wave:'sawtooth',osc2Wave:'square',osc1Level:.7,osc2Level:.42,osc1Detune:-4,osc2Detune:4,filterType:'lowpass',cutoff:3600,resonance:5.5,attack:.008,decay:.18,sustain:.8,release:.18,fEnvAmt:.5,fAttack:.005,fDecay:.18,fSustain:.55,fRelease:.15,lfoDest:'pitch',lfoRate:5.5,lfoDepth:.025,unison:2,spread:8,subLevel:.04,noiseLevel:.008,chorusMix:.1,delayMix:.12,reverbMix:.12,volume:.68});
+    else if(has('lead','solo','synth lead'))use('LEAD',{osc1Wave:'sawtooth',osc2Wave:'square',osc1Level:.7,osc2Level:.42,osc1Detune:-4,osc2Detune:4,filterType:'lowpass',cutoff:3600,resonance:5.5,attack:.008,decay:.18,sustain:.8,release:.18,fEnvAmt:.5,fAttack:.005,fDecay:.18,fSustain:.55,fRelease:.15,lfoDest:'pitch',lfoRate:5.5,lfoDepth:.2,unison:2,spread:8,subLevel:.04,noiseLevel:.008,chorusMix:.1,delayMix:.12,reverbMix:.12,volume:.68});
     else use('SYNTH',{osc1Wave:'sawtooth',osc2Wave:'square',osc1Level:.65,osc2Level:.45,cutoff:2600,resonance:2.8,attack:.02,decay:.3,sustain:.6,release:.35,unison:2,spread:12,volume:.65});
 
     if(has('warm','warmth','vintage')){p.cutoff=Math.max(500,p.cutoff*.68);p.resonance=Math.min(p.resonance,2.5);p.reverbMix=Math.min(1,p.reverbMix+.08);if(has('vintage')){p.chorusMix=Math.min(1,(p.chorusMix||0)+.12);p.osc1Detune=(Number(p.osc1Detune)||0)-4;p.osc2Detune=(Number(p.osc2Detune)||0)+4;}hits.push('WARM');}
@@ -4093,12 +4093,15 @@ syncSynthState(false);
   const monitoredBaseOn=(m,v,l,w)=>{noteMonitor.generatedOn(m);return rawBaseOn(m,v,l,w);};
   const monitoredBaseOff=(m,l,w)=>{noteMonitor.generatedOff(m);return rawBaseOff(m,l,w);};
   const SCALE_INTERVALS={off:[0,1,2,3,4,5,6,7,8,9,10,11],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],mixolydian:[0,2,4,5,7,9,10],pentatonic:[0,2,4,7,9],blues:[0,3,5,6,7,10]};
-  const CHORD_INTERVALS={off:[0],major:[0,4,7],minor:[0,3,7],diminished:[0,3,6],augmented:[0,4,8],sus2:[0,2,7],sus4:[0,5,7],"6":[0,4,7,9],min6:[0,3,7,9],"7":[0,4,7,10],maj7:[0,4,7,11],min7:[0,3,7,10],"7sus4":[0,5,7,10],dim7:[0,3,6,9],"m7b5":[0,3,6,10],add9:[0,4,7,14],"9":[0,4,7,10,14],maj9:[0,4,7,11,14],min9:[0,3,7,10,14],"9sus4":[0,5,7,10,14],"11":[0,4,7,10,14,17],maj11:[0,4,7,11,14,17],min11:[0,3,7,10,14,17],"13":[0,4,7,10,14,17,21],maj13:[0,4,7,11,14,17,21],min13:[0,3,7,10,14,17,21]};
+  const CHORD_INTERVALS={off:[0],major:[0,4,7],minor:[0,3,7],diminished:[0,3,6],augmented:[0,4,8],sus2:[0,2,7],sus4:[0,5,7],"6":[0,4,7,9],min6:[0,3,7,9],"7":[0,4,7,10],maj7:[0,4,7,11],min7:[0,3,7,10],"7sus4":[0,5,7,10],dim7:[0,3,6,9],"m7b5":[0,3,6,10],add9:[0,4,7,14],"9":[0,4,7,10,14],maj9:[0,4,7,11,14],min9:[0,3,7,10,14],"9sus4":[0,5,7,10,14],"11":[0,7,10,14,17],maj11:[0,4,7,11,14,18],min11:[0,3,7,10,14,17],"13":[0,4,7,10,14,21],maj13:[0,4,7,11,14,18,21],min13:[0,3,7,10,14,17,21]};
   const CHORD_STEPS={off:[0],major:[0,2,4],minor:[0,2,4],diminished:[0,2,4],augmented:[0,2,4],sus2:[0,1,4],sus4:[0,3,4],"6":[0,2,4,5],min6:[0,2,4,5],"7":[0,2,4,6],maj7:[0,2,4,6],min7:[0,2,4,6],"7sus4":[0,3,4,6],dim7:[0,2,4,6],"m7b5":[0,2,4,6],add9:[0,2,4,8],"9":[0,2,4,6,8],maj9:[0,2,4,6,8],min9:[0,2,4,6,8],"9sus4":[0,3,4,6,8],"11":[0,2,4,6,8,10],maj11:[0,2,4,6,8,10],min11:[0,2,4,6,8,10],"13":[0,2,4,6,8,10,12],maj13:[0,2,4,6,8,10,12],min13:[0,2,4,6,8,10,12]};
   const chordSymbolFor=notes=>{
     if(!notes||!notes.length)return "—";
     const base=Number(notes[0]),rootName=NOTES[((base%12)+12)%12];
     if(notes.length===1)return midiToNote(base);
+    const absoluteIntervals=[...new Set(notes.map(n=>Number(n)-base))].sort((a,b)=>a-b);
+    const absoluteSignature=absoluteIntervals.join(",");
+    if(absoluteSignature==="0,7,10,14,17")return rootName+" 11";
     const intervals=[...new Set(notes.map(n=>((Number(n)-base)%12+12)%12))].sort((a,b)=>a-b);
     const signature=intervals.join(",");
     const qualities={
@@ -4108,8 +4111,9 @@ syncSynthState(false);
       "0,4,7,11":"maj7","0,5,7,10":"7sus4","0,2,4,7":"add9",
       "0,2,3,7,10":"m9","0,2,4,7,10":"9","0,2,4,7,11":"maj9",
       "0,2,5,7,10":"9sus4","0,2,3,5,7,10":"m11","0,2,4,5,7,10":"11",
-      "0,2,4,5,7,11":"maj11","0,2,3,5,7,9,10":"m13",
-      "0,2,4,5,7,9,10":"13","0,2,4,5,7,9,11":"maj13"
+      "0,2,4,5,7,11":"maj11","0,2,4,6,7,11":"maj11","0,2,3,5,7,9,10":"m13",
+      "0,2,4,5,7,9,10":"13","0,2,4,7,9,10":"13","0,2,4,5,7,9,11":"maj13",
+      "0,2,4,6,7,9,11":"maj13"
     };
     const quality=qualities[signature];
     return quality?rootName+" "+quality:rootName+" chord ["+intervals.join("-")+"]";
@@ -4121,8 +4125,11 @@ syncSynthState(false);
     if(scaleName==="off")return midi;
     const intervals=SCALE_INTERVALS[scaleName]||SCALE_INTERVALS.off;
     const rel=midi-root,octave=Math.floor(rel/12),pc=((rel%12)+12)%12;
-    let best=intervals[0],bestDist=Infinity,bestAbs=Infinity;
-    for(const iv of intervals){const d=Math.abs(iv-pc),abs=iv-pc;if(d<bestDist||(d===bestDist&&abs<=bestAbs)){best=iv;bestDist=d;bestAbs=abs;}}
+    // Include the tonic at the top of the next octave. Without it, upper scale
+    // notes (such as B in C pentatonic) incorrectly snap down when C is closer up.
+    const candidates=[...intervals,intervals[0]+12];
+    let best=candidates[0],bestDist=Infinity,bestAbs=Infinity;
+    for(const iv of candidates){const d=Math.abs(iv-pc),abs=iv-pc;if(d<bestDist||(d===bestDist&&abs<=bestAbs)){best=iv;bestDist=d;bestAbs=abs;}}
     return root+octave*12+best;
   };
   const scaleChordNotes=(midi,chord)=>{
@@ -4149,13 +4156,14 @@ syncSynthState(false);
   const transformNote=midi=>{const out=chordNotes(midi);return[...new Set(out.map(Number))].sort((a,b)=>a-b);};
 
   function arpCandidates(){
-    const held=[...arpHeld.values()].sort((x,y)=>x.midi-y.midi);
+    const held=[...arpHeld.values()];
+    if(SO.arp.mode!=="order")held.sort((x,y)=>x.midi-y.midi);
     if(!held.length)return [];
     const out=[],octaves=Math.max(1,Number(SO.arp.oct)||1);
     for(let o=0;o<octaves;o++){for(const n of held){const notes=transformNote(n.midi+12*o);for(const midi of notes)out.push({...n,midi});}}
-    // Extended chords (9th/11th/13th) can cross octave boundaries. Sort the full
-    // candidate pool so UP mode never drops back down to the next octave's root.
-    out.sort((a,b)=>a.midi-b.midi);
+    // Order mode keeps key-arrival order; sorted modes retain a globally ascending
+    // candidate pool so extensions never fall below the next octave root.
+    if(SO.arp.mode!=="order")out.sort((a,b)=>a.midi-b.midi);
     return out;
   }
   function arpPick(){
@@ -4225,7 +4233,9 @@ syncSynthState(false);
     const notes=transformNote(midi);
     const key=layer+":"+midi;
     musicHeld.set(key,{midi,layer,notes});
-    for(const n of notes)monitoredBaseOn(n,vel,layer,when);
+    // Keep chord RMS closer to single-note loudness as the voicing grows.
+    const chordVelocity=vel/Math.sqrt(Math.max(1,notes.length));
+    for(const n of notes)monitoredBaseOn(n,chordVelocity,layer,when);
   };
   synth.noteOff=function(midi,layer=null,when=null){
     noteMonitor.inputOff(midi);
