@@ -1246,3 +1246,57 @@ test('A/B morph applies shared LFO rate and delay controls to audio parameters',
   expect(pageErrors).toEqual([]);
 });
 
+test('Android audio path retains lightweight shared reverb and single-tap delay sends', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, 'userAgent', {
+      configurable: true,
+      get: () => 'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36'
+    });
+  });
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const result = await page.evaluate(() => {
+    const synth = window.synth;
+    synth.panic();
+    synth.updateParam('reverbMix', 0.38);
+    synth.updateParam('delayMix', 0.28);
+    synth.updateParam('delayFb', 0.65);
+    synth.noteOn(60, 0.8, 0);
+    const voice = synth.voices.get('0:60');
+    const snapshot = {
+      mobileAudio: synth.mobileAudio,
+      normalAnalyserDisabled: synth.analyser === null,
+      sharedReverbExists: !!synth.mobileReverbConvolver,
+      sharedReverbReturnExists: !!synth.mobileReverbReturn,
+      impulseChannels: synth.mobileReverbConvolver?.buffer?.numberOfChannels ?? 0,
+      impulseDuration: synth.mobileReverbConvolver?.buffer?.duration ?? 0,
+      perVoiceReverbSend: !!voice?.fxReverb,
+      perVoiceDelaySend: !!voice?.fxDelay,
+      reverbSend: voice?.fxReverb?.gain?.value ?? null,
+      delaySend: voice?.fxDelay?.gain?.value ?? null,
+      feedbackGain: synth.delayFeedback?.gain?.value ?? null,
+      delayTarget: synth._audioParamTargets?.get(synth.delay?.delayTime)?.value ?? null
+    };
+    synth.panic();
+    return snapshot;
+  });
+
+  expect(result.mobileAudio).toBeTruthy();
+  expect(result.normalAnalyserDisabled).toBeTruthy();
+  expect(result.sharedReverbExists).toBeTruthy();
+  expect(result.sharedReverbReturnExists).toBeTruthy();
+  expect(result.impulseChannels).toBe(1);
+  expect(result.impulseDuration).toBeGreaterThan(0.4);
+  expect(result.impulseDuration).toBeLessThanOrEqual(0.6);
+  expect(result.perVoiceReverbSend).toBeTruthy();
+  expect(result.perVoiceDelaySend).toBeTruthy();
+  expect(result.reverbSend).toBeCloseTo(0.38, 2);
+  expect(result.delaySend).toBeCloseTo(0.28, 2);
+  expect(result.feedbackGain).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
+
