@@ -923,20 +923,20 @@ test('pentatonic quantization considers the root in the next octave', async ({ p
   const result = await page.evaluate(() => {
     const synth = window.synth;
     synth.panic();
-    SO.music.chord = 'off';
-    SO.music.root = 0;
-    SO.music.scale = 'off';
     const scale = document.getElementById('so67Scale');
+    const scaleToggle = document.getElementById('so67ScaleToggle');
     scale.value = 'pentatonic';
-    document.getElementById('so67ScaleToggle').click();
+    scale.dispatchEvent(new Event('change', { bubbles: true }));
+    scaleToggle.click();
     document.getElementById('so67Root').value = '0';
     document.getElementById('so67Root').dispatchEvent(new Event('change', { bubbles: true }));
     synth.noteOn(71, 0.8, 0); // B4 is one semitone from C5, two from A4.
     const notes = [...synth.voices.values()].filter(v => v.layer === 0).map(v => v.midi).sort((a,b)=>a-b);
+    const scaleLabel = scaleToggle.textContent;
     synth.panic();
-    return { scale: SO.music.scale, notes };
+    return { scaleLabel, notes };
   });
-  expect(result.scale).toBe('pentatonic');
+  expect(result.scaleLabel).toContain('SCALE ON');
   expect(result.notes).toContain(72);
   expect(result.notes).not.toContain(69);
   expect(pageErrors).toEqual([]);
@@ -952,9 +952,6 @@ test('extended chord voicings avoid the 11th clash and normalize chord level', a
     const synth = window.synth;
     const select = document.getElementById('so67ChordType');
     const chordButton = document.getElementById('so67Chord');
-    SO.music.scale = 'off';
-    SO.music.root = 0;
-    SO.music.chord = 'off';
     synth.panic();
 
     select.value = '13';
@@ -1000,11 +997,7 @@ test('ARP order mode follows played order rather than sorting by pitch', async (
   const result = await page.evaluate(async () => {
     const synth = window.synth;
     synth.panic();
-    SO.music.scale = 'off';
-    SO.music.chord = 'off';
-    SO.arp.mode = 'order';
-    SO.arp.rate = '1/32';
-    SO.arp.oct = 1;
+    synth.panic();
     document.getElementById('so67Mode').value = 'order';
     document.getElementById('so67Mode').dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('so67Rate').value = '1/32';
