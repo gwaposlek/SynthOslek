@@ -1,7 +1,7 @@
 {
   "status": "SUCCESS",
   "version": "16.87",
-  "testedCommit": "3d87f014a0fffc52366128832acd0b523690d99d",
+  "testedCommit": "d4f046e6ff17db3f71dc6db0aa45fb28bd8f1152",
   "checks": [
     {
       "name": "Build/version labels",
