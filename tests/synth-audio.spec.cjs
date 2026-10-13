@@ -1441,3 +1441,180 @@ test('bass and acid presets enable mono portamento while the init patch stays po
   expect(result.acid.legato).toBe('true');
   expect(result.acid.glide).toBeGreaterThan(0);
 });
+
+
+test('macro morph produces a measurable high-band change at the live audio output', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => !!window.synth?.started && window.synth?.ctx?.state === 'running'), { timeout: 10000 }).toBe(true);
+
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    if (!synth?.analyser || !synth?.noteOn || !synth?.setModWheel) return { unsupported: true };
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    synth.panic();
+    if (SO.arp.on) document.querySelector('#so67Arp')?.click();
+    SO.music.scale = 'off';
+    SO.music.chord = 'off';
+
+    layerState[0].enabled = true;
+    layerState[0].mute = false;
+    layerState[0].solo = false;
+    layerState[0].vol = 1;
+    layerState[1].enabled = false;
+    layerState[1].mute = false;
+    layerState[1].solo = false;
+    synth.activeLayer = 0;
+    synth.layerProfilesB[0] = null;
+    synth._bRevision[0] = (synth._bRevision[0] || 0) + 1;
+
+    const profile = {
+      ...PRESETS.init,
+      osc1Wave: 'sawtooth', osc1Level: 1, osc1Detune: 0, osc1Coarse: 0,
+      osc2Wave: 'sine', osc2Level: 0, osc2Detune: 0, osc2Coarse: 0,
+      cutoff: 350, resonance: 0.4, filterType: 'lowpass', filterEnvPolarity: 'positive',
+      attack: 0.004, decay: 0.8, sustain: 1, release: 0.06,
+      fEnvAmt: 0, fAttack: 0.005, fDecay: 0.8, fSustain: 0, fRelease: 0.05,
+      lfoDepth: 0, delayMix: 0, reverbMix: 0, chorusMix: 0, flangerMix: 0,
+      subLevel: 0, noiseLevel: 0, fmAmount: 0, unison: 1, spread: 0, volume: 0.6
+    };
+    synth.layerProfiles[0] = profile;
+    synth.params = profile;
+    if (synth._layerParamRevision) synth._layerParamRevision[0] = (synth._layerParamRevision[0] || 0) + 1;
+    synth._morphCache.clear();
+    refreshLayerGains();
+    synth.setModWheel(0);
+    const mode = synth.getMorphMode(0);
+    const onResult = synth.noteOn(48, 0.95, 0);
+    const voice = synth.voices.get('0:48');
+    if (!voice || mode !== 'macro') {
+      synth.panic();
+      return { unsupported: false, mode, voiceFound: !!voice, onResult };
+    }
+
+    const measureHighBandPower = async () => {
+      await sleep(160);
+      const bins = new Float32Array(synth.analyser.frequencyBinCount);
+      synth.analyser.getFloatFrequencyData(bins);
+      let power = 0, count = 0;
+      const binHz = (synth.ctx.sampleRate / 2) / bins.length;
+      for (let i = 0; i < bins.length; i++) {
+        const hz = i * binHz;
+        if (hz < 1800 || hz > 10000 || !Number.isFinite(bins[i])) continue;
+        power += Math.pow(10, bins[i] / 10);
+        count++;
+      }
+      return count ? power / count : 0;
+    };
+
+    const cutoffAtA = Number(synth._voiceMorphProfile(voice).cutoff);
+    const powerAtA = await measureHighBandPower();
+    synth.setModWheel(1);
+    await sleep(100);
+    const profileAtB = synth._voiceMorphProfile(voice);
+    const cutoffAtB = Number(profileAtB.cutoff);
+    const powerAtB = await measureHighBandPower();
+    synth.noteOff(48, 0);
+    synth.panic();
+    return { unsupported: false, mode, cutoffAtA, cutoffAtB, powerAtA, powerAtB, audioState: synth.ctx.state };
+  });
+
+  test.skip(result.unsupported, 'Desktop audio analyser is unavailable');
+  expect(result.mode).toBe('macro');
+  expect(result.audioState).toBe('running');
+  expect(result.cutoffAtA).toBeCloseTo(350, 0);
+  expect(result.cutoffAtB).toBeGreaterThan(15000);
+  expect(Number.isFinite(result.powerAtA)).toBeTruthy();
+  expect(Number.isFinite(result.powerAtB)).toBeTruthy();
+  expect(result.powerAtB).toBeGreaterThan(result.powerAtA * 1.8);
+  expect(pageErrors).toEqual([]);
+});
+
+
+test('ARP applies the configured upper-register velocity compensation to real note allocations', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    const arpButton = document.querySelector('#so67Arp');
+    if (!synth?.voicePool?.acquire || !arpButton) return { unsupported: true };
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    synth.panic();
+    if (SO.arp.on) arpButton.click();
+    SO.music.scale = 'off';
+    SO.music.chord = 'off';
+    SO.arp.mode = 'up';
+    SO.arp.rate = '1/32';
+    SO.arp.oct = 1;
+    SO.arp.gate = 0.8;
+    const rate = document.querySelector('#so67Rate');
+    const mode = document.querySelector('#so67Mode');
+    const oct = document.querySelector('#so67Oct');
+    rate.value = '1/32'; rate.dispatchEvent(new Event('change', { bubbles: true }));
+    mode.value = 'up'; mode.dispatchEvent(new Event('change', { bubbles: true }));
+    oct.value = '1'; oct.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const allocations = [];
+    const originalAcquire = synth.voicePool.acquire;
+    synth.voicePool.acquire = function(key, velocity) {
+      const parts = String(key).split(':');
+      allocations.push({ midi: Number(parts[1]), velocity: Number(velocity) });
+      return originalAcquire.call(this, key, velocity);
+    };
+    try {
+      arpButton.click();
+      synth.noteOn(48, 0.7, 0);
+      synth.noteOn(72, 0.7, 0);
+      await sleep(700);
+    } finally {
+      if (SO.arp.on) arpButton.click();
+      synth.panic();
+      synth.voicePool.acquire = originalAcquire;
+    }
+    const low = allocations.filter(x => x.midi === 48).map(x => x.velocity);
+    const high = allocations.filter(x => x.midi === 72).map(x => x.velocity);
+    return { unsupported: false, low, high, observedMidi: [...new Set(allocations.map(x => x.midi))] };
+  });
+
+  test.skip(result.unsupported, 'ARP or voice-pool API is unavailable');
+  expect(result.low.length).toBeGreaterThan(0);
+  expect(result.high.length).toBeGreaterThan(0);
+  expect(result.low.every(v => Number.isFinite(v) && v > 0)).toBeTruthy();
+  expect(result.high.every(v => Number.isFinite(v) && v > 0)).toBeTruthy();
+  const lowMean = result.low.reduce((a, b) => a + b, 0) / result.low.length;
+  const highMean = result.high.reduce((a, b) => a + b, 0) / result.high.length;
+  expect(highMean / lowMean).toBeGreaterThanOrEqual(1.09);
+  expect(highMean / lowMean).toBeLessThanOrEqual(1.13);
+  expect(pageErrors).toEqual([]);
+});
+
+
+test('a real pointer drag changes the master-volume knob and synth parameter', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const knob = page.locator('#volKnob .knob');
+  await expect(knob).toBeVisible();
+  const before = Number(await knob.getAttribute('aria-valuenow'));
+  const box = await knob.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 45, { steps: 6 });
+  await page.mouse.up();
+
+  const after = Number(await knob.getAttribute('aria-valuenow'));
+  const profileVolume = await page.evaluate(() => Number(window.synth.layerProfiles[window.synth.activeLayer].volume));
+  expect(after).toBeGreaterThan(before + 5);
+  expect(profileVolume).toBeCloseTo(after / 100, 2);
+  expect(pageErrors).toEqual([]);
+});
