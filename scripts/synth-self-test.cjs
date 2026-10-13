@@ -30,10 +30,10 @@ async function main() {
     const title = html.match(/<title>([\s\S]*?)<\/title>/i);
     const footer = html.match(/<div class=["']footer["']>([\s\S]*?)<\/div>/i);
     const version = html.match(/SynthOslek v(\d+\.\d+)/);
-    requireCheck(build && /v16\.89/.test(build[1]), 'Build metadata must identify v16.89.');
-    requireCheck(title && title[1].includes('v16.89'), 'Browser title must show v16.89.');
-    requireCheck(footer && footer[1].includes('v16.89'), 'Visible footer must show v16.89.');
-    requireCheck(version && version[1] === '16.89', 'Visible page version must be consistent.');
+    const buildVersion = build?.[1]?.match(/v(\d+\.\d+)/)?.[1];
+    requireCheck(build && version && buildVersion === version[1], 'Build metadata must match the visible semantic version.');
+    requireCheck(title && title[1].includes('v' + version[1]), 'Browser title must match the visible semantic version.');
+    requireCheck(footer && footer[1].includes('v' + version[1]), 'Visible footer must match the visible semantic version.');
     pass('Build/version labels', build[1]);
 
     const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
