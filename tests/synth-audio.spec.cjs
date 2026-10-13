@@ -728,9 +728,23 @@ test('knob SVG stays finite across startup and layer-preset changes', async ({ p
     };
   });
 
-  expect(await inspect()).toMatchObject({ invalid: [], missingDefaults: [], layerCount: expect.any(Number) });
-  await page.locator('.layer-preset').first().selectOption('pad');
-  await page.locator('.layer-name').nth(1).click();
+  const initial = await inspect();
+  expect(initial.invalid).toEqual([]);
+  expect(initial.missingDefaults).toEqual([]);
+  expect(initial.layerCount).toBeGreaterThan(0);
+
+  // The layer mixer can be visually collapsed in minimal mode. Exercise its
+  // wired handlers directly so the regression test checks behavior, not layout.
+  await page.evaluate(() => {
+    const preset = document.querySelector('.layer-preset');
+    if (!preset) throw new Error('Layer preset control is missing');
+    preset.value = 'pad';
+    preset.dispatchEvent(new Event('change', { bubbles: true }));
+    const secondLayer = document.querySelectorAll('.layer-name')[1];
+    if (!secondLayer) throw new Error('Second layer control is missing');
+    secondLayer.click();
+  });
+  await expect.poll(() => page.evaluate(() => window.synth?.activeLayer), { timeout: 3000 }).toBe(1);
   const afterPresetAndLayerSwitch = await inspect();
   expect(afterPresetAndLayerSwitch.invalid).toEqual([]);
   expect(afterPresetAndLayerSwitch.missingDefaults).toEqual([]);
