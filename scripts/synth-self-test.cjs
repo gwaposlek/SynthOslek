@@ -104,7 +104,7 @@ async function main() {
         setModWheel: typeof window.synth.setModWheel
       }
     }), requiredSelectors);
-    requireCheck(preflight.version === '16.89', 'Runtime version mismatch: ' + preflight.version + '.');
+    requireCheck(preflight.version === version?.[1], 'Runtime version mismatch: ' + preflight.version + '.');
     requireCheck(preflight.selectors && Object.values(preflight.selectors).every(Boolean),
       'Missing UI elements: ' + Object.entries(preflight.selectors).filter(([, exists]) => !exists).map(([key]) => key).join(', '));
     for (const method of ['noteOn', 'noteOff', 'panic']) {
@@ -242,7 +242,7 @@ async function main() {
       voices: window.synth.voices.size,
       runtimeVersion: String(window.SynthOslekRoadmap.version)
     }));
-    requireCheck(finalStatus.runtimeVersion === '16.89', 'Final runtime version changed unexpectedly.');
+    requireCheck(finalStatus.runtimeVersion === version?.[1], 'Final runtime version changed unexpectedly.');
     requireCheck(finalStatus.voices === 0, 'Test cleanup left ' + finalStatus.voices + ' active voices.');
     requireCheck(finalStatus.audioState === 'running', 'Audio context ended in state ' + finalStatus.audioState + '.');
     pass('Test cleanup', 'Audio engine remains running; no active voices left');
@@ -250,7 +250,7 @@ async function main() {
     fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true });
     const report = {
       status: 'SUCCESS',
-      version: '16.89',
+      version: version?.[1] || buildVersion,
       testedCommit: process.env.GITHUB_SHA || 'local',
       checks
     };
