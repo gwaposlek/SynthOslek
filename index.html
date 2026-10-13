@@ -4228,10 +4228,14 @@ syncSynthState(false);
     if(arpLast){if(!arpLast.offScheduled)try{monitoredBaseOff(arpLast.midi,arpLast.layer);}catch(e){}arpLast=null;}
     arpHeld.clear();
   }
+  function releaseArpLatch(){
+    for(const [key,n] of [...arpHeld])if(n.releasedWhileHeld)arpHeld.delete(key);
+    if(!arpHeld.size)stopArp();
+  }
   const musicHeld=new Map();
   synth.noteOn=function(midi,vel=.85,layer=synth.activeLayer,when=null){
     noteMonitor.inputOn(midi);
-    if(SO.arp.on){const key=layer+":"+midi;arpHeld.set(key,{midi,vel,layer});if(!arpTimer)startArp();return;}
+    if(SO.arp.on){const key=layer+":"+midi;arpHeld.set(key,{midi,vel,layer,releasedWhileHeld:false});if(!arpTimer)startArp();return;}
     const notes=transformNote(midi);
     const key=layer+":"+midi;
     musicHeld.set(key,{midi,layer,notes});
@@ -4241,11 +4245,19 @@ syncSynthState(false);
   };
   synth.noteOff=function(midi,layer=null,when=null){
     noteMonitor.inputOff(midi);
-    if(SO.arp.on){[...arpHeld].forEach(([k,n])=>{if(n.midi===midi&&(layer==null||n.layer===layer))arpHeld.delete(k);});if(!arpHeld.size)stopArp();return;}
+    if(SO.arp.on){
+      for(const [k,n] of [...arpHeld]){
+        if(n.midi!==midi||(layer!=null&&n.layer!==layer))continue;
+        if(synth.sustain||SO.arp.hold)n.releasedWhileHeld=true;
+        else arpHeld.delete(k);
+      }
+      if(!arpHeld.size)stopArp();
+      return;
+    }
     [...musicHeld].forEach(([k,n])=>{if(n.midi===midi&&(layer==null||n.layer===layer)){for(const out of n.notes)try{monitoredBaseOff(out,n.layer,when)}catch(e){}musicHeld.delete(k);}});
   };
-  synth.panic=function(){stopArp();musicHeld.clear();noteMonitor.clear();return basePanic();};
-  if(baseAllOff)synth.allNotesOff=function(){stopArp();musicHeld.clear();return baseAllOff();};
+  synth.panic=function(){stopArp();stopSequence();musicHeld.clear();noteMonitor.clear();return basePanic();};
+  if(baseAllOff)synth.allNotesOff=function(){stopArp();stopSequence();musicHeld.clear();return baseAllOff();};
 
   $$("#so67Arp")?.addEventListener("click",()=>{SO.arp.on=!SO.arp.on;if(!SO.arp.on)stopArp();updateBtn("#so67Arp",SO.arp.on,"ARP ON","ARP OFF");setStatus(SO.arp.on?"ARP armed":"ARP bypassed");});
   $$("#so67Mode")?.addEventListener("change",e=>SO.arp.mode=e.target.value);
@@ -4253,17 +4265,64 @@ syncSynthState(false);
   $$("#so67Oct")?.addEventListener("change",e=>SO.arp.oct=+e.target.value);
   $$("#so67Gate")?.addEventListener("input",e=>SO.arp.gate=+e.target.value);
 
-  /* Sequencer */
-  let seqTimer=0,seqHeld=[];
-  function seqStep(){
-    if(!SO.seq.on)return;
-    const p=SO.seq.pattern[SO.seq.step%SO.seq.length],now=audioNow(),dur=SO.clock.divisionSeconds("1/16");
-    document.querySelectorAll(".so-step").forEach((e,i)=>e.classList.toggle("play",i===SO.seq.step%16));
-    seqHeld.forEach(n=>{try{monitoredBaseOff(n.midi,n.layer,now)}catch(e){}});seqHeld=[];
-    if(p?.on){const layer=synth.activeLayer,m=transformNote(p.note)[0]??p.note,v=p.vel;monitoredBaseOn(m,v,layer,now);seqHeld.push({midi:m,layer});try{monitoredBaseOff(m,layer,now+Math.max(.01,dur*clamp(Number(p.gate)||.8,.05,1)));}catch(e){}}
-    SO.seq.step=(SO.seq.step+1)%SO.seq.length;seqTimer=setTimeout(seqStep,Math.max(20,dur*1000));
+  /* Sequencer: audio-clock-anchored lookahead scheduling. */
+  let seqTimer=0,seqHeld=[],seqNextAt=0;
+  function releaseSeqNotes(when=audioNow()+.012){
+    for(const n of [...seqHeld]){
+      if(n.timer)clearTimeout(n.timer);
+      if(!n.offScheduled){
+        n.offScheduled=true;
+        try{monitoredBaseOff(n.midi,n.layer,when);}catch(e){}
+      }
+    }
+    seqHeld=[];
   }
-  $$("#so67Seq")?.addEventListener("click",()=>{SO.seq.on=!SO.seq.on;clearTimeout(seqTimer);updateBtn("#so67Seq",SO.seq.on,"SEQ ON","SEQ OFF");if(SO.seq.on)seqStep();else seqHeld.forEach(n=>{try{monitoredBaseOff(n.midi,n.layer)}catch(e){}});});
+  function seqStep(){
+    if(!SO.seq.on){seqTimer=0;return;}
+    const dur=Math.max(.01,SO.clock.divisionSeconds("1/16")),now=audioNow();
+    let when=seqNextAt||now+.02,skipped=0;
+    // If the JS callback was badly delayed, skip overdue grid positions instead
+    // of shifting the whole sequence to the callback's wall-clock time.
+    while(when<now+.012&&skipped<SO.seq.length){
+      SO.seq.step=(SO.seq.step+1)%SO.seq.length;
+      when+=dur;skipped++;
+    }
+    const stepIndex=SO.seq.step%SO.seq.length,p=SO.seq.pattern[stepIndex];
+    document.querySelectorAll(".so-step").forEach((e,i)=>e.classList.toggle("play",i===stepIndex%16));
+    if(p?.on){
+      const layer=synth.activeLayer,m=transformNote(p.note)[0]??p.note,v=p.vel;
+      monitoredBaseOn(m,v,layer,when);
+      const record={midi:m,layer,off:when+Math.max(.01,dur*clamp(Number(p.gate)||.8,.05,1)),offScheduled:false,timer:0};
+      seqHeld.push(record);
+      const offDelay=Math.max(0,(record.off-audioNow())*1000-5);
+      record.timer=setTimeout(()=>{
+        if(record.offScheduled)return;
+        record.offScheduled=true;
+        seqHeld=seqHeld.filter(n=>n!==record);
+        try{monitoredBaseOff(record.midi,record.layer,record.off);}catch(e){}
+      },offDelay);
+    }
+    SO.seq.step=(stepIndex+1)%SO.seq.length;
+    seqNextAt=when+dur;
+    const lookAheadMs=(/Android|Windows/i.test(navigator.userAgent)?28:16);
+    const delay=Math.max(12,(seqNextAt-audioNow())*1000-lookAheadMs);
+    seqTimer=setTimeout(seqStep,delay);
+  }
+  function startSequence(resetStep=true){
+    clearTimeout(seqTimer);seqTimer=0;
+    SO.seq.on=true;
+    if(resetStep)SO.seq.step=0;
+    seqNextAt=audioNow()+.02;
+    updateBtn("#so67Seq",true,"SEQ ON","SEQ OFF");
+    seqStep();
+  }
+  function stopSequence(){
+    SO.seq.on=false;
+    clearTimeout(seqTimer);seqTimer=0;seqNextAt=0;
+    releaseSeqNotes(audioNow()+.012);
+    updateBtn("#so67Seq",false,"SEQ ON","SEQ OFF");
+  }
+  $$("#so67Seq")?.addEventListener("click",()=>{if(SO.seq.on)stopSequence();else startSequence(true);});
   $$("#so67Clear")?.addEventListener("click",()=>{SO.seq.pattern.forEach(x=>x.on=false);document.querySelectorAll(".so-step").forEach(e=>e.classList.remove("on"));});
   $$("#so67ScaleToggle")?.addEventListener("click",()=>{const wasOn=SO.music.scale!=="off";if(wasOn){SO.music.scale="off";updateBtn("#so67ScaleToggle",false,"SCALE ON","SCALE OFF");setStatus("Scale OFF");}else{const type=$$("#so67Scale")?.value||"major";SO.music.scale=type;updateBtn("#so67ScaleToggle",true,"SCALE ON","SCALE OFF");setStatus("Scale ON · "+type.toUpperCase());}});
   $$("#so67Scale")?.addEventListener("change",e=>{if(SO.music.scale!=="off"){SO.music.scale=e.target.value;setStatus("Scale ON · "+e.target.options[e.target.selectedIndex].text.toUpperCase());}});
@@ -4290,7 +4349,44 @@ syncSynthState(false);
   $$("#so67ModSrc")?.addEventListener("change",e=>SO.mod.source=e.target.value);
   $$("#so67ModDst")?.addEventListener("change",e=>SO.mod.dest=e.target.value);
   const _dispatch=midiManager?.dispatch?.bind(midiManager);
-  if(_dispatch)midiManager.dispatch=function(status,a,b,...rest){if((status&0xf0)===0x90&&b>0)SO.mod._velocity=b/127;return _dispatch(status,a,b,...rest);};
+  const midiClock={lastAt:null,periods:[],pulseCount:0,external:false,running:false};
+  if(_dispatch)midiManager.dispatch=function(status,a,b,...rest){
+    if((status&0xf0)===0x90&&b>0)SO.mod._velocity=b/127;
+    const isSustainCC=(status&0xf0)===0xB0&&Number(a)===64;
+    const wasSustain=!!synth.sustain;
+    const stamp=rest[0]!=null&&Number.isFinite(Number(rest[0]))?Number(rest[0]):performance.now();
+    if(status===0xF8){
+      midiClock.external=true;
+      if(midiClock.lastAt!=null){
+        const period=stamp-midiClock.lastAt;
+        if(period>1&&period<100){midiClock.periods.push(period);if(midiClock.periods.length>24)midiClock.periods.shift();}
+        else midiClock.periods=[];
+      }
+      midiClock.lastAt=stamp;midiClock.pulseCount++;
+      if(midiClock.pulseCount%24===0&&midiClock.periods.length>=12){
+        const recent=midiClock.periods.slice(-24),mean=recent.reduce((sum,x)=>sum+x,0)/recent.length;
+        const bpm=60000/(mean*24);
+        if(Number.isFinite(bpm)&&bpm>=30&&bpm<=300){
+          SO.clock.setBpm(bpm);
+          window.SynthOslekTimingWheelSync?.();
+          setStatus("MIDI Clock · "+SO.clock.bpm+" BPM");
+        }
+      }
+    }else if(status===0xFA){
+      midiClock.external=true;midiClock.running=true;midiClock.lastAt=stamp;midiClock.periods=[];midiClock.pulseCount=0;
+      SO.seq.step=0;if(SO.seq.on)startSequence(true);
+    }else if(status===0xFB){
+      midiClock.external=true;midiClock.running=true;midiClock.lastAt=stamp;
+      if(SO.seq.on&&!seqTimer)startSequence(false);
+    }else if(status===0xFC){
+      midiClock.running=false;
+      if(SO.seq.on)stopSequence();
+      setStatus("MIDI Clock Stop");
+    }
+    const result=_dispatch(status,a,b,...rest);
+    if(isSustainCC&&wasSustain&&!synth.sustain)releaseArpLatch();
+    return result;
+  };
 
   /* FM + sample */
   let fmOn=false,fmDepth=0;const advVoices=new Map();
@@ -4404,6 +4500,8 @@ syncSynthState(false);
   synth.setLfoSync=function(division){this.lfoSync=division||"free";if(!this.started||!this.lfo)return;if(this.lfoSync==="free"){this.lfo.frequency.setTargetAtTime(Math.max(.01,Number(this.params.lfoRate)||2),audioNow(),.006);return;}const hz=1/Math.max(.001,SO.clock.divisionSeconds(this.lfoSync));this.lfo.frequency.setTargetAtTime(hz,audioNow(),.006);try{this.updateParam("lfoRate",hz,audioNow()+.01);}catch(e){}};
   window.SynthOslekTiming={
     get bpm(){return SO.clock.bpm;},
+    get externalClock(){return midiClock.external;},
+    get transportRunning(){return midiClock.running;},
     setBpm:b=>SO.clock.setBpm(b),
     setDelaySync:d=>synth.setDelaySync(d),
     setLfoSync:d=>synth.setLfoSync(d),
