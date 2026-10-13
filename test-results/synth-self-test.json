@@ -1,12 +1,12 @@
 {
   "status": "SUCCESS",
-  "version": "16.88",
-  "testedCommit": "af2852d43f97dbb1bf659eee8713e17885504a36",
+  "version": "16.89",
+  "testedCommit": "c8e4bde5eac28ad4db096d96136bbe8e23180ee7",
   "checks": [
     {
       "name": "Build/version labels",
       "status": "PASS",
-      "detail": "2026-10-13-v16.88-family-cutoff-regressions"
+      "detail": "2026-10-13-v16.89-mono-glide-portamento"
     },
     {
       "name": "Inline JavaScript syntax",
