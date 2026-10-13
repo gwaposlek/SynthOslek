@@ -1309,6 +1309,22 @@ class SynthOslek{
     this._layerParamRevision=[0,0];
     this.params={osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:1,attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",lfoWave:"sine",lfoDelay:0,delayTime:.25,delaySync:"1/4",delayFb:.25,delayMix:.15,reverbMix:.2,flangerMix:0,flangerRate:.25,flangerDepth:.002,volume:.6,voiceMode:"poly",legato:false,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,fmAmount:0,fmRatio:2,fmEnv:.5};
   }
+  _sampleHoldWave(c=this.ctx){
+    if(!c?.createPeriodicWave)return null;
+    if(this._sampleHoldWaveCache?.ctx===c)return this._sampleHoldWaveCache.wave;
+    // A periodic bank of random step levels gives the native shared LFO a
+    // sample-and-hold character without adding another oscillator or timer.
+    const steps=16,values=new Float32Array(steps);
+    for(let i=0;i<steps;i++)values[i]=Math.random()*2-1;
+    const real=new Float32Array(steps+1),imag=new Float32Array(steps+1);
+    for(let h=1;h<=steps/2;h++){
+      let re=0,im=0;
+      for(let j=0;j<steps;j++){const angle=2*Math.PI*h*j/steps;re+=values[j]*Math.cos(angle);im+=values[j]*Math.sin(angle);}
+      real[h]=(2/steps)*re;imag[h]=(2/steps)*im;
+    }
+    const wave=c.createPeriodicWave(real,imag);
+    this._sampleHoldWaveCache={ctx:c,wave};return wave;
+  }
   _G(v){const g=this.ctx.createGain();g.gain.value=v;return g;}
   _impulse(d,dec,channels=2){
     const r=this.ctx.sampleRate,l=Math.max(1,Math.floor(r*d)),b=this.ctx.createBuffer(channels,l,r);
@@ -1369,7 +1385,8 @@ class SynthOslek{
     if(!this.mobileAudio)this.convolver.buffer=this._impulse(2.8,2.2,2);
     this.reverbGain=G(this.mobileAudio?0:1);
     this.lfo=c.createOscillator();
-    this.lfo.type=(p.lfoWave==="triangle"||p.lfoWave==="square"||p.lfoWave==="sawtooth")?p.lfoWave:"sine";
+    if(p.lfoWave==="sample-hold"){try{this.lfo.setPeriodicWave(this._sampleHoldWave(c));}catch(e){this.lfo.type="sine";}}
+    else this.lfo.type=(p.lfoWave==="triangle"||p.lfoWave==="square"||p.lfoWave==="sawtooth")?p.lfoWave:"sine";
     this.lfo.frequency.value=p.lfoRate;this.lfo.start();
     this.chorusGain=G(this.mobileAudio?0:1);this.chorusInput=G(this.mobileAudio?0:1);
     this.flangerGain=G(this.mobileAudio?0:1);this.flangerInput=G(this.mobileAudio?0:1);
@@ -1397,6 +1414,7 @@ class SynthOslek{
       this.analyser.connect(this.dcBlock);this.dcBlock.connect(L);L.connect(this.masterGain);this.masterGain.connect(c.destination);
     }
     this.started=true;
+    if(typeof this.setDelaySync==="function")this.setDelaySync(this.delaySync);
     await this.audioRuntime.resume();
     if(c.state!=="running")throw new Error("AudioContext did not enter the running state (state: "+c.state+"). Check Edge site audio permission, then tap Start again.");
     void this.dspBackend.init(this.audioRuntime,this).catch(()=>{this.dspBackend.workletReady=false;});
@@ -1564,6 +1582,11 @@ class SynthOslek{
     T(v.gs?.gain,Math.max(0,Math.min(1,Number(P.subLevel)||0)),.06,.0015);
     T(v.gn?.gain,Math.max(0,Math.min(1,Number(P.noiseLevel)||0)),.06,.0015);
     if(v.lm)T(v.lm.gain,this._lfoScale(P),.055,.002);
+    if(v.layer===this.activeLayer){
+      T(this.lfo?.frequency,Math.max(.05,Math.min(20,Number(P.lfoRate)||2)),.055,.01);
+      if(this.delaySync==="free")T(this.delay?.delayTime,Math.max(.001,Math.min(1.5,Number(P.delayTime)||.25)),.055,.002);
+      T(this.delayFeedback?.gain,this.mobileAudio?0:Math.max(0,Math.min(.92,Number(P.delayFb)||0)),.055,.003);
+    }
     T(v.fxDelay?.gain,Math.max(0,Math.min(1,Number(P.delayMix)||0)),.06,.0015);
     T(v.fxReverb?.gain,Math.max(0,Math.min(1,Number(P.reverbMix)||0)),.06,.0015);
     T(v.fxChorus?.gain,Math.max(0,Math.min(1,Number(P.chorusMix)||0)),.06,.0015);
@@ -1705,6 +1728,11 @@ class SynthOslek{
     const baseP=cleanProfile({...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0});
     const P=cleanProfile(this._morphParams(baseP,layer)),G=v=>trackVoiceNode(this._G(v));
     const now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime);
+    if(layer===this.activeLayer){
+      this._smoothParamTarget(this.lfo?.frequency,Math.max(.05,Math.min(20,Number(P.lfoRate)||2)),now,.055,.01);
+      if(this.delaySync==="free")this._smoothParamTarget(this.delay?.delayTime,Math.max(.001,Math.min(1.5,Number(P.delayTime)||.25)),now,.055,.002);
+      this._smoothParamTarget(this.delayFeedback?.gain,this.mobileAudio?0:Math.max(0,Math.min(.92,Number(P.delayFb)||0)),now,.055,.003);
+    }
     const freq=440*Math.pow(2,(midi-69)/12);
     const workletPath=false; // Native oscillator path is the stable, fully enveloped/filtering path.
     const env=G(workletPath?1:.00001);
@@ -2009,14 +2037,15 @@ class SynthOslek{
     const T=(a,v,tc)=>{try{a.setTargetAtTime(v,t,tc);}catch(e){}};
     const A={
       volume:()=>T(this.masterGain.gain,Math.min(.8,Math.max(0,Number.isFinite(Number(x))?Number(x):0)),.015),
-      delayTime:()=>T(this.delay.delayTime,x,.02),
-      delayFb:()=>T(this.delayFeedback.gain,x,.02),
+      delayTime:()=>{if(this.delaySync==="free")this._smoothParamTarget(this.delay.delayTime,Math.max(.001,Math.min(1.5,Number(x)||.25)),t,.02,.001);},
+      delayFb:()=>this._smoothParamTarget(this.delayFeedback.gain,this.mobileAudio?0:Math.max(0,Math.min(.92,Number(x)||0)),t,.02,.001),
+      delaySync:()=>{this.delaySync=String(x||"free");if(typeof this.setDelaySync==="function")this.setDelaySync(this.delaySync);},
       flangerMix:()=>{const target=Math.max(0,Math.min(1,Number(x)||0));for(const v of this.voices.values())if(v.layer===layer){if(v.params)v.params.flangerMix=target;this._smoothParamTarget(v.fxFlanger?.gain,target,t,.045,.003);}},
       flangerRate:()=>T(this.flangerLfo.frequency,x,.02),
       flangerDepth:()=>T(this.flangerDepth.gain,x,.02),
       voiceMode:()=>{},legato:()=>{},
       lfoRate:()=>T(this.lfo.frequency,x,.02),
-      lfoWave:()=>{const w=x==="triangle"||x==="square"||x==="sawtooth"?x:"sine";try{this.lfo.type=w;}catch(e){}},
+      lfoWave:()=>{try{if(x==="sample-hold")this.lfo.setPeriodicWave(this._sampleHoldWave(this.ctx));else this.lfo.type=x==="triangle"||x==="square"||x==="sawtooth"?x:"sine";}catch(e){}},
       lfoDelay:()=>{},filterKeyTrack:()=>{},filterEnvPolarity:()=>{}
     };
     if(A[k]){
@@ -2288,7 +2317,7 @@ keys:{osc1Wave:"sine",osc1Detune:0,osc1Level:.6,osc2Wave:"triangle",osc2Detune:3
 acid:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.9,osc2Wave:"square",osc2Detune:0,osc2Level:0,filterType:"lowpass",cutoff:600,resonance:14,attack:.005,decay:.12,sustain:.3,release:.12,fEnvAmt:.85,fAttack:.005,fDecay:.18,fSustain:.1,fRelease:.15,lfoRate:.5,lfoDepth:.15,lfoDest:"cutoff",delayTime:.18,delayFb:.4,delayMix:.2,reverbMix:.05,volume:.55,glide:25}
 };
 
-Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0,lfoDelay:0,flangerMix:0,flangerRate:.25,flangerDepth:.002,fmEnv:.5});
+Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0,lfoDelay:0,flangerMix:0,flangerRate:.25,flangerDepth:.002,fmEnv:.5,lfoWave:"sine",delaySync:"1/4"});
 Object.assign(PRESETS.pad,{unison:4,spread:14,chorusMix:.4});
 Object.assign(PRESETS.lead,{unison:3,spread:10,chorusMix:.15});
 Object.assign(PRESETS.bass,{subLevel:.5});
@@ -3952,7 +3981,7 @@ syncSynthState(false);
   const rateSec=()=>SO_DIVISIONS[SO.arp.rate]?60/Math.max(20,SO.clock.bpm)*SO_DIVISIONS[SO.arp.rate]:.5;
   const audioNow=()=>synth?.ctx?.currentTime||0;
   SO.clock.divisionSeconds=(division)=>60/Math.max(20,SO.clock.bpm)*(SO_DIVISIONS[division]??.25);
-  SO.clock.setBpm=(value)=>{const bpm=clamp(Number(value)||120,20,300);SO.clock.bpm=bpm;SO.seq.bpm=bpm;if(synth?.ctx)SO.clock.startedAt=synth.ctx.currentTime;try{synth?.setTempoBpm?.(bpm);}catch(e){}return bpm;};
+  SO.clock.setBpm=(value)=>{const bpm=clamp(Number(value)||120,20,300);SO.clock.bpm=bpm;SO.seq.bpm=bpm;if(synth?.ctx)SO.clock.startedAt=synth.ctx.currentTime;try{synth?.setTempoBpm?.(bpm);if(synth?.started&&synth.delaySync&&synth.delaySync!=="free")synth.setDelaySync?.(synth.delaySync);}catch(e){}return bpm;};
   SO.clock.setBpm(SO.clock.bpm);
   const topBpmWheel=document.getElementById("soTopBpm");
   const topBpmList=document.getElementById("soTopBpmList");
@@ -4496,7 +4525,7 @@ syncSynthState(false);
 
   /* Timing API */
   synth.setTempoBpm=function(bpm){this.tempoBpm=clamp(Number(bpm)||120,20,300);return this.tempoBpm;};
-  synth.setDelaySync=function(division){this.delaySync=division||"free";if(!this.started||!this.delay)return;if(this.delaySync==="free"){this.delay.delayTime.value=Math.max(.001,Math.min(1.5,Number(this.params.delayTime)||.25));return;}const sec=SO.clock.divisionSeconds(this.delaySync);this.delay.delayTime.setTargetAtTime(Math.max(.001,Math.min(1.5,sec)),audioNow(),.006);this.params.delayTime=sec;};
+  synth.setDelaySync=function(division){this.delaySync=division||"free";if(!this.started||!this.delay)return;if(this.delaySync==="free"){this._smoothParamTarget(this.delay.delayTime,Math.max(.001,Math.min(1.5,Number(this.params.delayTime)||.25)),audioNow(),.02,.001);return;}const sec=Math.max(.001,Math.min(1.5,SO.clock.divisionSeconds(this.delaySync)));this._smoothParamTarget(this.delay.delayTime,sec,audioNow(),.006,.001);this.params.delayTime=sec;};
   synth.setLfoSync=function(division){this.lfoSync=division||"free";if(!this.started||!this.lfo)return;if(this.lfoSync==="free"){this.lfo.frequency.setTargetAtTime(Math.max(.01,Number(this.params.lfoRate)||2),audioNow(),.006);return;}const hz=1/Math.max(.001,SO.clock.divisionSeconds(this.lfoSync));this.lfo.frequency.setTargetAtTime(hz,audioNow(),.006);try{this.updateParam("lfoRate",hz,audioNow()+.01);}catch(e){}};
   window.SynthOslekTiming={
     get bpm(){return SO.clock.bpm;},
