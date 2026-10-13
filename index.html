@@ -1575,7 +1575,6 @@ class SynthOslek{
     // An FM path created at note-on can still morph smoothly.
     if(v.fmMod){
       const ratio=Math.max(.125,Math.min(16,Number(P.fmRatio)||2));
-      const fmAmount=Math.max(0,Math.min(3000,Number(P.fmAmount)||0));
       const baseFreq=440*Math.pow(2,(Number(v.midi??60)-69)/12);
       T(v.fmMod.frequency,Math.max(1,baseFreq*ratio),.055,.2);
       T(v.fmGain?.gain,this._fmDepthHz(P,v.midi,v.velocity),.06,.08);
