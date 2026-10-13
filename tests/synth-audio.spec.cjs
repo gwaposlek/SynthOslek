@@ -856,3 +856,60 @@ test('sound-family detection prioritizes electric piano and explicit instrument 
   expect(result.naturalOnlyFamily).toBe('STRINGS');
 });
 
+test('FM depth tracks keyboard pitch and includes a decay envelope', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const result = await page.evaluate(() => {
+    const synth = window.synth;
+    synth.panic();
+    synth.layerProfilesB[0] = null;
+    const profile = {
+      ...PRESETS.init,
+      osc1Wave: 'sine', osc1Level: 1, osc2Wave: 'sine', osc2Level: 0,
+      cutoff: 12000, resonance: 0.2, filterType: 'lowpass',
+      attack: 0.004, decay: 0.2, sustain: 1, release: 0.05,
+      fEnvAmt: 0, fAttack: 0.005, fDecay: 0.1, fSustain: 0,
+      lfoDepth: 0, delayMix: 0, reverbMix: 0, chorusMix: 0, flangerMix: 0,
+      subLevel: 0, noiseLevel: 0, fmAmount: 1200, fmRatio: 2, fmEnv: 0.8, unison: 1
+    };
+    synth.layerProfiles[0] = profile;
+    synth.params = profile;
+    synth._morphCache.clear();
+
+    const lowExpected = synth._fmDepthHz(profile, 45, 0.8);
+    const highExpected = synth._fmDepthHz(profile, 81, 0.8);
+    synth.noteOn(45, 0.8, 0);
+    synth.noteOn(81, 0.8, 0);
+    const low = synth.voices.get('0:45');
+    const high = synth.voices.get('0:81');
+    const result = {
+      helperAvailable: typeof synth._fmDepthHz === 'function',
+      profileFmEnv: profile.fmEnv,
+      lowExpected, highExpected,
+      lowDepth: low?.fmGain?.gain?.value ?? null,
+      highDepth: high?.fmGain?.gain?.value ?? null,
+      lowHasFmMod: !!low?.fmMod,
+      highHasFmMod: !!high?.fmMod,
+      lowHasEnvelope: !!low?.fmEnvGain,
+      highHasEnvelope: !!high?.fmEnvGain
+    };
+    synth.panic();
+    return result;
+  });
+
+  expect(result.helperAvailable).toBeTruthy();
+  expect(result.profileFmEnv).toBeCloseTo(0.8, 3);
+  expect(result.lowHasFmMod).toBeTruthy();
+  expect(result.highHasFmMod).toBeTruthy();
+  expect(result.lowHasEnvelope).toBeTruthy();
+  expect(result.highHasEnvelope).toBeTruthy();
+  expect(result.lowDepth).toBeCloseTo(result.lowExpected, 1);
+  expect(result.highDepth).toBeCloseTo(result.highExpected, 1);
+  expect(result.highDepth / result.lowDepth).toBeCloseTo(8, 2);
+  expect(pageErrors).toEqual([]);
+});
+
