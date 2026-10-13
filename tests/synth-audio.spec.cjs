@@ -1551,16 +1551,14 @@ test('ARP applies the configured upper-register velocity compensation to real no
     if (appState?.music?.scale !== 'off') document.querySelector('#so67ScaleToggle')?.click();
     if (appState?.music?.chord !== 'off') document.querySelector('#so67Chord')?.click();
     synth.panic();
-    SO.arp.mode = 'up';
-    SO.arp.rate = '1/32';
-    SO.arp.oct = 1;
-    SO.arp.gate = 0.8;
     const rate = document.querySelector('#so67Rate');
     const mode = document.querySelector('#so67Mode');
     const oct = document.querySelector('#so67Oct');
+    const gate = document.querySelector('#so67Gate');
     rate.value = '1/32'; rate.dispatchEvent(new Event('change', { bubbles: true }));
     mode.value = 'up'; mode.dispatchEvent(new Event('change', { bubbles: true }));
     oct.value = '1'; oct.dispatchEvent(new Event('change', { bubbles: true }));
+    gate.value = '0.8'; gate.dispatchEvent(new Event('input', { bubbles: true }));
 
     const allocations = [];
     const originalAcquire = synth.voicePool.acquire;
