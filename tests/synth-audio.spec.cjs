@@ -694,3 +694,47 @@ test('release-tail reservations drain naturally without needing Panic', async ({
   expect(result.drained.tailVoices).toBe(0);
   expect(pageErrors).toEqual([]);
 });
+
+test('knob SVG stays finite across startup and layer-preset changes', async ({ page }) => {
+  const pageErrors = [];
+  const svgNaNWarnings = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  page.on('console', msg => {
+    if (/NaN|Infinity/.test(msg.text()) && /SVG|attribute|<path>|<line>/i.test(msg.text())) {
+      svgNaNWarnings.push(msg.text());
+    }
+  });
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const inspect = () => page.evaluate(() => {
+    const invalid = [];
+    for (const el of document.querySelectorAll('svg path, svg line')) {
+      const attrs = el.localName === 'path' ? ['d'] : ['x1', 'y1', 'x2', 'y2'];
+      for (const attr of attrs) {
+        const value = el.getAttribute(attr);
+        if (value && /NaN|Infinity|undefined/.test(value)) {
+          invalid.push({ element: el.localName, attr, value, className: el.getAttribute('class') });
+        }
+      }
+    }
+    const required = ['lfoDelay', 'flangerMix', 'flangerRate', 'flangerDepth'];
+    const profile = window.synth?.layerProfiles?.[0] || {};
+    return {
+      invalid,
+      missingDefaults: required.filter(k => !Number.isFinite(profile[k])),
+      layerCount: document.querySelectorAll('.layer-preset').length
+    };
+  });
+
+  expect(await inspect()).toMatchObject({ invalid: [], missingDefaults: [], layerCount: expect.any(Number) });
+  await page.locator('.layer-preset').first().selectOption('pad');
+  await page.locator('.layer-name').nth(1).click();
+  const afterPresetAndLayerSwitch = await inspect();
+  expect(afterPresetAndLayerSwitch.invalid).toEqual([]);
+  expect(afterPresetAndLayerSwitch.missingDefaults).toEqual([]);
+  expect(svgNaNWarnings).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
