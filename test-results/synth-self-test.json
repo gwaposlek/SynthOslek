@@ -1,12 +1,12 @@
 {
   "status": "SUCCESS",
-  "version": "16.87",
-  "testedCommit": "e6dd21d5670cb8dd7cc07b80f155f4b2d15c0a1c",
+  "version": "16.88",
+  "testedCommit": "af2852d43f97dbb1bf659eee8713e17885504a36",
   "checks": [
     {
       "name": "Build/version labels",
       "status": "PASS",
-      "detail": "2026-10-12-v16.87-filter-envelope-morph-sources"
+      "detail": "2026-10-13-v16.88-family-cutoff-regressions"
     },
     {
       "name": "Inline JavaScript syntax",
