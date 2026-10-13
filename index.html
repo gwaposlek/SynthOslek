@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-13-v16.88-family-cutoff-regressions">
-<title>SynthOslek v16.88 — Morph Instrument</title>
+<meta name="synthoslek-build" content="2026-10-13-v16.89-mono-glide-portamento">
+<title>SynthOslek v16.89 — Morph Instrument</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1039,7 +1039,7 @@ body.so-adv-open{overflow-y:auto!important;overflow-x:hidden!important;align-ite
   <div class="panes" id="panels"></div>
 </div>
 
-<div class="footer">SynthOslek v16.88 · A/B Morph Instrument · Minimalist Performance UI</div>
+<div class="footer">SynthOslek v16.89 · A/B Morph Instrument · Minimalist Performance UI</div>
 <script>
 /* v16.18 startup diagnostics */
 (function(){
@@ -1697,6 +1697,18 @@ class SynthOslek{
     midi=Math.round(midi);vel=Math.max(0,Math.min(1,vel));
     if(layer<0||layer>=this.layerProfiles.length)return false;
     const key=layer+":"+midi;
+    const layerProfile=this.layerProfiles[layer]||this.params||{};
+    const monoMode=String(layerProfile.voiceMode||"poly").toLowerCase()==="mono";
+    const legatoEnabled=layerProfile.legato===true||String(layerProfile.legato).toLowerCase()==="true";
+    let monoPreviousVoice=null;
+    if(monoMode){
+      // Collapse the old layer voice(s) before allocating the next monophonic pitch.
+      const candidates=[...this.voices.entries()]
+        .filter(([candidateKey,v])=>candidateKey!==key&&v.layer===layer&&Number.isFinite(Number(v.midi)))
+        .sort((a,b)=>(Number(a[1].bornAt)||0)-(Number(b[1].bornAt)||0));
+      monoPreviousVoice=candidates[candidates.length-1]?.[1]||null;
+      for(const [candidateKey] of candidates)this._forceStop(candidateKey,6,when);
+    }
     // Retrigger with a slightly longer, held-value-aware fade to avoid hard edges.
     if(this.voices.has(key))this._forceStop(key,8,when);
     // Count release tails as part of renderer pressure: a fast arp can have
@@ -1740,6 +1752,20 @@ class SynthOslek{
     const baseP=cleanProfile({...PRESETS.init,...rawP,osc1Coarse:rawP?.osc1Coarse??0,osc2Coarse:rawP?.osc2Coarse??0,unison:rawP?.unison??1,spread:rawP?.spread??12,subLevel:rawP?.subLevel??0,noiseLevel:rawP?.noiseLevel??0,chorusMix:rawP?.chorusMix??0});
     const P=cleanProfile(this._morphParams(baseP,layer)),G=v=>trackVoiceNode(this._G(v));
     const now=Math.max(c.currentTime,Number.isFinite(when)?when:c.currentTime);
+    const glideMs=monoMode&&monoPreviousVoice?Math.max(0,Math.min(500,Number(P.glide)||0)):0;
+    const glideSeconds=glideMs/1000;
+    const targetFreq=440*Math.pow(2,(midi-69)/12);
+    const storedFreq=Number(this.lastFreqByLayer[layer])||0;
+    const fallbackPrevFreq=monoPreviousVoice?440*Math.pow(2,(Number(monoPreviousVoice.midi)-69)/12):0;
+    const glideFromFreq=monoPreviousVoice?(storedFreq>0?storedFreq:fallbackPrevFreq):targetFreq;
+    const legatoTransition=monoMode&&!!monoPreviousVoice&&legatoEnabled;
+    const setPitchFrequency=(param,target,multiplier=1)=>{
+      if(!param)return;
+      if(glideSeconds>0&&glideFromFreq>0){
+        param.setValueAtTime(Math.max(.001,glideFromFreq*multiplier),now);
+        param.exponentialRampToValueAtTime(Math.max(.001,target),now+glideSeconds);
+      }else param.setValueAtTime(target,now);
+    };
     if(layer===this.activeLayer){
       this._smoothParamTarget(this.lfo?.frequency,Math.max(.05,Math.min(20,Number(P.lfoRate)||2)),now,.055,.01);
       if(this.delaySync==="free")this._smoothParamTarget(this.delay?.delayTime,Math.max(.001,Math.min(1.5,Number(P.delayTime)||.25)),now,.055,.002);
@@ -1759,7 +1785,9 @@ class SynthOslek{
     const nativeFilterType=P.filterType==="lowpass24"||P.filterType==="lowpass"?"lowpass":P.filterType==="highpass24"||P.filterType==="highpass"?"highpass":P.filterType==="notch"?"notch":P.filterType==="bandpass"?"bandpass":"lowpass";
     if(vf){vf.type=nativeFilterType;vf.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
     if(vf2){vf2.type=nativeFilterType;vf2.Q.value=Math.max(.0001,Math.min(18,Number(P.resonance)||0));}
-    const atk=Math.max(this.mobileAudio?.015:.008,Math.min(5,Number(P.attack)||.01)),dec=Math.max(.01,Math.min(10,Number(P.decay)||.2));
+    let atk=Math.max(this.mobileAudio?.015:.008,Math.min(5,Number(P.attack)||.01));
+    if(legatoTransition)atk=Math.min(atk,.008);
+    const dec=Math.max(.01,Math.min(10,Number(P.decay)||.2));
     if(!workletPath){
       env.gain.setValueAtTime(0,now);
       env.gain.linearRampToValueAtTime(Math.max(.0001,vel),now+atk);
@@ -1775,7 +1803,8 @@ class SynthOslek{
     const baseCutoff=Math.max(20,Math.min(18000,((Number(P.cutoff)||2000)+keyOffset)*arpPitchComp));
     const rawEnvAmt=Number(P.fEnvAmt||0)*6000*(.4+.6*vel)*envPol;
     const envAmt=Math.max(20-baseCutoff,Math.min(18000-baseCutoff,rawEnvAmt));
-    const fA=Math.max(.018,Math.min(5,Number(P.fAttack)||0));
+    let fA=Math.max(.018,Math.min(5,Number(P.fAttack)||0));
+    if(legatoTransition)fA=Math.min(fA,.018);
     const fD=Math.max(.01,Math.min(10,Number(P.fDecay)||0));
     const fSustain=Math.max(0,Math.min(1,Number(P.fSustain)||0));
     if(!workletPath){
@@ -1824,7 +1853,7 @@ class SynthOslek{
       if(P.lfoDest==="cutoff"){lm.connect(vf.frequency);if(vf2)lm.connect(vf2.frequency);}
       else if(P.lfoDest==="amp")lm.connect(va.gain);
     }
-    const v={env,vf,vf2,va,lm,fEnvGain,fEnvDepth,lfoSource:lm?this.lfo:null,subOsc:null,noiseSource:null,_lfoDest:P.lfoDest,_filter24Active:!!vf2,voiceNodes,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,fxFlanger,layer,midi,params:{...baseP},oscs:[],all:[],morphAProfile:hasMorphB?rawA:null,morphBProfile:hasMorphB?rawB:null,morphWavePairs:[],fmMod:null,fmGain:null,fmEnvGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),bornAt:now,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
+    const v={env,vf,vf2,va,lm,fEnvGain,fEnvDepth,lfoSource:lm?this.lfo:null,subOsc:null,noiseSource:null,_lfoDest:P.lfoDest,_filter24Active:!!vf2,voiceNodes,layerGain:lg,pan,fx,fxDelay,fxReverb,fxChorus,fxFlanger,layer,midi,params:{...baseP},oscs:[],all:[],morphAProfile:hasMorphB?rawA:null,morphBProfile:hasMorphB?rawB:null,morphWavePairs:[],fmMod:null,fmGain:null,fmEnvGain:null,mpeBend:0,mpePressure:0,mpeTimbre:0,velocity:Math.max(0,Math.min(1,Number(vel)||0)),bornAt:now,monoMode,monoLegato:legatoTransition,monoGlideFromFreq:glideSeconds>0?glideFromFreq:targetFreq,monoGlideToFreq:targetFreq,monoGlideSeconds:glideSeconds,g1:G(P.osc1Level),g2:G(P.osc2Level),gs:G(P.subLevel),gn:G(P.noiseLevel)};
     for(const k of["g1","g2","gs","gn"])v[k].connect(env);
     if(fEnvSource){fEnvSource.start(now);v.all.push(fEnvSource);}
     // A fading voice still costs oscillators, filters and gain nodes. Reduce
@@ -1848,7 +1877,7 @@ class SynthOslek{
       o.type=profileA[waveKey];
       const initialMorph=this._morphAmount(),wa=Math.cos(initialMorph*Math.PI*.5);
       if(waveDiff)ng.gain.setValueAtTime(norm*wa,now);
-      o.frequency.setValueAtTime(freq,now);
+      setPitchFrequency(o.frequency,freq);
       o.detune.setValueAtTime((Number(profileA["osc"+w+"Coarse"])||0)*100+(Number(profileA["osc"+w+"Detune"])||0)+off*(Number(profileA.spread)||0)+this.bend+(this.wheel||0),now);
       o.connect(ng);ng.connect(v["g"+w]);
       if(!workletPath&&lm&&P.lfoDest==="pitch")lm.connect(o.detune);
@@ -1857,7 +1886,7 @@ class SynthOslek{
         const profileB=rawB,wb=Math.sin(initialMorph*Math.PI*.5);
         const ob=trackVoiceNode(this.dspBackend.createVoiceOscillator(c,profileB[waveKey])),ngB=G(norm*wb);
         ob.type=profileB[waveKey];
-        ob.frequency.setValueAtTime(freq,now);
+        setPitchFrequency(ob.frequency,freq);
         ob.detune.setValueAtTime((Number(profileB["osc"+w+"Coarse"])||0)*100+(Number(profileB["osc"+w+"Detune"])||0)+off*(Number(profileB.spread)||0)+this.bend+(this.wheel||0),now);
         ob.connect(ngB);ngB.connect(v["g"+w]);
         if(!workletPath&&lm&&P.lfoDest==="pitch")lm.connect(ob.detune);
@@ -1871,7 +1900,7 @@ class SynthOslek{
       const fmMod=trackVoiceNode(this.dspBackend.createVoiceOscillator(c,P.osc2Wave||"sine"));
       const fmGain=G(this._fmDepthHz(P,midi,vel)),fmEnvGain=G(1);
       fmMod.type=P.osc2Wave||"sine";
-      fmMod.frequency.setValueAtTime(Math.max(1,freq*fmRatio),now);
+      setPitchFrequency(fmMod.frequency,Math.max(1,freq*fmRatio),fmRatio);
       // Keep the depth control separate from its contour, so morphing may change
       // the FM index while the note's pluck-like FM envelope continues naturally.
       const fmEnv=Math.max(0,Math.min(1,Number(P.fmEnv)||0));
@@ -1885,7 +1914,7 @@ class SynthOslek{
     const needsSub=(Number(P.subLevel)||0)>.0005||(hasMorphB&&(Number(rawB.subLevel)||0)>.0005);
     if(needsSub){
       const so=trackVoiceNode(this.dspBackend.createVoiceOscillator(c,"sine"));
-      so.frequency.setValueAtTime(freq/2,now);
+      setPitchFrequency(so.frequency,freq/2,.5);
       so.detune.setValueAtTime(this.bend+(this.wheel||0),now);
       so.connect(v.gs);
       if(lm&&P.lfoDest==="pitch")lm.connect(so.detune);
@@ -1895,7 +1924,14 @@ class SynthOslek{
     if(needsNoise){
       const ns=trackVoiceNode(c.createBufferSource());ns.buffer=this.noiseBuf;ns.loop=true;ns.connect(v.gn);ns.start(now);v.noiseSource=ns;v.all.push(ns);
     }
-    this.lastFreqByLayer[layer]=freq;this.voices.set(key,v);return true;
+    this.lastFreqByLayer[layer]=freq;
+    if(monoMode){
+      const held=this.monoHeld[layer]||(this.monoHeld[layer]=[]);
+      const duplicateIndex=held.findIndex(entry=>entry.midi===midi);
+      if(duplicateIndex>=0)held.splice(duplicateIndex,1);
+      held.push({midi,velocity:vel});
+    }else if(this.monoHeld[layer])this.monoHeld[layer].length=0;
+    this.voices.set(key,v);return true;
     }catch(err){
       try{if(lfoTarget)this.lfo?.disconnect(lfoTarget);}catch(e){}
       for(const node of voiceNodes){
@@ -1941,8 +1977,29 @@ class SynthOslek{
     return Math.min(5000,Math.max(0,(Number.isFinite(t)?t:now)-now)*1000+Math.max(0,Number(tailMs)||0)+extraMs);
   }
   _nativeNoteOff(midi,layer=null,when=null){
+    const requestedLayers=layer==null?this.layerProfiles.map((_,i)=>i):[Number(layer)];
+    if(this.sustain){
+      const sustainedMatches=[...this.voices.entries()].filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer));
+      sustainedMatches.forEach(([k])=>this.sustained.add(k));return;
+    }
+    // Mono note priority: releasing a held non-top key only removes its stack entry.
+    // Releasing the top key restores the most recently held pitch on the same layer.
+    for(const l of requestedLayers){
+      if(!Number.isInteger(l)||l<0||l>=this.layerProfiles.length)continue;
+      const profile=this.layerProfiles[l]||{};
+      if(String(profile.voiceMode||"poly").toLowerCase()!=="mono")continue;
+      const stack=this.monoHeld[l]||[];
+      const index=stack.findIndex(entry=>entry.midi===Number(midi));
+      if(index<0)continue;
+      const wasTop=index===stack.length-1;
+      stack.splice(index,1);
+      if(wasTop&&stack.length){
+        const previous=stack[stack.length-1];
+        try{this.noteOn(previous.midi,previous.velocity,l,when);}catch(err){console.warn("[SynthOslek] mono note priority restore failed",err);}
+        return;
+      }
+    }
     const matches=[...this.voices.entries()].filter(([k,v])=>k.endsWith(":"+midi)&&(layer==null||v.layer===layer));
-    if(this.sustain){matches.forEach(([k])=>this.sustained.add(k));return;}
     for(const [key,v] of matches){
       const t=Math.max(this.ctx.currentTime,Number.isFinite(when)?when:this.ctx.currentTime);
       const P=v.params,rel=Math.max(.02,P.release),fr=Math.max(.02,P.fRelease);
@@ -1969,12 +2026,16 @@ class SynthOslek{
       this._kill(v,t+tailMs/1000,key);
       this.voicePool?.release(key,this._voiceTailReservationMs(t,tailMs));
       this.voices.delete(key);
+      if(String(this.layerProfiles[v.layer]?.voiceMode||"poly").toLowerCase()==="mono"&&!(this.monoHeld[v.layer]?.length)){
+        this.lastFreqByLayer[v.layer]=0;
+      }
     }
   }
   releaseSustain(){return this.dspBackend?.releaseSustain();}
   _nativeReleaseSustain(){
     if(!this.started)return;
     const keys=[...this.sustained];this.sustained.clear();
+    this.monoHeld.forEach(stack=>{if(Array.isArray(stack))stack.length=0;});
     for(const key of keys){
       const v=this.voices.get(key);if(!v)continue;
       const t=this.ctx.currentTime,P=v.params;
@@ -2024,7 +2085,7 @@ class SynthOslek{
   }
   panic(){return this.dspBackend?.panic();}
   allNotesOff(){if(!this.started)return;for(const key of[...this.voices.keys()]){const[layer,midi]=key.split(":");this.noteOff(Number(midi),Number(layer));}this.sustained.clear();}
-  _nativePanic(){this.sustained.clear();for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
+  _nativePanic(){this.sustained.clear();this.monoHeld.forEach(stack=>{if(Array.isArray(stack))stack.length=0;});for(const m of[...this.voices.keys()])this._forceStop(m);this.lastFreqByLayer.fill(0);}
   updateParam(k,x,at=null){
     const layer=this.activeLayer;
     const profile=this.layerProfiles[layer];
@@ -2060,7 +2121,7 @@ class SynthOslek{
       flangerMix:()=>{const target=Math.max(0,Math.min(1,Number(x)||0));for(const v of this.voices.values())if(v.layer===layer){if(v.params)v.params.flangerMix=target;this._smoothParamTarget(v.fxFlanger?.gain,target,t,.045,.003);}},
       flangerRate:()=>T(this.flangerLfo.frequency,x,.02),
       flangerDepth:()=>T(this.flangerDepth.gain,x,.02),
-      voiceMode:()=>{},legato:()=>{},
+      voiceMode:()=>{if(String(x||"poly").toLowerCase()!=="mono"&&this.monoHeld[layer])this.monoHeld[layer].length=0;},legato:()=>{},
       lfoRate:()=>T(this.lfo.frequency,x,.02),
       lfoWave:()=>{try{if(x==="sample-hold")this.lfo.setPeriodicWave(this._sampleHoldWave(this.ctx));else this.lfo.type=x==="triangle"||x==="square"||x==="sawtooth"?x:"sine";}catch(e){}},
       lfoDelay:()=>{},filterKeyTrack:()=>{},filterEnvPolarity:()=>{}
@@ -2325,13 +2386,13 @@ function expandPatch(A,family){
 }
 /* ========================= PRESETS ========================= */
 const PRESETS={
-init:{osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:"positive",attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0},
-bass:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.85,osc2Wave:"square",osc2Detune:-12,osc2Level:.55,filterType:"lowpass",cutoff:380,resonance:8,attack:.005,decay:.18,sustain:.55,release:.22,fEnvAmt:.55,fAttack:.005,fDecay:.15,fSustain:.2,fRelease:.2,lfoRate:.3,lfoDepth:.05,lfoDest:"cutoff",delayTime:.2,delayFb:.15,delayMix:.05,reverbMix:.08,volume:.65,glide:40},
+init:{osc1Wave:"sawtooth",osc1Detune:0,osc1Coarse:0,osc1Level:.7,osc2Wave:"square",osc2Detune:-7,osc2Coarse:0,osc2Level:.5,filterType:"lowpass",cutoff:2000,resonance:4,filterKeyTrack:0,filterEnvPolarity:"positive",attack:.01,decay:.2,sustain:.7,release:.3,fEnvAmt:.3,fAttack:.01,fDecay:.25,fSustain:.4,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.25,delayFb:.25,delayMix:.15,reverbMix:.2,volume:.6,glide:0,voiceMode:"poly",legato:"false",unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0},
+bass:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.85,osc2Wave:"square",osc2Detune:-12,osc2Level:.55,filterType:"lowpass",cutoff:380,resonance:8,attack:.005,decay:.18,sustain:.55,release:.22,fEnvAmt:.55,fAttack:.005,fDecay:.15,fSustain:.2,fRelease:.2,lfoRate:.3,lfoDepth:.05,lfoDest:"cutoff",delayTime:.2,delayFb:.15,delayMix:.05,reverbMix:.08,volume:.65,glide:40,voiceMode:"mono",legato:"true"},
 lead:{osc1Wave:"sawtooth",osc1Detune:5,osc1Level:.7,osc2Wave:"square",osc2Detune:-8,osc2Level:.45,filterType:"lowpass",cutoff:3200,resonance:3.5,attack:.008,decay:.15,sustain:.75,release:.18,fEnvAmt:.4,fAttack:.01,fDecay:.2,fSustain:.5,fRelease:.2,lfoRate:5,lfoDepth:.12,lfoDest:"pitch",delayTime:.28,delayFb:.3,delayMix:.22,reverbMix:.18,volume:.55,glide:0},
 pad:{osc1Wave:"sawtooth",osc1Detune:8,osc1Level:.55,osc2Wave:"triangle",osc2Detune:-10,osc2Level:.5,filterType:"lowpass",cutoff:1600,resonance:1.5,attack:.6,decay:.8,sustain:.85,release:1.4,fEnvAmt:.25,fAttack:.5,fDecay:1,fSustain:.6,fRelease:1.2,lfoRate:.25,lfoDepth:.2,lfoDest:"cutoff",delayTime:.4,delayFb:.35,delayMix:.25,reverbMix:.45,volume:.5,glide:80},
 pluck:{osc1Wave:"triangle",osc1Detune:0,osc1Level:.75,osc2Wave:"sine",osc2Detune:0,osc2Level:.3,filterType:"lowpass",cutoff:4500,resonance:2,attack:.002,decay:.28,sustain:.05,release:.35,fEnvAmt:.6,fAttack:.001,fDecay:.22,fSustain:.05,fRelease:.3,lfoRate:2,lfoDepth:0,lfoDest:"cutoff",delayTime:.22,delayFb:.2,delayMix:.12,reverbMix:.25,volume:.6,glide:0},
 keys:{osc1Wave:"sine",osc1Detune:0,osc1Level:.6,osc2Wave:"triangle",osc2Detune:3,osc2Level:.4,filterType:"lowpass",cutoff:2800,resonance:1.2,attack:.01,decay:.4,sustain:.5,release:.5,fEnvAmt:.2,fAttack:.02,fDecay:.35,fSustain:.3,fRelease:.4,lfoRate:4,lfoDepth:.04,lfoDest:"amp",delayTime:.3,delayFb:.2,delayMix:.1,reverbMix:.3,volume:.55,glide:0},
-acid:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.9,osc2Wave:"square",osc2Detune:0,osc2Level:0,filterType:"lowpass",cutoff:600,resonance:14,attack:.005,decay:.12,sustain:.3,release:.12,fEnvAmt:.85,fAttack:.005,fDecay:.18,fSustain:.1,fRelease:.15,lfoRate:.5,lfoDepth:.15,lfoDest:"cutoff",delayTime:.18,delayFb:.4,delayMix:.2,reverbMix:.05,volume:.55,glide:25}
+acid:{osc1Wave:"sawtooth",osc1Detune:0,osc1Level:.9,osc2Wave:"square",osc2Detune:0,osc2Level:0,filterType:"lowpass",cutoff:600,resonance:14,attack:.005,decay:.12,sustain:.3,release:.12,fEnvAmt:.85,fAttack:.005,fDecay:.18,fSustain:.1,fRelease:.15,lfoRate:.5,lfoDepth:.15,lfoDest:"cutoff",delayTime:.18,delayFb:.4,delayMix:.2,reverbMix:.05,volume:.55,glide:25,voiceMode:"mono",legato:"true"}
 };
 
 Object.assign(PRESETS.init,{unison:1,spread:12,subLevel:0,noiseLevel:0,chorusMix:0,osc1Coarse:0,osc2Coarse:0,lfoDelay:0,flangerMix:0,flangerRate:.25,flangerDepth:.002,fmEnv:.5,lfoWave:"sine",delaySync:"1/4"});
@@ -3986,7 +4047,7 @@ syncSynthState(false);
   document.addEventListener("contextmenu",e=>e.preventDefault(),{capture:true});
   if(window.__SO67)return;window.__SO67=true;
 
-  const SO={version:"16.88",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},
+  const SO={version:"16.89",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},
     arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.95,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,length:16,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
     music:{root:0,scale:"off",chord:"off",chordMode:"fixed"},
@@ -4201,14 +4262,19 @@ syncSynthState(false);
     const ints=CHORD_INTERVALS[chord]||CHORD_INTERVALS.off;
     return ints.map(iv=>effectiveRoot+iv);
   };
-  const transformNote=midi=>{const out=chordNotes(midi);return[...new Set(out.map(Number))].sort((a,b)=>a-b);};
+  const transformNote=(midi,layer=synth.activeLayer)=>{
+    const out=[...new Set(chordNotes(midi).map(Number))].sort((a,b)=>a-b);
+    const profile=synth.layerProfiles?.[Number(layer)]||synth.params;
+    // Mono mode means a single transformed pitch, even while chord mode is armed.
+    return String(profile?.voiceMode||"poly").toLowerCase()==="mono"?out.slice(0,1):out;
+  };
 
   function arpCandidates(){
     const held=[...arpHeld.values()];
     if(SO.arp.mode!=="order")held.sort((x,y)=>x.midi-y.midi);
     if(!held.length)return [];
     const out=[],octaves=Math.max(1,Number(SO.arp.oct)||1);
-    for(let o=0;o<octaves;o++){for(const n of held){const notes=transformNote(n.midi+12*o);for(const midi of notes)out.push({...n,midi});}}
+    for(let o=0;o<octaves;o++){for(const n of held){const notes=transformNote(n.midi+12*o,n.layer);for(const midi of notes)out.push({...n,midi});}}
     // Order mode keeps key-arrival order; sorted modes retain a globally ascending
     // candidate pool so extensions never fall below the next octave root.
     if(SO.arp.mode!=="order")out.sort((a,b)=>a.midi-b.midi);
@@ -4282,7 +4348,7 @@ syncSynthState(false);
   synth.noteOn=function(midi,vel=.85,layer=synth.activeLayer,when=null){
     noteMonitor.inputOn(midi);
     if(SO.arp.on){const key=layer+":"+midi;arpHeld.set(key,{midi,vel,layer,releasedWhileHeld:false});if(!arpTimer)startArp();return;}
-    const notes=transformNote(midi);
+    const notes=transformNote(midi,layer);
     const key=layer+":"+midi;
     musicHeld.set(key,{midi,layer,notes});
     // Keep chord RMS closer to single-note loudness as the voicing grows.
@@ -4303,7 +4369,7 @@ syncSynthState(false);
     [...musicHeld].forEach(([k,n])=>{if(n.midi===midi&&(layer==null||n.layer===layer)){for(const out of n.notes)try{monitoredBaseOff(out,n.layer,when)}catch(e){}musicHeld.delete(k);}});
   };
   synth.panic=function(){stopArp();stopSequence();musicHeld.clear();noteMonitor.clear();return basePanic();};
-  if(baseAllOff)synth.allNotesOff=function(){stopArp();stopSequence();musicHeld.clear();return baseAllOff();};
+  if(baseAllOff)synth.allNotesOff=function(){stopArp();stopSequence();musicHeld.clear();const result=baseAllOff();this.monoHeld?.forEach(stack=>{if(Array.isArray(stack))stack.length=0;});this.lastFreqByLayer?.fill(0);return result;};
 
   $$("#so67Arp")?.addEventListener("click",()=>{SO.arp.on=!SO.arp.on;if(!SO.arp.on)stopArp();updateBtn("#so67Arp",SO.arp.on,"ARP ON","ARP OFF");setStatus(SO.arp.on?"ARP armed":"ARP bypassed");});
   $$("#so67Mode")?.addEventListener("change",e=>SO.arp.mode=e.target.value);
@@ -4468,7 +4534,7 @@ syncSynthState(false);
     ensureRecDest();if(!recDest){setStatus("Recorder unavailable");return;}
     if(!SO.recording){
       const mime=["audio/webm;codecs=opus","audio/webm","audio/ogg"].find(x=>MediaRecorder.isTypeSupported?.(x))||"";
-      try{const mr=new MediaRecorder(recDest.stream,mime?{mimeType:mime}:undefined),chunks=[];mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.88-recording."+((mr.mimeType||"").includes("ogg")?"ogg":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);};mr.start(100);SO.recording=mr;updateBtn("#so67Rec",true,"STOP","RECORD");setStatus("Recording…");}
+      try{const mr=new MediaRecorder(recDest.stream,mime?{mimeType:mime}:undefined),chunks=[];mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.89-recording."+((mr.mimeType||"").includes("ogg")?"ogg":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);};mr.start(100);SO.recording=mr;updateBtn("#so67Rec",true,"STOP","RECORD");setStatus("Recording…");}
       catch(e){setStatus("Recording not supported here");}
     }else{SO.recording.stop();SO.recording=null;updateBtn("#so67Rec",false,"STOP","RECORD");setStatus("Recording exported");}
   });
@@ -4481,12 +4547,12 @@ syncSynthState(false);
     events.sort((a,b)=>a.t-b.t);let last=0,track=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255];
     events.forEach(e=>{track.push(...vlq(Math.max(0,e.t-last)),...e.data);last=e.t;});track.push(0,0xff,0x2f,0);
     const bytes=[...new TextEncoder().encode("MThd"),0,0,0,6,0,0,0,1,(ppq>>8)&255,ppq&255,...new TextEncoder().encode("MTrk"),(track.length>>24)&255,(track.length>>16)&255,(track.length>>8)&255,track.length&255,...track];
-    const blob=new Blob([new Uint8Array(bytes)],{type:"audio/midi"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.88-sequence.mid";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    const blob=new Blob([new Uint8Array(bytes)],{type:"audio/midi"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.89-sequence.mid";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }
   $$("#so67ExportMidi")?.addEventListener("click",exportMidi);
 
   /* Preset share/load */
-  function presetState(){return {version:"16.88",arp:SO.arp,seq:SO.seq,music:SO.music,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x})),layerProfilesB:synth.layerProfilesB?.map(x=>x?{...x}:null)};}
+  function presetState(){return {version:"16.89",arp:SO.arp,seq:SO.seq,music:SO.music,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x})),layerProfilesB:synth.layerProfilesB?.map(x=>x?{...x}:null)};}
   function encode(o){return btoa(unescape(encodeURIComponent(JSON.stringify(o))));}
   function decode(s){return JSON.parse(decodeURIComponent(escape(atob(s))));}
   function applyPreset(p){
@@ -4506,7 +4572,7 @@ syncSynthState(false);
     }catch(e){}
   }
   $$("#so67Share")?.addEventListener("click",async()=>{const u=location.href.split("#")[0]+"#so67="+encode(presetState());try{await navigator.clipboard.writeText(u);setStatus("Preset link copied");}catch(e){prompt("Copy preset link",u);}});
-  $$("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.88-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
+  $$("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.89-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
   $$("#so67Load")?.addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json";inp.onchange=async()=>{try{applyPreset(JSON.parse(await inp.files[0].text()));setStatus("Preset loaded");}catch(e){setStatus("Invalid preset");}};inp.click();});
   if(location.hash.startsWith("#so67=")){try{applyPreset(decode(location.hash.slice(6)));setStatus("Shared preset loaded");}catch(e){}}
 
@@ -4571,8 +4637,8 @@ syncSynthState(false);
     pressure:()=>typeof _soPerformancePressure==="function"?_soPerformancePressure():0
   };
 
-  window.SynthOslekRoadmap={version:"16.88",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.88 ready · stronger morph · chord names · tempo control");
+  window.SynthOslekRoadmap={version:"16.89",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
+  setStatus("v16.89 ready · stronger morph · chord names · tempo control");
 })();
 
 /* ========================= WELCOME + START ========================= */

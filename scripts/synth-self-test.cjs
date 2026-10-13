@@ -30,10 +30,10 @@ async function main() {
     const title = html.match(/<title>([\s\S]*?)<\/title>/i);
     const footer = html.match(/<div class=["']footer["']>([\s\S]*?)<\/div>/i);
     const version = html.match(/SynthOslek v(\d+\.\d+)/);
-    requireCheck(build && /v16\.88/.test(build[1]), 'Build metadata must identify v16.88.');
-    requireCheck(title && title[1].includes('v16.88'), 'Browser title must show v16.88.');
-    requireCheck(footer && footer[1].includes('v16.88'), 'Visible footer must show v16.88.');
-    requireCheck(version && version[1] === '16.88', 'Visible page version must be consistent.');
+    requireCheck(build && /v16\.89/.test(build[1]), 'Build metadata must identify v16.89.');
+    requireCheck(title && title[1].includes('v16.89'), 'Browser title must show v16.89.');
+    requireCheck(footer && footer[1].includes('v16.89'), 'Visible footer must show v16.89.');
+    requireCheck(version && version[1] === '16.89', 'Visible page version must be consistent.');
     pass('Build/version labels', build[1]);
 
     const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
@@ -104,7 +104,7 @@ async function main() {
         setModWheel: typeof window.synth.setModWheel
       }
     }), requiredSelectors);
-    requireCheck(preflight.version === '16.88', 'Runtime version mismatch: ' + preflight.version + '.');
+    requireCheck(preflight.version === '16.89', 'Runtime version mismatch: ' + preflight.version + '.');
     requireCheck(preflight.selectors && Object.values(preflight.selectors).every(Boolean),
       'Missing UI elements: ' + Object.entries(preflight.selectors).filter(([, exists]) => !exists).map(([key]) => key).join(', '));
     for (const method of ['noteOn', 'noteOff', 'panic']) {
@@ -242,7 +242,7 @@ async function main() {
       voices: window.synth.voices.size,
       runtimeVersion: String(window.SynthOslekRoadmap.version)
     }));
-    requireCheck(finalStatus.runtimeVersion === '16.88', 'Final runtime version changed unexpectedly.');
+    requireCheck(finalStatus.runtimeVersion === '16.89', 'Final runtime version changed unexpectedly.');
     requireCheck(finalStatus.voices === 0, 'Test cleanup left ' + finalStatus.voices + ' active voices.');
     requireCheck(finalStatus.audioState === 'running', 'Audio context ended in state ' + finalStatus.audioState + '.');
     pass('Test cleanup', 'Audio engine remains running; no active voices left');
@@ -250,7 +250,7 @@ async function main() {
     fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true });
     const report = {
       status: 'SUCCESS',
-      version: '16.88',
+      version: '16.89',
       testedCommit: process.env.GITHUB_SHA || 'local',
       checks
     };
