@@ -1341,7 +1341,7 @@ test('pair-memory prompt labels cannot inject attributes through quotes', async 
   const result = await page.evaluate(() => {
     PairMemory.push(
       { family: 'LEAD', A: { ...PRESETS.init }, B: { ...PRESETS.init } },
-      'test" onmouseover="alert(1)'
+      'x" onmouseover=1'
     );
     const button = document.querySelector('#pairItems .ps-item');
     return {
