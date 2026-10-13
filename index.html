@@ -3986,7 +3986,7 @@ syncSynthState(false);
   document.addEventListener("contextmenu",e=>e.preventDefault(),{capture:true});
   if(window.__SO67)return;window.__SO67=true;
 
-  const SO={version:"16.65",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},
+  const SO={version:"16.88",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},
     arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.95,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,length:16,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
     music:{root:0,scale:"off",chord:"off",chordMode:"fixed"},
@@ -4468,7 +4468,7 @@ syncSynthState(false);
     ensureRecDest();if(!recDest){setStatus("Recorder unavailable");return;}
     if(!SO.recording){
       const mime=["audio/webm;codecs=opus","audio/webm","audio/ogg"].find(x=>MediaRecorder.isTypeSupported?.(x))||"";
-      try{const mr=new MediaRecorder(recDest.stream,mime?{mimeType:mime}:undefined),chunks=[];mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.65-recording."+((mr.mimeType||"").includes("ogg")?"ogg":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);};mr.start(100);SO.recording=mr;updateBtn("#so67Rec",true,"STOP","RECORD");setStatus("Recording…");}
+      try{const mr=new MediaRecorder(recDest.stream,mime?{mimeType:mime}:undefined),chunks=[];mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.88-recording."+((mr.mimeType||"").includes("ogg")?"ogg":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);};mr.start(100);SO.recording=mr;updateBtn("#so67Rec",true,"STOP","RECORD");setStatus("Recording…");}
       catch(e){setStatus("Recording not supported here");}
     }else{SO.recording.stop();SO.recording=null;updateBtn("#so67Rec",false,"STOP","RECORD");setStatus("Recording exported");}
   });
@@ -4481,12 +4481,12 @@ syncSynthState(false);
     events.sort((a,b)=>a.t-b.t);let last=0,track=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255];
     events.forEach(e=>{track.push(...vlq(Math.max(0,e.t-last)),...e.data);last=e.t;});track.push(0,0xff,0x2f,0);
     const bytes=[...new TextEncoder().encode("MThd"),0,0,0,6,0,0,0,1,(ppq>>8)&255,ppq&255,...new TextEncoder().encode("MTrk"),(track.length>>24)&255,(track.length>>16)&255,(track.length>>8)&255,track.length&255,...track];
-    const blob=new Blob([new Uint8Array(bytes)],{type:"audio/midi"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.65-sequence.mid";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    const blob=new Blob([new Uint8Array(bytes)],{type:"audio/midi"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.88-sequence.mid";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }
   $$("#so67ExportMidi")?.addEventListener("click",exportMidi);
 
   /* Preset share/load */
-  function presetState(){return {version:"16.65",arp:SO.arp,seq:SO.seq,music:SO.music,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x})),layerProfilesB:synth.layerProfilesB?.map(x=>x?{...x}:null)};}
+  function presetState(){return {version:"16.88",arp:SO.arp,seq:SO.seq,music:SO.music,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x})),layerProfilesB:synth.layerProfilesB?.map(x=>x?{...x}:null)};}
   function encode(o){return btoa(unescape(encodeURIComponent(JSON.stringify(o))));}
   function decode(s){return JSON.parse(decodeURIComponent(escape(atob(s))));}
   function applyPreset(p){
@@ -4506,7 +4506,7 @@ syncSynthState(false);
     }catch(e){}
   }
   $$("#so67Share")?.addEventListener("click",async()=>{const u=location.href.split("#")[0]+"#so67="+encode(presetState());try{await navigator.clipboard.writeText(u);setStatus("Preset link copied");}catch(e){prompt("Copy preset link",u);}});
-  $$("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.65-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
+  $$("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.88-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
   $$("#so67Load")?.addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json";inp.onchange=async()=>{try{applyPreset(JSON.parse(await inp.files[0].text()));setStatus("Preset loaded");}catch(e){setStatus("Invalid preset");}};inp.click();});
   if(location.hash.startsWith("#so67=")){try{applyPreset(decode(location.hash.slice(6)));setStatus("Shared preset loaded");}catch(e){}}
 
@@ -4571,7 +4571,7 @@ syncSynthState(false);
     pressure:()=>typeof _soPerformancePressure==="function"?_soPerformancePressure():0
   };
 
-  window.SynthOslekRoadmap={version:"16.87",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
+  window.SynthOslekRoadmap={version:"16.88",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
   setStatus("v16.88 ready · stronger morph · chord names · tempo control");
 })();
 
