@@ -1002,17 +1002,22 @@ test('ARP order mode follows played order rather than sorting by pitch', async (
     document.getElementById('so67Mode').dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('so67Rate').value = '1/32';
     document.getElementById('so67Rate').dispatchEvent(new Event('change', { bubbles: true }));
+    const monitor = window.SynthOslekNoteMonitor;
+    const observed = [];
+    const originalGeneratedOn = monitor.generatedOn;
+    monitor.generatedOn = midi => { observed.push(midi); return originalGeneratedOn(midi); };
     document.getElementById('so67Arp').click();
     synth.noteOn(64, 0.8, 0); // E4 first
     synth.noteOn(60, 0.8, 0); // C4 second
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 360));
     const status = document.getElementById('so67Status')?.textContent || '';
     document.getElementById('so67Arp').click();
     synth.panic();
-    return { status };
+    monitor.generatedOn = originalGeneratedOn;
+    return { status, observed: observed.slice(0, 6), modeUi: document.getElementById('so67Mode').value };
   });
-  expect(result.status).toContain('ARP E4');
-  expect(result.status).not.toContain('ARP C4');
+  expect(result.modeUi).toBe('order');
+  expect(result.observed.slice(0, 4)).toEqual([64,60,64,60]);
   expect(pageErrors).toEqual([]);
 });
 
