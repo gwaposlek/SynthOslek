@@ -1300,3 +1300,90 @@ test('Android audio path retains lightweight shared reverb and single-tap delay 
   expect(pageErrors).toEqual([]);
 });
 
+test('mono mode glides between notes, limits active voices, and restores the previous held pitch', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+
+  const result = await page.evaluate(() => {
+    const synth = window.synth;
+    synth.panic();
+    const profile = synth.layerProfiles[0];
+    Object.assign(profile, {
+      voiceMode: 'mono', legato: 'true', glide: 160,
+      attack: 0.18, decay: 0.2, sustain: 0.8, release: 0.08,
+      fmAmount: 0, subLevel: 0, noiseLevel: 0, unison: 1
+    });
+    synth._morphCache.clear();
+    synth.noteOn(48, 0.8, 0);
+    const first = synth.voices.get('0:48');
+    synth.noteOn(60, 0.8, 0);
+    const upper = synth.voices.get('0:60');
+    const afterTransition = {
+      activePitches: [...synth.voices.values()].filter(v => v.layer === 0).map(v => v.midi),
+      heldPitches: synth.monoHeld[0].map(n => n.midi),
+      monoMode: upper?.monoMode,
+      legatoTransition: upper?.monoLegato,
+      glideFromFreq: upper?.monoGlideFromFreq,
+      glideToFreq: upper?.monoGlideToFreq,
+      glideSeconds: upper?.monoGlideSeconds,
+      firstWasReplaced: !synth.voices.has('0:48'),
+      expectedFrom: 440 * Math.pow(2, (48 - 69) / 12),
+      expectedTo: 440 * Math.pow(2, (60 - 69) / 12)
+    };
+    synth.noteOff(60, 0);
+    const afterTopRelease = {
+      activePitches: [...synth.voices.values()].filter(v => v.layer === 0).map(v => v.midi),
+      heldPitches: synth.monoHeld[0].map(n => n.midi),
+      glideFromFreq: synth.voices.get('0:48')?.monoGlideFromFreq,
+      glideToFreq: synth.voices.get('0:48')?.monoGlideToFreq
+    };
+    synth.noteOff(48, 0);
+    const afterFinalRelease = {
+      activePitches: [...synth.voices.values()].filter(v => v.layer === 0).map(v => v.midi),
+      heldPitches: synth.monoHeld[0].map(n => n.midi),
+      lastFrequency: synth.lastFreqByLayer[0]
+    };
+    synth.panic();
+    return { afterTransition, afterTopRelease, afterFinalRelease };
+  });
+
+  expect(result.afterTransition.activePitches).toEqual([60]);
+  expect(result.afterTransition.heldPitches).toEqual([48, 60]);
+  expect(result.afterTransition.monoMode).toBeTruthy();
+  expect(result.afterTransition.legatoTransition).toBeTruthy();
+  expect(result.afterTransition.firstWasReplaced).toBeTruthy();
+  expect(result.afterTransition.glideFromFreq).toBeCloseTo(result.afterTransition.expectedFrom, 2);
+  expect(result.afterTransition.glideToFreq).toBeCloseTo(result.afterTransition.expectedTo, 2);
+  expect(result.afterTransition.glideSeconds).toBeCloseTo(0.16, 3);
+
+  expect(result.afterTopRelease.activePitches).toEqual([48]);
+  expect(result.afterTopRelease.heldPitches).toEqual([48]);
+  expect(result.afterTopRelease.glideFromFreq).toBeCloseTo(result.afterTransition.expectedTo, 2);
+  expect(result.afterTopRelease.glideToFreq).toBeCloseTo(result.afterTransition.expectedFrom, 2);
+
+  expect(result.afterFinalRelease.activePitches).toEqual([]);
+  expect(result.afterFinalRelease.heldPitches).toEqual([]);
+  expect(result.afterFinalRelease.lastFrequency).toBe(0);
+  expect(pageErrors).toEqual([]);
+});
+
+test('bass and acid presets enable mono portamento while the init patch stays polyphonic', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => ({
+    init: { mode: PRESETS.init.voiceMode, legato: PRESETS.init.legato, glide: PRESETS.init.glide },
+    bass: { mode: PRESETS.bass.voiceMode, legato: PRESETS.bass.legato, glide: PRESETS.bass.glide },
+    acid: { mode: PRESETS.acid.voiceMode, legato: PRESETS.acid.legato, glide: PRESETS.acid.glide }
+  }));
+  expect(result.init.mode).toBe('poly');
+  expect(result.init.legato).toBe('false');
+  expect(result.bass.mode).toBe('mono');
+  expect(result.bass.legato).toBe('true');
+  expect(result.bass.glide).toBeGreaterThan(0);
+  expect(result.acid.mode).toBe('mono');
+  expect(result.acid.legato).toBe('true');
+  expect(result.acid.glide).toBeGreaterThan(0);
+});
+
