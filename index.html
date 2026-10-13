@@ -2037,8 +2037,8 @@ class SynthOslek{
     const T=(a,v,tc)=>{try{a.setTargetAtTime(v,t,tc);}catch(e){}};
     const A={
       volume:()=>T(this.masterGain.gain,Math.min(.8,Math.max(0,Number.isFinite(Number(x))?Number(x):0)),.015),
-      delayTime:()=>{if(this.delaySync==="free")T(this.delay.delayTime,Math.max(.001,Math.min(1.5,Number(x)||.25)),.02);},
-      delayFb:()=>T(this.delayFeedback.gain,this.mobileAudio?0:Math.max(0,Math.min(.92,Number(x)||0)),.02),
+      delayTime:()=>{if(this.delaySync==="free")this._smoothParamTarget(this.delay.delayTime,Math.max(.001,Math.min(1.5,Number(x)||.25)),t,.02,.001);},
+      delayFb:()=>this._smoothParamTarget(this.delayFeedback.gain,this.mobileAudio?0:Math.max(0,Math.min(.92,Number(x)||0)),t,.02,.001),
       delaySync:()=>{this.delaySync=String(x||"free");if(typeof this.setDelaySync==="function")this.setDelaySync(this.delaySync);},
       flangerMix:()=>{const target=Math.max(0,Math.min(1,Number(x)||0));for(const v of this.voices.values())if(v.layer===layer){if(v.params)v.params.flangerMix=target;this._smoothParamTarget(v.fxFlanger?.gain,target,t,.045,.003);}},
       flangerRate:()=>T(this.flangerLfo.frequency,x,.02),
