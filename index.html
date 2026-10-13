@@ -3844,12 +3844,12 @@ class MidiManager{
       try{UI.volume?.set(x,true);}catch(err){console.warn("SynthOslek CC7 UI sync failed",err);}
       return;
     }
-    if(cc===10){layerState[layer].pan=x*2-1;refreshLayerGains(when);return;}
+    if(cc===10){const target=layerState[layer];if(!target)return;target.pan=x*2-1;refreshLayerGains(when);return;}
     if(cc===64){const was=this.synth.sustain;this.synth.sustain=x>=.5;if(was&&!this.synth.sustain)this.synth.releaseSustain(when);const led=$("sustainLed");if(led){led.classList.toggle("on",this.synth.sustain);led.textContent=this.synth.sustain?"SUSTAIN ON":"SUSTAIN OFF";}syncSynthState(false);return;}
-    if(cc>=20&&cc<=23){layerState[cc-20].vol=x;refreshLayerGains(when);return;}
-    if(cc>=28&&cc<=31){layerState[cc-28].pan=x*2-1;refreshLayerGains(when);return;}
-    if(cc>=36&&cc<=39){layerState[cc-36].fx=x;refreshLayerGains(when);return;}
-    if(cc>=44&&cc<=47){layerState[cc-44].enabled=x>=.5;refreshLayerGains(when);buildLayerMixer();return;}
+    if(cc>=20&&cc<=23){const target=layerState[cc-20];if(!target)return;target.vol=x;refreshLayerGains(when);return;}
+    if(cc>=28&&cc<=31){const target=layerState[cc-28];if(!target)return;target.pan=x*2-1;refreshLayerGains(when);return;}
+    if(cc>=36&&cc<=39){const target=layerState[cc-36];if(!target)return;target.fx=x;refreshLayerGains(when);return;}
+    if(cc>=44&&cc<=47){const target=layerState[cc-44];if(!target)return;target.enabled=x>=.5;refreshLayerGains(when);buildLayerMixer();return;}
   }
   onMessage(e){
     const d=e?.data;if(!d||!d.length)return;
