@@ -1384,6 +1384,15 @@ class SynthOslek{
     this.convolver=c.createConvolver();
     if(!this.mobileAudio)this.convolver.buffer=this._impulse(2.8,2.2,2);
     this.reverbGain=G(this.mobileAudio?0:1);
+    // Android gets one shared, short mono convolution path instead of no reverb.
+    // The small IR and single shared node keep the cost bounded on mobile.
+    this.mobileReverbConvolver=this.mobileAudio?c.createConvolver():null;
+    this.mobileReverbReturn=this.mobileAudio?G(.55):null;
+    if(this.mobileAudio){
+      this.mobileReverbConvolver.buffer=this._impulse(.55,2.6,1);
+      this.mobileReverbConvolver.connect(this.mobileReverbReturn);
+      this.mobileReverbReturn.connect(this.bus);
+    }
     this.lfo=c.createOscillator();
     if(p.lfoWave==="sample-hold"){try{this.lfo.setPeriodicWave(this._sampleHoldWave(c));}catch(e){this.lfo.type="sine";}}
     else this.lfo.type=(p.lfoWave==="triangle"||p.lfoWave==="square"||p.lfoWave==="sawtooth")?p.lfoWave:"sine";
@@ -1404,6 +1413,9 @@ class SynthOslek{
     for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
     this.noiseBuf=nb;
     if(this.mobileAudio){
+      // A single-tap delay remains available on mobile; feedback is disabled above
+      // so the return cannot build an expensive or unstable delay loop.
+      this.delayGain.connect(this.bus);
       this.dcBlock=c.createBiquadFilter();this.dcBlock.type="highpass";this.dcBlock.frequency.value=28;this.dcBlock.Q.value=.707;
       this.saturator=c.createWaveShaper();this.saturator.curve=this._softCurve(0.45);this.saturator.oversample="none";
       this.bus.connect(this.dcBlock);this.dcBlock.connect(this.saturator);this.saturator.connect(this.masterGain);this.masterGain.connect(c.destination);
@@ -1790,8 +1802,8 @@ class SynthOslek{
     const lg=G(LS.enabled===false||LS.mute?0:(LS.vol??.7));
     const pan=trackVoiceNode(c.createStereoPanner());pan.pan.value=LS.pan??0;
     const fx=this.mobileAudio?null:G(LS.fx??.2);
-    const fxDelay=this.mobileAudio?null:G(P.delayMix??0);
-    const fxReverb=this.mobileAudio?null:G(P.reverbMix??0);
+    const fxDelay=G(P.delayMix??0);
+    const fxReverb=G(P.reverbMix??0);
     const fxChorus=this.mobileAudio?null:G(P.chorusMix??0);
     const fxFlanger=this.mobileAudio?null:G(P.flangerMix??0);
     va.connect(lg);lg.connect(pan);pan.connect(this.bus);
@@ -1799,6 +1811,11 @@ class SynthOslek{
       lg.connect(fx);
       fx.connect(fxDelay);fx.connect(fxReverb);fx.connect(fxChorus);fx.connect(fxFlanger);
       fxDelay.connect(this.delay);fxReverb.connect(this.convolver);fxChorus.connect(this.chorusInput);fxFlanger.connect(this.flangerInput);
+    }else{
+      // Keep the dry signal native/lightweight, and send only effect returns through
+      // the shared mono convolution or single-tap delay.
+      lg.connect(fxDelay);fxDelay.connect(this.delay);
+      lg.connect(fxReverb);fxReverb.connect(this.mobileReverbConvolver);
     }
     if(!workletPath&&lm){
       this.lfo.connect(lm);
