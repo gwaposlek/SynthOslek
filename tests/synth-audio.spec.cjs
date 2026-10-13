@@ -794,3 +794,64 @@ test('MIDI layer-control CCs safely ignore mappings beyond configured layers', a
   expect(pageErrors).toEqual([]);
 });
 
+test('layer A/B morph does not crossfade the unrelated second layer', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    if (!window.synth || typeof layerState === 'undefined') return { supported: false };
+    const synth = window.synth;
+    const initiallyEnabled = layerState.map(layer => layer.enabled);
+    const expectedVolumes = layerState.map(layer => layer.vol);
+    // Create a real A/B profile on layer 1 and make layer 2 available to
+    // reproduce the original condition where the two modes got conflated.
+    synth.layerProfilesB[0] = { ...synth.layerProfiles[0], cutoff: 7100 };
+    layerState[1].enabled = true;
+    synth.modWheel = 0.5;
+    const mode = synth.getMorphMode(0);
+    refreshLayerGains();
+    const actualVolumes = synth.layerMix.map(layer => layer.vol);
+    synth.layerProfilesB[0] = null;
+    layerState[1].enabled = false;
+    synth.modWheel = 0;
+    refreshLayerGains();
+    return { supported: true, initiallyEnabled, expectedVolumes, mode, actualVolumes };
+  });
+  expect(result.supported).toBeTruthy();
+  expect(result.initiallyEnabled).toEqual([true, false]);
+  expect(result.mode).toBe('ab');
+  expect(result.actualVolumes[0]).toBeCloseTo(result.expectedVolumes[0], 3);
+  expect(result.actualVolumes[1]).toBeCloseTo(result.expectedVolumes[1], 3);
+  expect(pageErrors).toEqual([]);
+});
+
+test('sound-family detection prioritizes electric piano and explicit instrument words', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    const ep = SD.pair('electric piano');
+    const thickLead = SD.pair('thick lead');
+    const naturalLead = SD.pair('natural lead');
+    const driftingLead = SD.pair('drifting lead');
+    const thickBass = SD.pair('thick bass');
+    const naturalOnly = SD.pair('natural');
+    return {
+      epFamily: ep.family, epTags: ep.tags,
+      thickLeadFamily: thickLead.family, thickLeadTags: thickLead.tags,
+      naturalLeadFamily: naturalLead.family, naturalLeadTags: naturalLead.tags,
+      driftingLeadFamily: driftingLead.family, driftingLeadTags: driftingLead.tags,
+      thickBassFamily: thickBass.family, naturalOnlyFamily: naturalOnly.family
+    };
+  });
+  expect(result.epFamily).toBe('E-PIANO');
+  expect(result.epTags).toContain('E-PIANO');
+  expect(result.epTags).not.toContain('PIANO');
+  expect(result.thickLeadFamily).toBe('LEAD');
+  expect(result.thickLeadTags).not.toContain('BASS');
+  expect(result.naturalLeadFamily).toBe('LEAD');
+  expect(result.naturalLeadTags).not.toContain('STRINGS');
+  expect(result.driftingLeadFamily).toBe('LEAD');
+  expect(result.driftingLeadTags).not.toContain('PAD');
+  expect(result.thickBassFamily).toBe('BASS');
+  expect(result.naturalOnlyFamily).toBe('STRINGS');
+});
+
