@@ -4525,7 +4525,7 @@ syncSynthState(false);
 
   /* Timing API */
   synth.setTempoBpm=function(bpm){this.tempoBpm=clamp(Number(bpm)||120,20,300);return this.tempoBpm;};
-  synth.setDelaySync=function(division){this.delaySync=division||"free";if(!this.started||!this.delay)return;if(this.delaySync==="free"){this.delay.delayTime.value=Math.max(.001,Math.min(1.5,Number(this.params.delayTime)||.25));return;}const sec=SO.clock.divisionSeconds(this.delaySync);this.delay.delayTime.setTargetAtTime(Math.max(.001,Math.min(1.5,sec)),audioNow(),.006);this.params.delayTime=sec;};
+  synth.setDelaySync=function(division){this.delaySync=division||"free";if(!this.started||!this.delay)return;if(this.delaySync==="free"){this._smoothParamTarget(this.delay.delayTime,Math.max(.001,Math.min(1.5,Number(this.params.delayTime)||.25)),audioNow(),.02,.001);return;}const sec=Math.max(.001,Math.min(1.5,SO.clock.divisionSeconds(this.delaySync)));this._smoothParamTarget(this.delay.delayTime,sec,audioNow(),.006,.001);this.params.delayTime=sec;};
   synth.setLfoSync=function(division){this.lfoSync=division||"free";if(!this.started||!this.lfo)return;if(this.lfoSync==="free"){this.lfo.frequency.setTargetAtTime(Math.max(.01,Number(this.params.lfoRate)||2),audioNow(),.006);return;}const hz=1/Math.max(.001,SO.clock.divisionSeconds(this.lfoSync));this.lfo.frequency.setTargetAtTime(hz,audioNow(),.006);try{this.updateParam("lfoRate",hz,audioNow()+.01);}catch(e){}};
   window.SynthOslekTiming={
     get bpm(){return SO.clock.bpm;},
