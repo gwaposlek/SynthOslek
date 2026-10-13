@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="synthoslek-build" content="2026-10-13-v16.89-mono-glide-portamento">
-<title>SynthOslek v16.89 — Morph Instrument</title>
+<meta name="synthoslek-build" content="2026-10-13-v16.90-mod-matrix-source-routing">
+<title>SynthOslek v16.90 — Morph Instrument</title>
 <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* v16.31: performance UI has no browser long-press haptics/callouts */
@@ -1039,7 +1039,7 @@ body.so-adv-open{overflow-y:auto!important;overflow-x:hidden!important;align-ite
   <div class="panes" id="panels"></div>
 </div>
 
-<div class="footer">SynthOslek v16.89 · A/B Morph Instrument · Minimalist Performance UI</div>
+<div class="footer">SynthOslek v16.90 · A/B Morph Instrument · Minimalist Performance UI</div>
 <script>
 /* v16.18 startup diagnostics */
 (function(){
@@ -4047,7 +4047,7 @@ syncSynthState(false);
   document.addEventListener("contextmenu",e=>e.preventDefault(),{capture:true});
   if(window.__SO67)return;window.__SO67=true;
 
-  const SO={version:"16.89",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},
+  const SO={version:"16.90",clock:{bpm:120,division:"1/16",swing:0,startedAt:0,ticks:0},
     arp:{on:false,mode:"up",rate:"1/8",oct:1,gate:.95,swing:0,hold:false},
     seq:{on:false,bpm:120,step:0,length:16,pattern:Array(16).fill(null).map((_,i)=>({on:i%2===0,note:60+i%8,vel:.8,gate:.8}))},
     music:{root:0,scale:"off",chord:"off",chordMode:"fixed"},
@@ -4456,14 +4456,89 @@ syncSynthState(false);
 
   /* Mod matrix */
   const modBase={cutoff:()=>Number(synth.params.cutoff)||1000,resonance:()=>Number(synth.params.resonance)||1,volume:()=>Number(synth.params.volume)||.8,osc1Level:()=>Number(synth.params.osc1Level)||.8,osc2Level:()=>Number(synth.params.osc2Level)||.5,lfoDepth:()=>Number(synth.params.lfoDepth)||0};
-  let modRaf=0;
-  function modLoop(){modRaf=0;if(!SO.mod.amount)return;const dest=SO.mod.dest,base=modBase[dest]?.();if(Number.isFinite(base)){const v=base+(dest==="cutoff"?SO.mod.amount*4000:SO.mod.amount*(Math.abs(base)||1));try{synth.updateParam(dest,clamp(v,dest==="cutoff"?20:0,dest==="cutoff"?18000:1),audioNow()+.01)}catch(e){}}modRaf=requestAnimationFrame(modLoop);}
-  $$("#so67ModAmt")?.addEventListener("input",e=>{SO.mod.amount=+e.target.value;if(SO.mod.amount&&!modRaf)modLoop();else if(!SO.mod.amount&&modRaf){cancelAnimationFrame(modRaf);modRaf=0;}});
-  $$("#so67ModSrc")?.addEventListener("change",e=>SO.mod.source=e.target.value);
-  $$("#so67ModDst")?.addEventListener("change",e=>SO.mod.dest=e.target.value);
+  const readModBase=dest=>{
+    const profile=synth.layerProfiles?.[Number(synth.activeLayer)]||synth.params;
+    const v=Number(profile?.[dest]);
+    return Number.isFinite(v)?v:(modBase[dest]?.()||0);
+  };
+  SO.mod._velocity=0;SO.mod._aftertouch=0;SO.mod._base=readModBase(SO.mod.dest);SO.mod._lastTarget=null;SO.mod._randomBucket=-1;SO.mod._randomValue=0;
+  let modRaf=0,modApplying=false;
+  const _updateParamForMod=synth.updateParam.bind(synth);
+  synth.updateParam=function(k,x,at=null){
+    // User edits establish a new unmodulated baseline; our own modulation writes do not.
+    if(!modApplying&&SO.mod.amount&&k===SO.mod.dest&&Number.isFinite(Number(x)))SO.mod._base=Number(x);
+    return _updateParamForMod(k,x,at);
+  };
+  const _noteOnForMod=synth.noteOn.bind(synth);
+  synth.noteOn=function(m,v,l,w){
+    SO.mod._velocity=clamp(Number(v)||0,0,1);
+    return _noteOnForMod(m,v,l,w);
+  };
+  function modSourceValue(){
+    switch(SO.mod.source){
+      case "modWheel": return clamp(Number(synth.modWheel)||0,0,1);
+      case "pitchBend": return clamp((Number(synth.bend)||0)/200,-1,1);
+      case "velocity": return clamp(Number(SO.mod._velocity)||0,0,1);
+      case "aftertouch": return clamp(Number(SO.mod._aftertouch)||0,0,1);
+      case "lfo": {
+        const rate=clamp(Number(synth.params.lfoRate)||1,.01,20);
+        return Math.sin((performance.now()/1000)*Math.PI*2*rate);
+      }
+      case "random": {
+        const bucket=Math.floor(performance.now()/220);
+        if(bucket!==SO.mod._randomBucket){SO.mod._randomBucket=bucket;SO.mod._randomValue=Math.random()*2-1;}
+        return SO.mod._randomValue;
+      }
+      case "step": {
+        if(!SO.seq.on)return 0;
+        return 2*clamp(Number(SO.seq.step)/Math.max(1,Number(SO.seq.length)-1),0,1)-1;
+      }
+      default: return 0;
+    }
+  }
+  function restoreModParam(dest,base){
+    if(!Number.isFinite(Number(base)))return;
+    try{modApplying=true;synth.updateParam(dest,Number(base),audioNow()+.01);}catch(e){}finally{modApplying=false;}
+    SO.mod._lastTarget=null;
+  }
+  function modLoop(){
+    modRaf=0;if(!SO.mod.amount)return;
+    const dest=SO.mod.dest,base=Number(SO.mod._base),source=modSourceValue();
+    if(Number.isFinite(base)&&Number.isFinite(source)){
+      const scale=dest==="cutoff"?4000:dest==="resonance"?4:dest==="volume"?.3:.5;
+      const lo=dest==="cutoff"?20:0,hi=dest==="cutoff"?18000:dest==="resonance"?20:1;
+      const target=clamp(base+SO.mod.amount*source*scale,lo,hi);
+      const epsilon=dest==="cutoff"?3:.003;
+      if(!Number.isFinite(SO.mod._lastTarget)||Math.abs(target-SO.mod._lastTarget)>epsilon){
+        try{modApplying=true;synth.updateParam(dest,target,audioNow()+.01);SO.mod._lastTarget=target;}catch(e){}finally{modApplying=false;}
+      }
+    }
+    modRaf=requestAnimationFrame(modLoop);
+  }
+  $$("#so67ModAmt")?.addEventListener("input",e=>{
+    const next=clamp(Number(e.target.value)||0,-1,1),prev=SO.mod.amount;
+    if(!prev&&next)SO.mod._base=readModBase(SO.mod.dest);
+    SO.mod.amount=next;
+    if(next){if(!modRaf)modLoop();}
+    else{
+      if(modRaf){cancelAnimationFrame(modRaf);modRaf=0;}
+      if(prev)restoreModParam(SO.mod.dest,SO.mod._base);
+    }
+  });
+  $$("#so67ModSrc")?.addEventListener("change",e=>{SO.mod.source=e.target.value;SO.mod._lastTarget=null;});
+  $$("#so67ModDst")?.addEventListener("change",e=>{
+    const next=e.target.value,prev=SO.mod.dest;
+    if(next===prev)return;
+    if(SO.mod.amount){if(modRaf){cancelAnimationFrame(modRaf);modRaf=0;}restoreModParam(prev,SO.mod._base);}
+    SO.mod.dest=next;SO.mod._base=readModBase(next);SO.mod._lastTarget=null;
+    if(SO.mod.amount)modLoop();
+  });
   const _dispatch=midiManager?.dispatch?.bind(midiManager);
   const midiClock={lastAt:null,periods:[],pulseCount:0,external:false,running:false};
   if(_dispatch)midiManager.dispatch=function(status,a,b,...rest){
+    const command=status&0xf0;
+    if(command===0xd0)SO.mod._aftertouch=clamp((Number(a)||0)/127,0,1);
+    else if(command===0xa0)SO.mod._aftertouch=clamp((Number(b)||0)/127,0,1);
     if((status&0xf0)===0x90&&b>0)SO.mod._velocity=b/127;
     const isSustainCC=(status&0xf0)===0xB0&&Number(a)===64;
     const wasSustain=!!synth.sustain;
@@ -4535,7 +4610,7 @@ syncSynthState(false);
     ensureRecDest();if(!recDest){setStatus("Recorder unavailable");return;}
     if(!SO.recording){
       const mime=["audio/webm;codecs=opus","audio/webm","audio/ogg"].find(x=>MediaRecorder.isTypeSupported?.(x))||"";
-      try{const mr=new MediaRecorder(recDest.stream,mime?{mimeType:mime}:undefined),chunks=[];mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.89-recording."+((mr.mimeType||"").includes("ogg")?"ogg":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);};mr.start(100);SO.recording=mr;updateBtn("#so67Rec",true,"STOP","RECORD");setStatus("Recording…");}
+      try{const mr=new MediaRecorder(recDest.stream,mime?{mimeType:mime}:undefined),chunks=[];mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.90-recording."+((mr.mimeType||"").includes("ogg")?"ogg":"webm");a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);};mr.start(100);SO.recording=mr;updateBtn("#so67Rec",true,"STOP","RECORD");setStatus("Recording…");}
       catch(e){setStatus("Recording not supported here");}
     }else{SO.recording.stop();SO.recording=null;updateBtn("#so67Rec",false,"STOP","RECORD");setStatus("Recording exported");}
   });
@@ -4548,12 +4623,12 @@ syncSynthState(false);
     events.sort((a,b)=>a.t-b.t);let last=0,track=[0,0xff,0x51,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255];
     events.forEach(e=>{track.push(...vlq(Math.max(0,e.t-last)),...e.data);last=e.t;});track.push(0,0xff,0x2f,0);
     const bytes=[...new TextEncoder().encode("MThd"),0,0,0,6,0,0,0,1,(ppq>>8)&255,ppq&255,...new TextEncoder().encode("MTrk"),(track.length>>24)&255,(track.length>>16)&255,(track.length>>8)&255,track.length&255,...track];
-    const blob=new Blob([new Uint8Array(bytes)],{type:"audio/midi"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.89-sequence.mid";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    const blob=new Blob([new Uint8Array(bytes)],{type:"audio/midi"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.90-sequence.mid";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }
   $$("#so67ExportMidi")?.addEventListener("click",exportMidi);
 
   /* Preset share/load */
-  function presetState(){return {version:"16.89",arp:SO.arp,seq:SO.seq,music:SO.music,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x})),layerProfilesB:synth.layerProfilesB?.map(x=>x?{...x}:null)};}
+  function presetState(){return {version:"16.90",arp:SO.arp,seq:SO.seq,music:SO.music,split:SO.split,mpe:SO.mpe,mod:SO.mod,params:{...synth.params},layers:layerState.map(x=>({...x})),profiles:synth.layerProfiles?.map(x=>({...x})),layerProfilesB:synth.layerProfilesB?.map(x=>x?{...x}:null)};}
   function encode(o){return btoa(unescape(encodeURIComponent(JSON.stringify(o))));}
   function decode(s){return JSON.parse(decodeURIComponent(escape(atob(s))));}
   function applyPreset(p){
@@ -4573,7 +4648,7 @@ syncSynthState(false);
     }catch(e){}
   }
   $$("#so67Share")?.addEventListener("click",async()=>{const u=location.href.split("#")[0]+"#so67="+encode(presetState());try{await navigator.clipboard.writeText(u);setStatus("Preset link copied");}catch(e){prompt("Copy preset link",u);}});
-  $$("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.89-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
+  $$("#so67Download")?.addEventListener("click",()=>{const a=document.createElement("a"),blob=new Blob([JSON.stringify(presetState(),null,2)],{type:"application/json"});a.href=URL.createObjectURL(blob);a.download="SynthOslek-v16.90-preset.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
   $$("#so67Load")?.addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json";inp.onchange=async()=>{try{applyPreset(JSON.parse(await inp.files[0].text()));setStatus("Preset loaded");}catch(e){setStatus("Invalid preset");}};inp.click();});
   if(location.hash.startsWith("#so67=")){try{applyPreset(decode(location.hash.slice(6)));setStatus("Shared preset loaded");}catch(e){}}
 
@@ -4638,8 +4713,8 @@ syncSynthState(false);
     pressure:()=>typeof _soPerformancePressure==="function"?_soPerformancePressure():0
   };
 
-  window.SynthOslekRoadmap={version:"16.89",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
-  setStatus("v16.89 ready · stronger morph · chord names · tempo control");
+  window.SynthOslekRoadmap={version:"16.90",features:{twoLayerCore:true,dualLayerXFade:true,abSnapshot:true,pairMemory:true,familyExpansion:true,autocomplete:true,gyro:true,gyroModes:true,uiNarrowing:true,morphReadout:true,reverbUpgrade:true,mobileSaturation:true,performanceFixes:true,arp:true,stepSequencer:true,modMatrix:true,splitStack:true,fmLayer:true,sampleLayer:true,recordingExport:true,presetSharing:true,mpeChannelTracking:true},state:SO};
+  setStatus("v16.90 ready · stronger morph · chord names · tempo control");
 })();
 
 /* ========================= WELCOME + START ========================= */

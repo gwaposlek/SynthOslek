@@ -1618,3 +1618,76 @@ test('a real pointer drag changes the master-volume knob and synth parameter', a
   expect(profileVolume).toBeCloseTo(after / 100, 2);
   expect(pageErrors).toEqual([]);
 });
+
+
+test('Mod Matrix follows the selected source and holds its cutoff baseline without drift', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    synth.panic();
+    const source = document.getElementById('so67ModSrc');
+    const dest = document.getElementById('so67ModDst');
+    const amount = document.getElementById('so67ModAmt');
+    dest.value = 'cutoff'; dest.dispatchEvent(new Event('change', { bubbles: true }));
+    source.value = 'modWheel'; source.dispatchEvent(new Event('change', { bubbles: true }));
+    amount.value = '0'; amount.dispatchEvent(new Event('input', { bubbles: true }));
+    synth.updateParam('cutoff', 1000);
+    synth.setModWheel(0);
+    amount.value = '0.5'; amount.dispatchEvent(new Event('input', { bubbles: true }));
+    synth.setModWheel(0.25);
+    await new Promise(resolve => setTimeout(resolve, 220));
+    const first = synth.layerProfiles[synth.activeLayer].cutoff;
+    await new Promise(resolve => setTimeout(resolve, 240));
+    const steady = synth.layerProfiles[synth.activeLayer].cutoff;
+    synth.setModWheel(0.5);
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const second = synth.layerProfiles[synth.activeLayer].cutoff;
+    amount.value = '0'; amount.dispatchEvent(new Event('input', { bubbles: true }));
+    const restored = synth.layerProfiles[synth.activeLayer].cutoff;
+    synth.panic();
+    return { first, steady, second, restored };
+  });
+  expect(result.first).toBeCloseTo(1500, 0);
+  expect(Math.abs(result.steady - result.first)).toBeLessThan(5);
+  expect(result.second).toBeCloseTo(2000, 0);
+  expect(result.restored).toBeCloseTo(1000, 0);
+  expect(pageErrors).toEqual([]);
+});
+
+test('Mod Matrix pitch-bend and velocity sources produce distinct audible parameter targets', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    synth.panic();
+    const source = document.getElementById('so67ModSrc');
+    const dest = document.getElementById('so67ModDst');
+    const amount = document.getElementById('so67ModAmt');
+    dest.value = 'cutoff'; dest.dispatchEvent(new Event('change', { bubbles: true }));
+    amount.value = '0'; amount.dispatchEvent(new Event('input', { bubbles: true }));
+    synth.updateParam('cutoff', 800);
+    source.value = 'pitchBend'; source.dispatchEvent(new Event('change', { bubbles: true }));
+    amount.value = '0.5'; amount.dispatchEvent(new Event('input', { bubbles: true }));
+    synth.setBend(100);
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const pitchBendTarget = synth.layerProfiles[synth.activeLayer].cutoff;
+    source.value = 'velocity'; source.dispatchEvent(new Event('change', { bubbles: true }));
+    synth.noteOn(60, 0.75, 0);
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const velocityTarget = synth.layerProfiles[synth.activeLayer].cutoff;
+    amount.value = '0'; amount.dispatchEvent(new Event('input', { bubbles: true }));
+    synth.panic();
+    return { pitchBendTarget, velocityTarget, restored: synth.layerProfiles[synth.activeLayer].cutoff };
+  });
+  expect(result.pitchBendTarget).toBeCloseTo(1800, 0);
+  expect(result.velocityTarget).toBeCloseTo(2300, 0);
+  expect(result.restored).toBeCloseTo(800, 0);
+  expect(pageErrors).toEqual([]);
+});
