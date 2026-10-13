@@ -914,3 +914,132 @@ test('FM depth tracks keyboard pitch and includes a decay envelope', async ({ pa
   expect(pageErrors).toEqual([]);
 });
 
+test('pentatonic quantization considers the root in the next octave', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(() => {
+    const synth = window.synth;
+    synth.panic();
+    const scale = document.getElementById('so67Scale');
+    const scaleToggle = document.getElementById('so67ScaleToggle');
+    scale.value = 'pentatonic';
+    scale.dispatchEvent(new Event('change', { bubbles: true }));
+    scaleToggle.click();
+    document.getElementById('so67Root').value = '0';
+    document.getElementById('so67Root').dispatchEvent(new Event('change', { bubbles: true }));
+    synth.noteOn(71, 0.8, 0); // B4 is one semitone from C5, two from A4.
+    const notes = [...synth.voices.values()].filter(v => v.layer === 0).map(v => v.midi).sort((a,b)=>a-b);
+    const scaleLabel = scaleToggle.textContent;
+    synth.panic();
+    return { scaleLabel, notes };
+  });
+  expect(result.scaleLabel).toContain('SCALE ON');
+  expect(result.notes).toContain(72);
+  expect(result.notes).not.toContain(69);
+  expect(pageErrors).toEqual([]);
+});
+
+test('extended chord voicings avoid the 11th clash and normalize chord level', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(() => {
+    const synth = window.synth;
+    const select = document.getElementById('so67ChordType');
+    const chordButton = document.getElementById('so67Chord');
+    synth.panic();
+
+    select.value = '13';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    chordButton.click();
+    synth.noteOn(60, 0.84, 0);
+    const dominant = [...synth.voices.values()].filter(v => v.layer === 0)
+      .map(v => ({ midi: v.midi, velocity: v.velocity })).sort((a,b)=>a.midi-b.midi);
+    const dominantSymbol = document.querySelector('[data-nm="chord"]')?.textContent || '';
+    synth.panic();
+
+    select.value = 'maj13';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    synth.noteOn(60, 0.84, 0);
+    const major = [...synth.voices.values()].filter(v => v.layer === 0)
+      .map(v => ({ midi: v.midi, velocity: v.velocity })).sort((a,b)=>a.midi-b.midi);
+    const majorSymbol = document.querySelector('[data-nm="chord"]')?.textContent || '';
+    synth.panic();
+
+    return {
+      dominantNotes: dominant.map(v => v.midi), dominantVelocities: dominant.map(v => v.velocity),
+      dominantSymbol, majorNotes: major.map(v => v.midi), majorVelocities: major.map(v => v.velocity),
+      majorSymbol
+    };
+  });
+  expect(result.dominantNotes).toEqual([60,64,67,70,74,81]);
+  expect(result.dominantNotes).not.toContain(77);
+  expect(result.dominantSymbol).toContain('C 13');
+  expect(result.dominantVelocities.every(v => Math.abs(v - 0.84 / Math.sqrt(6)) < 0.002)).toBeTruthy();
+  expect(result.majorNotes).toEqual([60,64,67,71,74,78,81]);
+  expect(result.majorNotes).not.toContain(77);
+  expect(result.majorSymbol).toContain('C maj13');
+  expect(result.majorVelocities.every(v => Math.abs(v - 0.84 / Math.sqrt(7)) < 0.002)).toBeTruthy();
+  expect(pageErrors).toEqual([]);
+});
+
+test('ARP order mode follows played order rather than sorting by pitch', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    synth.panic();
+    synth.panic();
+    document.getElementById('so67Mode').value = 'order';
+    document.getElementById('so67Mode').dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('so67Rate').value = '1/32';
+    document.getElementById('so67Rate').dispatchEvent(new Event('change', { bubbles: true }));
+    const monitor = window.SynthOslekNoteMonitor;
+    const observed = [];
+    const originalGeneratedOn = monitor.generatedOn;
+    monitor.generatedOn = midi => { observed.push(midi); return originalGeneratedOn(midi); };
+    document.getElementById('so67Arp').click();
+    synth.noteOn(64, 0.8, 0); // E4 first
+    synth.noteOn(60, 0.8, 0); // C4 second
+    await new Promise(resolve => setTimeout(resolve, 360));
+    const status = document.getElementById('so67Status')?.textContent || '';
+    document.getElementById('so67Arp').click();
+    synth.panic();
+    monitor.generatedOn = originalGeneratedOn;
+    return { status, observed: observed.slice(0, 6), modeUi: document.getElementById('so67Mode').value };
+  });
+  expect(result.modeUi).toBe('order');
+  expect(result.observed.slice(0, 4)).toEqual([64,60,64,60]);
+  expect(pageErrors).toEqual([]);
+});
+
+test('family preset vibrato depths are large enough to be audible', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(() => {
+    const keys = {
+      organ: SD.analyze('organ').patch,
+      electricPiano: SD.analyze('electric piano').patch,
+      brass: SD.analyze('brass').patch,
+      strings: SD.analyze('strings').patch,
+      lead: SD.analyze('lead').patch
+    };
+    return Object.fromEntries(Object.entries(keys).map(([name, patch]) => [name, {
+      depth: patch.lfoDepth,
+      destination: patch.lfoDest
+    }]));
+  });
+  expect(result.organ.depth).toBeGreaterThanOrEqual(0.2);
+  expect(result.electricPiano.depth).toBeGreaterThanOrEqual(0.2);
+  expect(result.brass.depth).toBeGreaterThanOrEqual(0.2);
+  expect(result.strings.depth).toBeGreaterThanOrEqual(0.3);
+  expect(result.lead.depth).toBeGreaterThanOrEqual(0.2);
+});
+
