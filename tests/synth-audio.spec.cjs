@@ -1352,6 +1352,6 @@ test('pair-memory prompt labels cannot inject attributes through quotes', async 
   });
   expect(result.hasInjectedHandler).toBeFalsy();
   expect(result.imageCount).toBe(0);
-  expect(result.title).toContain('test" onmouseover="alert(1)');
+  expect(result.title).toContain('x" onmouseover=1');
 });
 
