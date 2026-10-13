@@ -1151,3 +1151,98 @@ test('sequencer schedules audio-clock steps and releases its notes when stopped'
   expect(pageErrors).toEqual([]);
 });
 
+test('sample-hold LFO uses a stepped custom waveform instead of a sine fallback', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(() => {
+    const synth = window.synth;
+    synth.updateParam('lfoWave', 'sample-hold');
+    const sampleHold = {
+      selected: synth.params.lfoWave,
+      oscillatorType: synth.lfo?.type,
+      hasPeriodicWave: !!synth._sampleHoldWaveCache?.wave,
+      waveIsForCurrentContext: synth._sampleHoldWaveCache?.ctx === synth.ctx
+    };
+    synth.updateParam('lfoWave', 'sine');
+    return { sampleHold, restoredType: synth.lfo?.type };
+  });
+  expect(result.sampleHold.selected).toBe('sample-hold');
+  expect(result.sampleHold.oscillatorType).toBe('custom');
+  expect(result.sampleHold.hasPeriodicWave).toBeTruthy();
+  expect(result.sampleHold.waveIsForCurrentContext).toBeTruthy();
+  expect(result.restoredType).toBe('sine');
+  expect(pageErrors).toEqual([]);
+});
+
+test('delay-sync selector and tempo changes retime the shared delay', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(() => {
+    const synth = window.synth;
+    const target = () => synth._audioParamTargets.get(synth.delay.delayTime)?.value ?? null;
+    window.SynthOslekTiming.setBpm(120);
+    synth.updateParam('delaySync', '1/8');
+    const eighthAt120 = target();
+    const expected120 = window.SynthOslekTiming.divisionSeconds('1/8');
+    window.SynthOslekTiming.setBpm(90);
+    const eighthAt90 = target();
+    const expected90 = window.SynthOslekTiming.divisionSeconds('1/8');
+    synth.updateParam('delaySync', 'free');
+    synth.updateParam('delayTime', 0.17);
+    const freeDelayTarget = target();
+    return {
+      syncMode: synth.delaySync,
+      eighthAt120, expected120, eighthAt90, expected90,
+      freeDelayTarget, profileDelayTime: synth.params.delayTime
+    };
+  });
+  expect(result.eighthAt120).toBeCloseTo(result.expected120, 3);
+  expect(result.eighthAt90).toBeCloseTo(result.expected90, 3);
+  expect(result.syncMode).toBe('free');
+  expect(result.freeDelayTarget).toBeCloseTo(0.17, 3);
+  expect(result.profileDelayTime).toBeCloseTo(0.17, 3);
+});
+
+test('A/B morph applies shared LFO rate and delay controls to audio parameters', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', e => pageErrors.push(e.message));
+  await page.goto('/');
+  await page.locator('#welcomeStart').click();
+  await expect.poll(() => page.evaluate(() => window.synth?.ctx?.state), { timeout: 10000 }).toBe('running');
+  const result = await page.evaluate(async () => {
+    const synth = window.synth;
+    synth.panic();
+    synth.updateParam('delaySync', 'free');
+    const A = synth.layerProfiles[0];
+    Object.assign(A, {
+      lfoRate: 0.4, delayTime: 0.12, delayFb: 0.1,
+      lfoDepth: 0.2, lfoDest: 'cutoff', fmAmount: 0
+    });
+    synth.layerProfilesB[0] = { ...A, lfoRate: 12, delayTime: 0.9, delayFb: 0.7 };
+    synth._bRevision[0] = (synth._bRevision[0] || 0) + 1;
+    synth._morphCache.clear();
+    synth.setModWheel(0);
+    synth.noteOn(60, 0.8, 0);
+    synth.setModWheel(1);
+    await new Promise(resolve => setTimeout(resolve, 120));
+    const target = param => synth._audioParamTargets.get(param)?.value ?? null;
+    const values = {
+      mode: synth.getMorphMode(0),
+      lfoRate: target(synth.lfo.frequency),
+      delayTime: target(synth.delay.delayTime),
+      delayFb: target(synth.delayFeedback.gain)
+    };
+    synth.panic();
+    return values;
+  });
+  expect(result.mode).toBe('ab');
+  expect(result.lfoRate).toBeCloseTo(12, 2);
+  expect(result.delayTime).toBeCloseTo(0.9, 2);
+  expect(result.delayFb).toBeCloseTo(0.7, 2);
+  expect(pageErrors).toEqual([]);
+});
+
