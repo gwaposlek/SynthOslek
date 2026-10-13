@@ -1454,10 +1454,11 @@ test('macro morph produces a measurable high-band change at the live audio outpu
     const synth = window.synth;
     if (!synth?.analyser || !synth?.noteOn || !synth?.setModWheel) return { unsupported: true };
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const appState = window.SynthOslekRoadmap?.state;
+    if (appState?.arp?.on) document.querySelector('#so67Arp')?.click();
+    if (appState?.music?.scale !== 'off') document.querySelector('#so67ScaleToggle')?.click();
+    if (appState?.music?.chord !== 'off') document.querySelector('#so67Chord')?.click();
     synth.panic();
-    if (SO.arp.on) document.querySelector('#so67Arp')?.click();
-    SO.music.scale = 'off';
-    SO.music.chord = 'off';
 
     layerState[0].enabled = true;
     layerState[0].mute = false;
@@ -1545,10 +1546,11 @@ test('ARP applies the configured upper-register velocity compensation to real no
     const arpButton = document.querySelector('#so67Arp');
     if (!synth?.voicePool?.acquire || !arpButton) return { unsupported: true };
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const appState = window.SynthOslekRoadmap?.state;
+    if (appState?.arp?.on) arpButton.click();
+    if (appState?.music?.scale !== 'off') document.querySelector('#so67ScaleToggle')?.click();
+    if (appState?.music?.chord !== 'off') document.querySelector('#so67Chord')?.click();
     synth.panic();
-    if (SO.arp.on) arpButton.click();
-    SO.music.scale = 'off';
-    SO.music.chord = 'off';
     SO.arp.mode = 'up';
     SO.arp.rate = '1/32';
     SO.arp.oct = 1;
@@ -1573,7 +1575,7 @@ test('ARP applies the configured upper-register velocity compensation to real no
       synth.noteOn(72, 0.7, 0);
       await sleep(700);
     } finally {
-      if (SO.arp.on) arpButton.click();
+      if (window.SynthOslekRoadmap?.state?.arp?.on) arpButton.click();
       synth.panic();
       synth.voicePool.acquire = originalAcquire;
     }
